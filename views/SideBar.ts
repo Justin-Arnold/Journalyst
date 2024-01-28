@@ -41,28 +41,49 @@ export class SideBarView extends ItemView {
             journalSection.addClass("journal-section");
             journalSection.createEl("h4", { text: journal.name });
 
+            this.createHeatMap(journal, journalSection)
+
             const gotoButton = journalSection.createEl("button", { text: "Go To Today" });
             gotoButton.addClass("journal-section-button");
             gotoButton.addEventListener("click", () => {
-                this.goToToday(journal);
+                this.goToDay(journal);
             });
         });
     }
 
-    private goToToday(journalFolder: TFolder) {
-        const today = new Date();
-        const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}.md`;
-        const todayFile = journalFolder.children.find(file => file.name === todayString);
-        if (todayFile) {
-            // If the file exists, open it
-            this.app.workspace.openLinkText(todayFile.path, '/', false);
-        } else {
-            // If the file does not exist, create it
-            const newFilePath = `${journalFolder.path}/${todayString}`;
+    private createHeatMap(journal: TFolder, journalSection: HTMLElement): void {
+        const heatMapWrapper = journalSection.createEl("div", { cls: "heat-map-wrapper" });
 
+        const days = ['S', 'M', 'T', 'W', 'Th', 'F', 'S'];
+        days.forEach(day => {
+            const dayEl = heatMapWrapper.createEl('span', { text: day });
+            dayEl.addClass('heat-map-day-label');
+        });
+
+        const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+            const day = heatMapWrapper.createEl("div", { cls: "heat-map-day", text: String(i) });
+            const dayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}.md`;
+            day.addEventListener("click", () => {
+                this.goToDay(journal, dayString);
+            });
+            const dayFile = this.plugin.app.vault.getAbstractFileByPath(journal.path + "/" + dayString);
+            if (dayFile) {
+                day.addClass("heat-map-day-exists");
+            }
+        }
+    }
+
+    private goToDay(journalFolder: TFolder, date?: string) {
+        const today = new Date();
+        const dayString = date ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}.md`;
+        const dayFile = journalFolder.children.find(file => file.name === dayString);
+        if (dayFile) {
+            this.app.workspace.openLinkText(dayFile.path, '/', false);
+        } else {
+            const newFilePath = `${journalFolder.path}/${dayString}`;
             const newFileContents = `---\nreviewed: false\n---`
             this.app.vault.create(newFilePath, newFileContents).then((file) => {
-                // Then open the new file
                 this.app.workspace.openLinkText(file.path, '/', false);
             });
         }

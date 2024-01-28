@@ -1,8 +1,31 @@
-/*
+.heat-map-wrapper {
+    height: fit-content;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-gap: var(--size-4-1);
+    margin-bottom: 1rem;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.heat-map-day {
+    background-color: var(--background-primary);
+    border: var(--border-width) solid var(--background-modifier-border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    border-radius: var(--radius-s);
+    aspect-ratio: 1;
+    cursor: pointer;
+}
 
-If your plugin does not need CSS, delete this file.
+.heat-map-day-label {
+    color: var(--text-faint);
+    text-align: center;
+}
 
-*/
+.heat-map-day-exists {
+    background-color: rgba(var(--background-modifier-success-rgb), 0.2);
+    border: var(--border-width) solid var(--text-success);
+    color: var(--text-success);
+}
