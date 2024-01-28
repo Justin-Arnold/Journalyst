@@ -1,5 +1,6 @@
-import { App, Plugin, PluginSettingTab, Setting, TFolder, normalizePath, WorkspaceLeaf } from 'obsidian';
+import { Plugin, TFolder, normalizePath, WorkspaceLeaf } from 'obsidian';
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
+import { JournalystSettingsTab } from "./views/Settings";
 
 interface JournalystPluginSettings {
     rootDirectory: string;
@@ -86,38 +87,5 @@ export default class JournalystPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-	}
-}
-
-class JournalystSettingsTab extends PluginSettingTab {
-	plugin: JournalystPlugin;
-
-	constructor(app: App, plugin: JournalystPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Journalyst Home Directory')
-			.setDesc('The directory where Journalyst will store your journals. This is also where the home page will be created.')
-			.addDropdown(dropdown => {
-				// Populate the dropdown with all the folders in the vault
-                console.log('set', this.app.vault.getAllLoadedFiles())
-				this.app.vault.getAllLoadedFiles()
-					.filter(file => file instanceof TFolder)
-					.forEach(folder => {
-						dropdown.addOption(folder.path, folder.path);
-					});
-				dropdown.setValue(this.plugin.settings.rootDirectory)
-					.onChange(async (value) => {
-						this.plugin.settings.rootDirectory = value;
-						await this.plugin.saveSettings();
-					});
-			});
 	}
 }
