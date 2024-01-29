@@ -55,10 +55,19 @@ export class SideBarView extends ItemView {
         const heatMapWrapper = journalSection.createEl("div", { cls: "heat-map-wrapper" });
 
         const days = ['S', 'M', 'T', 'W', 'Th', 'F', 'S'];
+
+
+
         days.forEach(day => {
             const dayEl = heatMapWrapper.createEl('span', { text: day });
             dayEl.addClass('heat-map-day-label');
         });
+
+
+        const startOfMonthOffset = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay();
+        for (let i = 0; i < startOfMonthOffset; i++) {
+            const day = heatMapWrapper.createEl("div", { cls: "heat-map-offset" });
+        }
 
         const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
         for (let i = 1; i <= daysInMonth; i++) {
