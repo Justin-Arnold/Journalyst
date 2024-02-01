@@ -1,7 +1,7 @@
 {
 	"id": "journalyst",
 	"name": "Journalyst",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"minAppVersion": "1.0.0",
 	"description": "Journalyst, an Obsidian plugin, enables easy creation of topic-specific journals. Organize your life into categories like sleep, routines, or work, with daily or recurring entries for effortless tracking and reflection.",
 	"author": "Justin Arnold",
