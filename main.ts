@@ -1,4 +1,4 @@
-import { Plugin, TFolder, normalizePath, WorkspaceLeaf } from 'obsidian';
+import { Plugin, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
 import { JournalystSettingsTab } from "./views/Settings";
 
@@ -41,7 +41,7 @@ export default class JournalystPlugin extends Plugin {
                     id: 'create-journal-' + child.name,
                     name: 'Create new journal in ' + child.name,
                     callback: () => {
-                        const todaysDate = new Date().toISOString().slice(0, 10);
+                        const todaysDate = moment().format('YYYY-MM-DD');
                         const newFileName = todaysDate + '.md';
                         const fullPath = normalizePath(child.path + '/' + newFileName);
                         this.app.vault.create(fullPath, '---\ntitle: ' + todaysDate + '\n---\n')

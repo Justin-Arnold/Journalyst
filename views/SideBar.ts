@@ -1,5 +1,6 @@
-import { ItemView, WorkspaceLeaf, TFolder } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFolder, moment } from "obsidian";
 import JournalystPlugin from "../main";
+
 
 export const VIEW_TYPE_SIDE_BAR = "journalyst-side-bar-view";
 
@@ -64,15 +65,15 @@ export class SideBarView extends ItemView {
         });
 
 
-        const startOfMonthOffset = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay();
+        const startOfMonthOffset = moment().startOf('month').day();
         for (let i = 0; i < startOfMonthOffset; i++) {
             const day = heatMapWrapper.createEl("div", { cls: "heat-map-offset" });
         }
 
-        const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+        const daysInMonth = moment().daysInMonth();
         for (let i = 1; i <= daysInMonth; i++) {
             const day = heatMapWrapper.createEl("div", { cls: "heat-map-day", text: String(i) });
-            const dayString = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}.md`;
+            const dayString = `${moment().format("YYYY-MM")}-${String(i).padStart(2, '0')}.md`
             day.addEventListener("click", () => {
                 this.goToDay(journal, dayString);
             });
@@ -84,8 +85,7 @@ export class SideBarView extends ItemView {
     }
 
     private goToDay(journalFolder: TFolder, date?: string) {
-        const today = new Date();
-        const dayString = date ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}.md`;
+        const dayString = date ?? `${moment().format("YYYY-MM")}-${moment().format("DD")}.md`;
         const dayFile = journalFolder.children.find(file => file.name === dayString);
         if (dayFile) {
             this.app.workspace.openLinkText(dayFile.path, '/', false);
