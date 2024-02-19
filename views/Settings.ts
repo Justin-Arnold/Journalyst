@@ -15,7 +15,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Journalyst Home Directory')
+			.setName('Journalyst home directory')
 			.setDesc('The directory where Journalyst will look for your journals.')
 			.addDropdown(dropdown => {
 				this.app.vault.getAllLoadedFiles()
