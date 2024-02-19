@@ -6,9 +6,9 @@ Each journal entry is a markdown file with a filename in the format `YYYY-MM-DD.
 
 This allows for easy tracking of your daily journaling, and provides a simple way to create new entries for each day. You could for example have a journal for your personal life, and another for your work life, another for sleep tracking and so on.
 
-Please feel free to provide feedback and feature requests! I'm happy to help and improve the plugin as it is still in its early stages.
+![Example of journalyst side panel](https://media.cleanshot.cloud/media/68329/g3Xjk2dzPErzavC7EP9hQZv8G9LhMPdIU6IgITyT.jpeg?Expires=1708331752&Signature=fbWSxNTf6XqxSwPbpeiJBbb7zmQfzDWET6N3uKPXkbjZvzLJx99FRnCd7KZmbBCYC-c-0-Jno55r1JMScDI~2nnBG-~3und2jRHzyvGJPk~ofMdEGQz7P9g9~YQ28nNzENg3~YpwECQctDDEgh0JfpcBKjU4phl0iHgwQMdtHPRD3IIZWfpBjpo3Ypj6~hBaIuzxfOf6lSV3SX8Ycf4dmyQeYDFDf8RGMCJM9gz9OTYJb1R~6~srJWgds8SXLTTFbIIky9QTCURTptwClPLPBJn1s88yDrSWf3IQXIO5zjYEGvCWkST~qwstGHKYjs98ouSPdWNGMef3Cbho0lD25Q__&Key-Pair-Id=K269JMAT9ZF4GZ)
 
-![Example Journalyst Side Panel](https://media.cleanshot.cloud/media/68329/6lVBBTFtpddGErN0FGVbspwSfxy7yNNIoW9hSnuP.jpeg?Expires=1706772790&Signature=sVXglVdB2-n~ZrPLFhrdWHe7WpTPZruup-378IHsFd8kjwk17n3wjJitgfiRiAlu5AKn9aPR5gCm86zdtxNGHpAR03EkdWoU2z2aS8AZypoENEWCxrFC3gtrRqqXefPMf28x7buRXKL2E87owWsqzuW3W0MlOmZ8I6AUVIhRmvT3yt7cHgJcCXDJUkSWXOGnT022oqEuuQiFpdYEpDgtz6N9YfqPBlZeJWLMmotxx~sy0NElu9FYQl5Os4LUPlfUg5S-LKZysn7doXrFEZpQx~AfOEnifwbysR2JVZ29pkNrxlPqoJQm6~7iwmgv9J07k4dE7hWfooIqsmG9vTLKug__&Key-Pair-Id=K269JMAT9ZF4GZ "Example Journalyst Side Panel")
+Please feel free to provide feedback and feature requests! I'm happy to help and improve the plugin as it is still in its early stages.
 
 ## Planned Features
 - [ ] Add commands to create a new journal entry for the current day for a given Journal
