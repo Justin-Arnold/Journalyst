@@ -84,7 +84,7 @@ export class SideBarView extends ItemView {
         }
     }
 
-    private goToDay(journalFolder: TFolder, date?: string) {
+    private async goToDay(journalFolder: TFolder, date?: string) {
         const dayString = date ?? `${moment().format("YYYY-MM")}-${moment().format("DD")}.md`;
         const dayFile = journalFolder.children.find(file => file.name === dayString);
         if (dayFile) {
@@ -92,9 +92,8 @@ export class SideBarView extends ItemView {
         } else {
             const newFilePath = `${journalFolder.path}/${dayString}`;
             const newFileContents = `---\nreviewed: false\n---`
-            this.app.vault.create(newFilePath, newFileContents).then((file) => {
-                this.app.workspace.openLinkText(file.path, '/', false);
-            });
+            const file = await this.app.vault.create(newFilePath, newFileContents)
+            this.app.workspace.openLinkText(file.path, '/', false);
         }
     }
 }
