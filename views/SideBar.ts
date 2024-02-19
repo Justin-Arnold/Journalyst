@@ -43,7 +43,7 @@ export class SideBarView extends ItemView {
 
             this.createHeatMap(journal, journalSection)
 
-            const gotoButton = journalSection.createEl("button", { text: "Go To Today" });
+            const gotoButton = journalSection.createEl("button", { text: "Go to today" });
             gotoButton.addClass("journal-section-button");
             gotoButton.addEventListener("click", () => {
                 this.goToDay(journal);

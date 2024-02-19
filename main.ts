@@ -18,7 +18,7 @@ export default class JournalystPlugin extends Plugin {
 		await this.loadSettings();
         this.addSettingTab(new JournalystSettingsTab(this.app, this));
 
-		const ribbonIconEl = this.addRibbonIcon('book-copy', 'Go To Journalyst View', () => {
+		const ribbonIconEl = this.addRibbonIcon('book-copy', 'Go to Journalyst view', () => {
             this.activateView();
         });
 
