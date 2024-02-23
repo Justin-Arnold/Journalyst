@@ -1,6 +1,6 @@
 {
 	"name": "journalyst",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "This is a plugin for Obsidian that allows you to create a grouped journal entries for each day.",
 	"main": "main.js",
 	"scripts": {
