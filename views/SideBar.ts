@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFolder, moment } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFolder, moment, TAbstractFile } from "obsidian";
 import JournalystPlugin from "../main";
 
 
@@ -22,10 +22,31 @@ export class SideBarView extends ItemView {
     }
 
     async onOpen() {
-            this.rootContainer = this.containerEl.children[1];
-            this.rootContainer.empty();
-            this.addHeader();
-            this.addJournalSections();
+        this.rootContainer = this.containerEl.children[1];
+        this.rootContainer.empty();
+        this.addHeader();
+        this.addJournalSections();
+
+        // Register file system event listeners
+        this.registerEvent(
+            this.app.vault.on('create', () => this.onFileChanged())
+        );
+        this.registerEvent(
+            this.app.vault.on('delete', () => this.onFileChanged())
+        );
+        this.registerEvent(
+            this.app.vault.on('modify', () => this.onFileChanged())
+        );
+        this.registerEvent(
+            this.app.vault.on('rename', (item) => this.onFileChanged())
+        );
+    }
+
+    private onFileChanged() {
+        this.rootContainer = this.containerEl.children[1];
+        this.rootContainer.empty();
+        this.addHeader();
+        this.addJournalSections();
     }
 
     async onClose() {

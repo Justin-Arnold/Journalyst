@@ -22,7 +22,6 @@ export default class JournalystPlugin extends Plugin {
             this.activateView();
         });
 
-
         this.app.workspace.onLayoutReady(() => {
             const rootFolder = this.app.vault.getAbstractFileByPath(this.settings.rootDirectory);
 
@@ -54,11 +53,48 @@ export default class JournalystPlugin extends Plugin {
                 (leaf) => new SideBarView(leaf, this)
             );
         })
+
+        this.registerEvent(
+            this.app.vault.on('create', (item) => this.onItemChange())
+        );
+        this.registerEvent(
+            this.app.vault.on('delete', (item) => this.onItemChange())
+        );
+        this.registerEvent(
+            this.app.vault.on('rename', (item) => this.onItemChange())
+        );
     };
 
-	onunload() {
+	onunload() {}
 
-	}
+    private onItemChange() {
+        const rootFolder = this.app.vault.getAbstractFileByPath(this.settings.rootDirectory);
+
+            if (rootFolder instanceof TFolder === false) {
+                return;
+            }
+
+            this.journals = []
+
+            rootFolder.children.forEach(child => {
+                if (child instanceof TFolder === false) {
+                    return;
+                }
+
+                this.journals.push(child);
+
+                this.addCommand({
+                    id: 'create-journal-' + child.name,
+                    name: 'Create new journal in ' + child.name,
+                    callback: () => {
+                        const todaysDate = moment().format('YYYY-MM-DD');
+                        const newFileName = todaysDate + '.md';
+                        const fullPath = normalizePath(child.path + '/' + newFileName);
+                        this.app.vault.create(fullPath, '---\ntitle: ' + todaysDate + '\n---\n')
+                    }
+                })
+            })
+    }
 
     async activateView() {
         const { workspace } = this.app;
