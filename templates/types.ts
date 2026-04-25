@@ -11,11 +11,16 @@ export type TemplaterAvailability =
 
 export type TemplateAvailability = TemplaterAvailability;
 
+export interface TemplatePromptContext {
+    prompt: string;
+    promptTitle: string;
+}
+
 export interface JournalTemplateEngineStrategy {
     getAvailability(): Promise<TemplateAvailability> | TemplateAvailability;
     getTemplateFolder(): Promise<string | null> | string | null;
     getTemplateFiles(): Promise<TFile[]> | TFile[];
-    createJournalEntry(journalFolder: TFolder, templatePath: string, date: string): Promise<TFile | null>;
+    createJournalEntry(journalFolder: TFolder, templatePath: string, date: string, promptContext?: TemplatePromptContext | null): Promise<TFile | null>;
 }
 
 export interface TemplaterPlugin {
@@ -29,6 +34,10 @@ export interface TemplaterPlugin {
             filename?: string,
             openNewNote?: boolean,
         ) => Promise<TFile | undefined>;
+        write_template_to_file?: (
+            template: TFile,
+            file: TFile,
+        ) => Promise<void>;
     };
 }
 

@@ -3,6 +3,7 @@ import {
     CoreTemplatesSettings,
     JournalTemplateEngineStrategy,
     ObsidianPlugins,
+    TemplatePromptContext,
 } from './types';
 
 interface TemplateStrategyContext {
@@ -16,7 +17,8 @@ interface TemplateStrategyContext {
     getTemplaterPlugin: () => import('./types').TemplaterPlugin | undefined;
     isCoreTemplatesPluginEnabled: () => boolean;
     readTemplateFile: (templateFile: TFile) => Promise<string>;
-    renderCoreTemplate: (templateContents: string, date: string) => Promise<string>;
+    renderCoreTemplate: (templateContents: string, date: string, promptContext?: TemplatePromptContext | null) => Promise<string>;
+    serializePromptFrontmatter: (promptContext: TemplatePromptContext) => string;
     vaultCreate: (path: string, contents: string) => Promise<TFile>;
     vaultGetAbstractFileByPath: (path: string) => TAbstractFile | null;
 }
@@ -54,7 +56,7 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
 
                 return context.getMarkdownFilesInFolder(templateFolder);
             },
-            createJournalEntry: async (journalFolder, templatePath, date) => {
+            createJournalEntry: async (journalFolder, templatePath, date, promptContext) => {
                 // Templater creates the target note itself, so Journalyst delegates
                 // creation once it has resolved the chosen template file.
                 const templateFile = context.vaultGetAbstractFileByPath(templatePath);
@@ -71,7 +73,14 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
                     return null;
                 }
 
-                    try {
+                try {
+                    if (promptContext && templater.templater.write_template_to_file) {
+                        const fullPath = normalizePath(journalFolder.path + '/' + context.formatJournalNoteFileName(date));
+                        const file = await context.vaultCreate(fullPath, context.serializePromptFrontmatter(promptContext));
+                        await templater.templater.write_template_to_file(templateFile, file);
+                        return file;
+                    }
+
                         const file = await templater.templater.create_new_note_from_template(
                             templateFile,
                             journalFolder,
@@ -108,7 +117,7 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
 
                 return context.getMarkdownFilesInFolder(templateFolder);
             },
-            createJournalEntry: async (journalFolder, templatePath, date) => {
+            createJournalEntry: async (journalFolder, templatePath, date, promptContext) => {
                 // The core Templates plugin inserts text into an existing note, so
                 // Journalyst renders the supported placeholders and creates the file.
                 const templateFile = context.vaultGetAbstractFileByPath(templatePath);
@@ -125,7 +134,7 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
 
                 try {
                     const templateContents = await context.readTemplateFile(templateFile);
-                    const renderedContents = await context.renderCoreTemplate(templateContents, date);
+                    const renderedContents = await context.renderCoreTemplate(templateContents, date, promptContext);
                     const fullPath = normalizePath(journalFolder.path + '/' + context.formatJournalNoteFileName(date));
                     return await context.vaultCreate(fullPath, renderedContents);
                 } catch (error) {

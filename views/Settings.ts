@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import { JournalCadenceType } from "../cadence";
+import { JournalPromptSettings, PromptDeliveryMode, PromptSelectionMode, PromptSourceType } from "../prompts";
 import { TemplateEngine } from "../templates/types";
 import JournalystPlugin from "../main";
 
@@ -8,6 +9,8 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	private noteDateFormatDraft: string | null = null;
 	private migrationPreviewFormat: string | null = null;
 	private readonly migrationPreviewLimit = 24;
+	private customPromptListDrafts: Record<string, { name: string; body: string }> = {};
+	private promptPreviewJournalPath: string | null = null;
 
 	constructor(app: App, plugin: JournalystPlugin) {
 		super(app, plugin);
@@ -230,6 +233,9 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			}
 		}
 
+		await this.renderCustomPromptLists(containerEl);
+		await this.renderJournalPromptSettings(containerEl);
+
 		new Setting(containerEl)
 			.setName('Template engine')
 			.setDesc('Choose which template system Journalyst should use when creating journal entries.')
@@ -358,5 +364,281 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		}
 
 		return null;
+	}
+
+	private async renderCustomPromptLists(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'Custom prompt lists' });
+		new Setting(containerEl)
+			.setName('Manage prompt libraries')
+			.setDesc('Create settings-managed prompt lists using one prompt per line.')
+			.addButton(button => {
+				button.setButtonText('Add list')
+					.setCta()
+					.onClick(async () => {
+						const listId = this.plugin.createCustomPromptListId();
+						await this.plugin.upsertCustomPromptList(listId, 'New Prompt List', '');
+						this.customPromptListDrafts[listId] = { name: 'New Prompt List', body: '' };
+						this.display();
+					});
+			});
+
+		Object.values(this.plugin.getCustomPromptLists()).forEach(list => {
+			const draft = this.getCustomPromptListDraft(list.id, list.name, list.prompts.join('\n'));
+			new Setting(containerEl)
+				.setName(list.name)
+				.setDesc('One prompt per line. Save after editing the list name or body.')
+				.addText(text => {
+					text.setPlaceholder('Prompt list name')
+						.setValue(draft.name)
+						.onChange(value => {
+							this.customPromptListDrafts[list.id] = {
+								...draft,
+								name: value,
+							};
+						});
+				})
+				.addButton(button => {
+					button.setButtonText('Save')
+						.onClick(async () => {
+							const nextDraft = this.customPromptListDrafts[list.id] ?? draft;
+							await this.plugin.upsertCustomPromptList(list.id, nextDraft.name, nextDraft.body);
+							this.display();
+						});
+				})
+				.addExtraButton(button => {
+					button.setIcon('trash')
+						.setTooltip('Delete prompt list')
+						.onClick(async () => {
+							delete this.customPromptListDrafts[list.id];
+							await this.plugin.deleteCustomPromptList(list.id);
+							this.display();
+						});
+				});
+
+			const textarea = containerEl.createEl('textarea', { cls: 'journalyst-prompt-textarea' });
+			textarea.value = draft.body;
+			textarea.rows = Math.max(4, Math.min(10, draft.body.split('\n').length || 4));
+			textarea.placeholder = 'Write one prompt per line';
+			textarea.addEventListener('input', () => {
+				this.customPromptListDrafts[list.id] = {
+					...draft,
+					body: textarea.value,
+				};
+			});
+		});
+	}
+
+	private async renderJournalPromptSettings(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'Journal prompts' });
+
+		for (const journal of this.plugin.journals) {
+			const promptSettings = this.plugin.getJournalPromptSettings(journal.path);
+			const promptStatus = await this.plugin.getPromptSettingsStatus(journal.path);
+			const resolvedList = await this.plugin.getResolvedPromptList(journal.path);
+			const promptOptions = resolvedList?.prompts ?? [];
+
+			new Setting(containerEl)
+				.setName(journal.name)
+				.setDesc(promptStatus ?? 'Add prompt rotation, weekday overrides, and prompt delivery behavior for this journal.')
+				.addToggle(toggle => {
+					toggle.setValue(promptSettings.enabled)
+						.onChange(async value => {
+							await this.plugin.updateJournalPromptSettings(journal.path, {
+								...promptSettings,
+								enabled: value,
+							});
+							this.display();
+						});
+				})
+				.addButton(button => {
+					button.setButtonText(this.promptPreviewJournalPath === journal.path ? 'Hide preview' : 'Preview')
+						.onClick(() => {
+							this.promptPreviewJournalPath = this.promptPreviewJournalPath === journal.path ? null : journal.path;
+							this.display();
+						});
+				});
+
+			if (!promptSettings.enabled) {
+				continue;
+			}
+
+			new Setting(containerEl)
+				.setName(`${journal.name} source`)
+				.setDesc('Choose where this journal should pull prompts from.')
+				.addDropdown(dropdown => {
+					dropdown.addOption('built-in', 'Built-in library');
+					dropdown.addOption('custom', 'Custom prompt list');
+					dropdown.addOption('file', 'Markdown note');
+					dropdown.setValue(promptSettings.sourceType)
+						.onChange(async (value: PromptSourceType) => {
+							const nextSettings: JournalPromptSettings = {
+								...promptSettings,
+								sourceType: value,
+								selectedListId: value === 'built-in'
+									? promptSettings.selectedListId ?? Object.keys(this.plugin.getBuiltInPromptLists())[0]
+									: value === 'custom'
+										? promptSettings.selectedListId ?? Object.keys(this.plugin.getCustomPromptLists())[0]
+										: undefined,
+								selectedFilePath: value === 'file' ? promptSettings.selectedFilePath : undefined,
+								staticPromptId: undefined,
+								weekdayOverrides: {},
+							};
+							await this.plugin.updateJournalPromptSettings(journal.path, nextSettings);
+							this.display();
+						});
+				});
+
+			if (promptSettings.sourceType === 'built-in' || promptSettings.sourceType === 'custom') {
+				const listOptions = promptSettings.sourceType === 'built-in'
+					? this.plugin.getBuiltInPromptLists()
+					: this.plugin.getCustomPromptLists();
+
+				new Setting(containerEl)
+					.setName(`${journal.name} prompt list`)
+					.addDropdown(dropdown => {
+						Object.values(listOptions).forEach(list => {
+							dropdown.addOption(list.id, list.name);
+						});
+
+						const defaultListId = promptSettings.selectedListId ?? Object.keys(listOptions)[0] ?? '';
+						dropdown.setValue(defaultListId)
+							.onChange(async value => {
+								await this.plugin.updateJournalPromptSettings(journal.path, {
+									...promptSettings,
+									selectedListId: value,
+									staticPromptId: undefined,
+									weekdayOverrides: {},
+								});
+								this.display();
+							});
+					});
+			}
+
+			if (promptSettings.sourceType === 'file') {
+				new Setting(containerEl)
+					.setName(`${journal.name} prompt note`)
+					.setDesc('Journalyst reads one markdown list item per prompt from the selected note.')
+					.addDropdown(dropdown => {
+						this.app.vault.getMarkdownFiles().forEach(file => {
+							dropdown.addOption(file.path, file.path);
+						});
+
+						dropdown.setValue(promptSettings.selectedFilePath ?? '')
+							.onChange(async value => {
+								await this.plugin.updateJournalPromptSettings(journal.path, {
+									...promptSettings,
+									selectedFilePath: value || undefined,
+									staticPromptId: undefined,
+									weekdayOverrides: {},
+								});
+								this.display();
+							});
+					});
+			}
+
+			new Setting(containerEl)
+				.setName(`${journal.name} selection`)
+				.addDropdown(dropdown => {
+					dropdown.addOption('static', 'Static prompt');
+					dropdown.addOption('random', 'Random');
+					dropdown.addOption('random-no-repeat', 'Random, no repeats until exhausted');
+					dropdown.setValue(promptSettings.selectionMode)
+						.onChange(async (value: PromptSelectionMode) => {
+							await this.plugin.updateJournalPromptSettings(journal.path, {
+								...promptSettings,
+								selectionMode: value,
+								staticPromptId: value === 'static' ? promptSettings.staticPromptId : undefined,
+							});
+							this.display();
+						});
+				})
+				.addDropdown(dropdown => {
+					dropdown.addOption('append-body', 'Append into note');
+					dropdown.addOption('template-variables', 'Use template variables');
+					dropdown.setValue(promptSettings.deliveryMode)
+						.onChange(async (value: PromptDeliveryMode) => {
+							await this.plugin.updateJournalPromptSettings(journal.path, {
+								...promptSettings,
+								deliveryMode: value,
+							});
+							this.display();
+						});
+				});
+
+			if (promptSettings.selectionMode === 'static' && promptOptions.length > 0) {
+				new Setting(containerEl)
+					.setName(`${journal.name} static prompt`)
+					.addDropdown(dropdown => {
+						promptOptions.forEach(prompt => {
+							dropdown.addOption(prompt.id, prompt.title);
+						});
+
+						dropdown.setValue(promptSettings.staticPromptId ?? promptOptions[0]?.id ?? '')
+							.onChange(async value => {
+								await this.plugin.updateJournalPromptSettings(journal.path, {
+									...promptSettings,
+									staticPromptId: value,
+								});
+							});
+					});
+			}
+
+			if (promptOptions.length > 0) {
+				const weekdaysContainer = containerEl.createDiv({ cls: 'journalyst-prompt-weekdays' });
+				weekdaysContainer.createEl('span', { text: 'Weekday overrides', cls: 'journalyst-cadence-label' });
+				['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach((label, index) => {
+					new Setting(weekdaysContainer)
+						.setName(label)
+						.addDropdown(dropdown => {
+							dropdown.addOption('', 'None');
+							promptOptions.forEach(prompt => {
+								dropdown.addOption(prompt.id, prompt.title);
+							});
+
+							dropdown.setValue(promptSettings.weekdayOverrides[index.toString()] ?? '')
+								.onChange(async value => {
+									const nextOverrides = { ...promptSettings.weekdayOverrides };
+									if (value) {
+										nextOverrides[index.toString()] = value;
+									} else {
+										delete nextOverrides[index.toString()];
+									}
+
+									await this.plugin.updateJournalPromptSettings(journal.path, {
+										...promptSettings,
+										weekdayOverrides: nextOverrides,
+									});
+									this.display();
+								});
+						});
+				});
+			}
+
+			if (this.promptPreviewJournalPath === journal.path) {
+				const previewPrompts = await this.plugin.getPromptPreview(journal.path, 3);
+				const previewContainer = containerEl.createDiv({ cls: 'journalyst-prompt-preview' });
+				if (previewPrompts.length === 0) {
+					previewContainer.createEl('p', { text: 'No prompts available to preview yet.', cls: 'journalyst-migration-summary' });
+				} else {
+					previewPrompts.forEach(prompt => {
+						previewContainer.createEl('div', { text: prompt.text, cls: 'journalyst-prompt-preview-item' });
+					});
+				}
+			}
+		}
+	}
+
+	private getCustomPromptListDraft(listId: string, defaultName: string, defaultBody: string) {
+		const existingDraft = this.customPromptListDrafts[listId];
+		if (existingDraft) {
+			return existingDraft;
+		}
+
+		const nextDraft = {
+			name: defaultName,
+			body: defaultBody,
+		};
+		this.customPromptListDrafts[listId] = nextDraft;
+		return nextDraft;
 	}
 }

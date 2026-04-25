@@ -1,5 +1,18 @@
 import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
 import { JournalCadenceConfig, normalizeJournalCadence } from "./cadence";
+import { BUILT_IN_PROMPT_LISTS } from "./promptLibrary";
+import {
+    createCustomPromptListDefinition,
+    createPromptBlock,
+    getPromptTemplateContext,
+    JournalPromptHistory,
+    JournalPromptSettings,
+    normalizeJournalPromptSettings,
+    PromptListDefinition,
+    ResolvedPrompt,
+    resolvePromptForJournal,
+    resolvePromptList,
+} from "./prompts";
 import { createTemplateStrategies } from "./templates/strategies";
 import {
     buildJournalMigrationPlan,
@@ -18,6 +31,7 @@ import {
     TemplateEngine,
     TemplateFailureBehavior,
     TemplaterPlugin,
+    TemplatePromptContext,
 } from "./templates/types";
 import { ReviewView, VIEW_TYPE_REVIEW } from "./views/Review";
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
@@ -28,6 +42,9 @@ export interface JournalystPluginSettings {
     noteDateFormat: string;
     noteDateFormatHistory: string[];
     journalCadences: Record<string, JournalCadenceConfig>;
+    customPromptLists: Record<string, PromptListDefinition>;
+    journalPromptSettings: Record<string, JournalPromptSettings>;
+    journalPromptHistory: Record<string, JournalPromptHistory>;
     templateEngine: TemplateEngine;
     templateFailureBehavior: TemplateFailureBehavior;
     templaterJournalTemplates: Record<string, string>;
@@ -40,6 +57,9 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
     journalCadences: {},
+    customPromptLists: {},
+    journalPromptSettings: {},
+    journalPromptHistory: {},
     templateEngine: 'templater',
     templateFailureBehavior: 'fallback-default',
     templaterJournalTemplates: {},
@@ -184,36 +204,70 @@ export default class JournalystPlugin extends Plugin {
             return existingFile;
         }
 
+        const { resolvedPrompt, error: promptError } = await this.resolvePromptForJournal(journalFolder.path, date);
+        if (promptError) {
+            new Notice(promptError);
+        }
+
+        const promptTemplateMode = resolvedPrompt?.deliveryMode === 'template-variables';
+        const supportsPromptVariables = this.doesTemplateEngineSupportPromptContext(this.settings.templateEngine);
+        const promptContext = promptTemplateMode && supportsPromptVariables
+            ? getPromptTemplateContext(resolvedPrompt)
+            : null;
+        const promptBlock = resolvedPrompt && (!promptTemplateMode || !supportsPromptVariables)
+            ? createPromptBlock(resolvedPrompt)
+            : '';
+
+        if (resolvedPrompt && promptTemplateMode && !supportsPromptVariables) {
+            new Notice('This template engine cannot receive prompt variables directly, so Journalyst appended the prompt to the note body instead.');
+        }
+
+        let file: TFile | null = null;
         const templatePath = this.getJournalTemplatePath(this.settings.templateEngine, journalFolder.path);
         if (templatePath) {
             // Each engine owns its own application logic; the plugin only selects
             // the active engine and handles the fallback to default note content.
-            const fileFromTemplate = await this.createJournalEntryFromTemplate(this.settings.templateEngine, journalFolder, templatePath, date);
+            const fileFromTemplate = await this.createJournalEntryFromTemplate(this.settings.templateEngine, journalFolder, templatePath, date, promptContext);
 
             if (fileFromTemplate) {
-                await this.app.workspace.openLinkText(fileFromTemplate.path, '/', false);
-                return fileFromTemplate;
-            }
-
-            if (this.settings.templateFailureBehavior === 'abort') {
+                file = fileFromTemplate;
+            } else if (this.settings.templateFailureBehavior === 'abort') {
                 new Notice('Journalyst did not create a note because the configured template could not be applied.');
                 return null;
             }
         }
 
-        const file = await this.app.vault.create(fullPath, this.getDefaultJournalEntryContents(date));
+        if (!file) {
+            const baseContents = this.getDefaultJournalEntryContents(date);
+            const nextContents = promptBlock ? this.appendPromptBlock(baseContents, promptBlock) : baseContents;
+            file = await this.app.vault.create(fullPath, nextContents);
+        } else if (promptBlock) {
+            await this.appendPromptBlockToFile(file, promptBlock);
+        }
+
+        if (resolvedPrompt?.history) {
+            this.settings.journalPromptHistory[journalFolder.path] = resolvedPrompt.history;
+            await this.saveSettings();
+        }
+
         await this.app.workspace.openLinkText(file.path, '/', false);
         return file;
     }
 
-    private async createJournalEntryFromTemplate(templateEngine: TemplateEngine, journalFolder: TFolder, templatePath: string, date: string) {
+    private async createJournalEntryFromTemplate(
+        templateEngine: TemplateEngine,
+        journalFolder: TFolder,
+        templatePath: string,
+        date: string,
+        promptContext?: TemplatePromptContext | null,
+    ) {
         const templateStrategy = this.getTemplateStrategy(templateEngine);
 
         if (!templateStrategy) {
             return null;
         }
 
-        return templateStrategy.createJournalEntry(journalFolder, templatePath, date);
+        return templateStrategy.createJournalEntry(journalFolder, templatePath, date, promptContext);
     }
 
     getJournalTemplatePath(templateEngine: TemplateEngine, journalPath: string) {
@@ -361,6 +415,94 @@ export default class JournalystPlugin extends Plugin {
         await this.saveSettings();
     }
 
+    getBuiltInPromptLists() {
+        return BUILT_IN_PROMPT_LISTS;
+    }
+
+    getCustomPromptLists() {
+        return this.settings.customPromptLists;
+    }
+
+    getJournalPromptSettings(journalPath: string) {
+        return normalizeJournalPromptSettings(this.settings.journalPromptSettings[journalPath]);
+    }
+
+    async updateJournalPromptSettings(journalPath: string, promptSettings: JournalPromptSettings) {
+        const normalizedSettings = normalizeJournalPromptSettings(promptSettings);
+        const previousSettings = this.getJournalPromptSettings(journalPath);
+        const previousSourceKey = this.getPromptSourceKey(previousSettings);
+        const nextSourceKey = this.getPromptSourceKey(normalizedSettings);
+
+        this.settings.journalPromptSettings[journalPath] = normalizedSettings;
+
+        if (previousSourceKey !== nextSourceKey || previousSettings.selectionMode !== normalizedSettings.selectionMode) {
+            delete this.settings.journalPromptHistory[journalPath];
+        }
+
+        await this.saveSettings();
+    }
+
+    async upsertCustomPromptList(listId: string, name: string, rawPromptText: string) {
+        this.settings.customPromptLists[listId] = createCustomPromptListDefinition(listId, name, rawPromptText);
+        await this.saveSettings();
+    }
+
+    async deleteCustomPromptList(listId: string) {
+        delete this.settings.customPromptLists[listId];
+
+        Object.entries(this.settings.journalPromptSettings).forEach(([journalPath, promptSettings]) => {
+            if (promptSettings.sourceType === 'custom' && promptSettings.selectedListId === listId) {
+                this.settings.journalPromptSettings[journalPath] = normalizeJournalPromptSettings({
+                    ...promptSettings,
+                    enabled: false,
+                    selectedListId: undefined,
+                    staticPromptId: undefined,
+                    weekdayOverrides: {},
+                });
+                delete this.settings.journalPromptHistory[journalPath];
+            }
+        });
+
+        await this.saveSettings();
+    }
+
+    createCustomPromptListId() {
+        return `custom-${Date.now().toString(36)}`;
+    }
+
+    async getResolvedPromptList(journalPath: string) {
+        const promptSettings = this.getJournalPromptSettings(journalPath);
+        return resolvePromptList(promptSettings, this.getPromptResolveContext());
+    }
+
+    async getPromptPreview(journalPath: string, limit = 3) {
+        const resolvedList = await this.getResolvedPromptList(journalPath);
+        return resolvedList?.prompts.slice(0, limit) ?? [];
+    }
+
+    async getPromptSettingsStatus(journalPath: string) {
+        const promptSettings = this.getJournalPromptSettings(journalPath);
+
+        if (!promptSettings.enabled) {
+            return null;
+        }
+
+        const resolvedList = await this.getResolvedPromptList(journalPath);
+        if (!resolvedList || resolvedList.prompts.length === 0) {
+            return 'No prompts are available from the selected source.';
+        }
+
+        if (promptSettings.deliveryMode === 'template-variables' && this.settings.templateEngine === 'templater') {
+            return 'Templater prompt variables are exposed as tp.frontmatter.journalyst_prompt and tp.frontmatter.journalyst_prompt_title.';
+        }
+
+        if (promptSettings.deliveryMode === 'template-variables' && !this.doesTemplateEngineSupportPromptContext(this.settings.templateEngine)) {
+            return 'This template engine cannot receive prompt variables directly. Journalyst will append the prompt to the note body instead.';
+        }
+
+        return null;
+    }
+
     getJournalMigrationPlanForFormat(noteDateFormat: string) {
         return buildJournalMigrationPlan(this.journals, {
             ...this.settings,
@@ -467,6 +609,15 @@ export default class JournalystPlugin extends Plugin {
         return '---\ntitle: ' + date + '\n---\n';
     }
 
+    private appendPromptBlock(baseContents: string, promptBlock: string) {
+        return baseContents.trimEnd() + '\n\n' + promptBlock.trim() + '\n';
+    }
+
+    private async appendPromptBlockToFile(file: TFile, promptBlock: string) {
+        const contents = await this.app.vault.read(file);
+        await this.app.vault.modify(file, this.appendPromptBlock(contents, promptBlock));
+    }
+
     private initializeTemplateStrategies() {
         this.templateStrategies = createTemplateStrategies({
             getCoreTemplatesSettings: () => this.getCoreTemplatesSettings(),
@@ -477,7 +628,8 @@ export default class JournalystPlugin extends Plugin {
             getTemplaterPlugin: () => this.getTemplaterPlugin(),
             isCoreTemplatesPluginEnabled: () => this.isCoreTemplatesPluginEnabled(),
             readTemplateFile: (templateFile) => this.app.vault.read(templateFile),
-            renderCoreTemplate: (templateContents, date) => this.renderCoreTemplate(templateContents, date),
+            renderCoreTemplate: (templateContents, date, promptContext) => this.renderCoreTemplate(templateContents, date, promptContext),
+            serializePromptFrontmatter: (promptContext) => this.serializePromptFrontmatter(promptContext),
             formatJournalNoteBaseName: (date) => this.formatJournalNoteBaseName(date),
             formatJournalNoteFileName: (date) => this.formatJournalNoteFileName(date),
             vaultCreate: (path, contents) => this.app.vault.create(path, contents),
@@ -513,6 +665,8 @@ export default class JournalystPlugin extends Plugin {
         this.settings.templaterJournalTemplates = this.remapTemplateMapPaths(this.settings.templaterJournalTemplates, oldPath, newPath);
         this.settings.coreJournalTemplates = this.remapTemplateMapPaths(this.settings.coreJournalTemplates, oldPath, newPath);
         this.settings.journalCadences = this.remapCadenceMapPaths(this.settings.journalCadences, oldPath, newPath);
+        this.settings.journalPromptSettings = this.remapPromptSettingsPaths(this.settings.journalPromptSettings, oldPath, newPath);
+        this.settings.journalPromptHistory = this.remapPromptHistoryPaths(this.settings.journalPromptHistory, oldPath, newPath);
     }
 
     private remapTemplateMapPaths(templateMap: Record<string, string>, oldPath: string, newPath: string) {
@@ -553,6 +707,46 @@ export default class JournalystPlugin extends Plugin {
         });
 
         return remappedCadenceMap;
+    }
+
+    private remapPromptSettingsPaths(promptSettingsMap: Record<string, JournalPromptSettings>, oldPath: string, newPath: string) {
+        const remappedPromptSettingsMap: Record<string, JournalPromptSettings> = {};
+
+        Object.entries(promptSettingsMap).forEach(([journalPath, promptSettings]) => {
+            if (journalPath === oldPath) {
+                remappedPromptSettingsMap[newPath] = promptSettings;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedPromptSettingsMap[newPath + journalPath.slice(oldPath.length)] = promptSettings;
+                return;
+            }
+
+            remappedPromptSettingsMap[journalPath] = promptSettings;
+        });
+
+        return remappedPromptSettingsMap;
+    }
+
+    private remapPromptHistoryPaths(promptHistoryMap: Record<string, JournalPromptHistory>, oldPath: string, newPath: string) {
+        const remappedPromptHistoryMap: Record<string, JournalPromptHistory> = {};
+
+        Object.entries(promptHistoryMap).forEach(([journalPath, promptHistory]) => {
+            if (journalPath === oldPath) {
+                remappedPromptHistoryMap[newPath] = promptHistory;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedPromptHistoryMap[newPath + journalPath.slice(oldPath.length)] = promptHistory;
+                return;
+            }
+
+            remappedPromptHistoryMap[journalPath] = promptHistory;
+        });
+
+        return remappedPromptHistoryMap;
     }
 
     private async getCoreTemplatesSettings() {
@@ -616,19 +810,46 @@ export default class JournalystPlugin extends Plugin {
         }
     }
 
-    private async renderCoreTemplate(templateContents: string, date: string) {
+    private async renderCoreTemplate(templateContents: string, date: string, promptContext?: TemplatePromptContext | null) {
         const coreTemplateSettings = await this.getCoreTemplatesSettings();
         const defaultDateFormat = coreTemplateSettings?.dateFormat || 'YYYY-MM-DD';
         const defaultTimeFormat = coreTemplateSettings?.timeFormat || 'HH:mm';
 
-        return templateContents.replace(/{{\s*(title|date|time)(?::([^}]+))?\s*}}/g, (_match, variable: string, explicitFormat?: string) => {
+        return templateContents.replace(/{{\s*(title|date|time|prompt|promptTitle)(?::([^}]+))?\s*}}/g, (_match, variable: string, explicitFormat?: string) => {
             if (variable === 'title') {
                 return date;
+            }
+
+            if (variable === 'prompt') {
+                return promptContext?.prompt ?? '';
+            }
+
+            if (variable === 'promptTitle') {
+                return promptContext?.promptTitle ?? '';
             }
 
             const format = explicitFormat?.trim() || (variable === 'date' ? defaultDateFormat : defaultTimeFormat);
             return moment().format(format);
         });
+    }
+
+    private serializePromptFrontmatter(promptContext: TemplatePromptContext) {
+        const formatValue = (value: string) => {
+            const lines = value.replace(/\r\n/g, '\n').split('\n');
+            if (lines.length === 1) {
+                return JSON.stringify(value);
+            }
+
+            return `|-\n${lines.map(line => `  ${line}`).join('\n')}`;
+        };
+
+        return [
+            '---',
+            `journalyst_prompt: ${formatValue(promptContext.prompt)}`,
+            `journalyst_prompt_title: ${formatValue(promptContext.promptTitle)}`,
+            '---',
+            '',
+        ].join('\n');
     }
 
     private getMarkdownFilesInFolder(templateFolder: string) {
@@ -699,6 +920,9 @@ export default class JournalystPlugin extends Plugin {
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
         this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];
         this.settings.journalCadences = this.settings.journalCadences ?? {};
+        this.settings.customPromptLists = this.settings.customPromptLists ?? {};
+        this.settings.journalPromptSettings = this.settings.journalPromptSettings ?? {};
+        this.settings.journalPromptHistory = this.settings.journalPromptHistory ?? {};
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
         this.settings.templateFailureBehavior = this.settings.templateFailureBehavior ?? 'fallback-default';
 	}
@@ -706,4 +930,38 @@ export default class JournalystPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+
+    private async resolvePromptForJournal(journalPath: string, date: string): Promise<{ resolvedPrompt: ResolvedPrompt | null; error?: string | null }> {
+        const promptSettings = this.getJournalPromptSettings(journalPath);
+        const promptHistory = this.settings.journalPromptHistory[journalPath];
+        const result = await resolvePromptForJournal(promptSettings, promptHistory, date, this.getPromptResolveContext());
+
+        return {
+            resolvedPrompt: result.resolvedPrompt,
+            error: result.error,
+        };
+    }
+
+    private getPromptResolveContext() {
+        return {
+            customPromptLists: this.settings.customPromptLists,
+            getFileByPath: (path: string) => {
+                const file = this.app.vault.getAbstractFileByPath(path);
+                return file instanceof TFile ? file : null;
+            },
+            readFile: (file: TFile) => this.app.vault.read(file),
+        };
+    }
+
+    private getPromptSourceKey(promptSettings: JournalPromptSettings) {
+        if (promptSettings.sourceType === 'file') {
+            return `file:${promptSettings.selectedFilePath ?? ''}`;
+        }
+
+        return `${promptSettings.sourceType}:${promptSettings.selectedListId ?? ''}`;
+    }
+
+    private doesTemplateEngineSupportPromptContext(templateEngine: TemplateEngine) {
+        return templateEngine === 'core' || templateEngine === 'templater';
+    }
 }
