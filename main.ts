@@ -13,6 +13,9 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
 }
 
 interface TemplaterPlugin {
+    settings?: {
+        templates_folder?: string;
+    };
     templater?: {
         create_new_note_from_template: (
             template: TFile,
@@ -22,6 +25,18 @@ interface TemplaterPlugin {
         ) => Promise<TFile | undefined>;
     };
 }
+
+interface ObsidianPlugins {
+    enabledPlugins?: Set<string>;
+    manifests?: Record<string, unknown>;
+    plugins?: Record<string, unknown>;
+}
+
+export type TemplaterAvailability =
+    | 'not-installed'
+    | 'disabled'
+    | 'no-template-folder'
+    | 'ready';
 
 export default class JournalystPlugin extends Plugin {
 	settings: JournalystPluginSettings;
@@ -146,14 +161,56 @@ export default class JournalystPlugin extends Plugin {
         }
     }
 
+    getTemplaterAvailability(): TemplaterAvailability {
+        const plugins = this.getObsidianPlugins();
+
+        if (!plugins?.manifests?.['templater-obsidian']) {
+            return 'not-installed';
+        }
+
+        if (!plugins.enabledPlugins?.has('templater-obsidian') || !plugins.plugins?.['templater-obsidian']) {
+            return 'disabled';
+        }
+
+        if (!this.getTemplaterTemplateFolder()) {
+            return 'no-template-folder';
+        }
+
+        return 'ready';
+    }
+
+    getTemplaterTemplateFolder() {
+        const templateFolder = this.getTemplaterPlugin()?.settings?.templates_folder?.trim().replace(/\/$/, '');
+
+        return templateFolder || null;
+    }
+
+    getTemplaterTemplateFiles() {
+        const templateFolder = this.getTemplaterTemplateFolder();
+
+        if (!templateFolder) {
+            return [];
+        }
+
+        const normalizedTemplateFolder = normalizePath(templateFolder);
+        const templateFolderPrefix = normalizedTemplateFolder === '/' ? '' : normalizedTemplateFolder + '/';
+
+        return this.app.vault.getMarkdownFiles()
+            .filter(file => file.path.startsWith(templateFolderPrefix));
+    }
+
     private getTemplaterPlugin(): TemplaterPlugin | undefined {
+        const plugins = this.getObsidianPlugins();
+
+        return plugins?.plugins?.['templater-obsidian'] as TemplaterPlugin | undefined;
+    }
+
+    private getObsidianPlugins(): ObsidianPlugins | undefined {
         const appWithPlugins = this.app as typeof this.app & {
-            plugins?: {
-                plugins?: Record<string, unknown>;
-            };
+            plugins?: ObsidianPlugins;
         };
 
-        return appWithPlugins.plugins?.plugins?.['templater-obsidian'] as TemplaterPlugin | undefined;
+        return appWithPlugins.plugins;
     }
 
     private getDefaultJournalEntryContents(date: string) {

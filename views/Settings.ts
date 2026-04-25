@@ -35,6 +35,30 @@ export class JournalystSettingsTab extends PluginSettingTab {
 
 		containerEl.createEl('h3', { text: 'Templater templates' });
 
+		const templaterAvailability = this.plugin.getTemplaterAvailability();
+		const templaterTemplateFiles = this.plugin.getTemplaterTemplateFiles();
+
+		if (templaterAvailability === 'not-installed') {
+			this.addTemplaterNotice('Templater is not installed. Install and enable Templater to choose templates for Journalyst journals.');
+			return;
+		}
+
+		if (templaterAvailability === 'disabled') {
+			this.addTemplaterNotice('Templater is installed but not enabled. Enable Templater to choose templates for Journalyst journals.');
+			return;
+		}
+
+		if (templaterAvailability === 'no-template-folder') {
+			this.addTemplaterNotice('Templater does not have a template folder configured. Set "Template folder location" in Templater settings first.');
+			return;
+		}
+
+		if (templaterTemplateFiles.length === 0) {
+			const templateFolder = this.plugin.getTemplaterTemplateFolder();
+			this.addTemplaterNotice(`No markdown templates were found in ${templateFolder}. Add templates there to assign them to Journalyst journals.`);
+			return;
+		}
+
 		this.plugin.journals.forEach(journal => {
 			new Setting(containerEl)
 				.setName(journal.name)
@@ -42,10 +66,9 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				.addDropdown(dropdown => {
 					dropdown.addOption('', 'None');
 
-					this.app.vault.getMarkdownFiles()
-						.forEach(file => {
-							dropdown.addOption(file.path, file.path);
-						});
+					templaterTemplateFiles.forEach(file => {
+						dropdown.addOption(file.path, file.path);
+					});
 
 					dropdown.setValue(this.plugin.settings.journalTemplates[journal.path] ?? '')
 						.onChange(async (value) => {
@@ -59,5 +82,10 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						});
 				});
 		});
+	}
+
+	private addTemplaterNotice(message: string) {
+		new Setting(this.containerEl)
+			.setDesc(message);
 	}
 }
