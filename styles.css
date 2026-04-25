@@ -500,6 +500,8 @@
 
 .journalyst-settings-section h3 {
     margin: 1.5rem 0 0.3rem;
+    font-size: 1.45rem;
+    line-height: 1.15;
 }
 
 .journalyst-settings-section-description {
@@ -550,8 +552,38 @@
     margin-top: 0.6rem;
 }
 
+.journalyst-settings-subsection {
+    margin: 1.1rem 0 0.85rem;
+    padding-top: 0.95rem;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.journalyst-settings-subsection h4 {
+    margin: 0 0 0.3rem;
+    font-size: 1.05rem;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.journalyst-settings-subsection-description,
+.journalyst-settings-empty-note {
+    color: var(--text-muted);
+    margin: 0 0 0.9rem;
+}
+
 .journalyst-cadence-detail {
     margin: -0.2rem 0 1rem;
+}
+
+.journalyst-cadence-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.journalyst-cadence-field {
+    display: flex;
+    flex-direction: column;
 }
 
 .journalyst-cadence-label {
@@ -559,6 +591,10 @@
     font-size: 0.8rem;
     color: var(--text-muted);
     margin-bottom: 0.45rem;
+}
+
+.journalyst-cadence-input {
+    width: 100%;
 }
 
 .journalyst-cadence-weekdays {
@@ -585,14 +621,14 @@
 }
 
 .journalyst-prompt-weekdays {
-    margin: -0.25rem 0 1rem;
+    margin: -0.1rem 0 0.95rem;
 }
 
 .journalyst-prompt-preview {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    margin: -0.2rem 0 1rem;
+    margin: -0.1rem 0 0.95rem;
 }
 
 .journalyst-prompt-preview-item {
@@ -601,6 +637,14 @@
     border: 1px solid var(--background-modifier-border);
     background: var(--background-secondary);
     color: var(--text-muted);
+}
+
+.journalyst-prompt-journal-details {
+    margin: -0.1rem 0 1rem;
+    padding: 0.9rem 1rem 0.2rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: rgba(var(--background-primary-rgb), 0.35);
 }
 
 .journalyst-synthesis-card {

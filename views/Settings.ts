@@ -13,7 +13,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	private migrationPreviewFormat: string | null = null;
 	private readonly migrationPreviewLimit = 24;
 	private customPromptListDrafts: Record<string, { name: string; body: string }> = {};
-	private promptPreviewJournalPath: string | null = null;
 	private basesBackfillPreview: JournalNotePropertyBackfillItem[] | null = null;
 	private readonly basesPreviewLimit = 24;
 
@@ -46,8 +45,18 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		this.renderSectionHeading(containerEl, 'Journal cadence', 'Define how often each journal is expected so status, review, and reminders stay honest.');
 		this.renderCadenceSettings(containerEl);
 
-		this.renderSectionHeading(containerEl, 'Prompts', 'Manage prompt libraries first, then configure how each journal should rotate and deliver prompts.');
+		this.renderSectionHeading(containerEl, 'Prompts', 'Keep prompts optional, but use them when you want a little freshness or structure in a journal entry.');
+		this.renderSubsectionIntro(
+			containerEl,
+			'Prompt libraries',
+			'Create custom prompt lists here, or use Journalyst built-in libraries and markdown note-backed lists when you assign prompts to journals.'
+		);
 		await this.renderCustomPromptLists(containerEl);
+		this.renderSubsectionIntro(
+			containerEl,
+			'Journal prompt assignments',
+			'Choose which journals use prompts, where those prompts come from, and how Journalyst rotates and delivers them.'
+		);
 		await this.renderJournalPromptSettings(containerEl);
 
 		this.renderSectionHeading(containerEl, 'Templates', 'Pick the journal template engine, choose fallback behavior, and assign per-journal templates.');
@@ -61,6 +70,10 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private renderSectionHeading(containerEl: HTMLElement, title: string, description?: string) {
+		if (containerEl.children.length > 0) {
+			containerEl.createEl('hr');
+		}
+
 		const section = containerEl.createDiv({ cls: 'journalyst-settings-section' });
 		section.createEl('h3', { text: title });
 
@@ -70,6 +83,15 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				cls: 'journalyst-settings-section-description',
 			});
 		}
+	}
+
+	private renderSubsectionIntro(containerEl: HTMLElement, title: string, description: string) {
+		const section = containerEl.createDiv({ cls: 'journalyst-settings-subsection' });
+		section.createEl('h4', { text: title });
+		section.createEl('p', {
+			text: description,
+			cls: 'journalyst-settings-subsection-description',
+		});
 	}
 
 	private renderWorkspaceSettings(containerEl: HTMLElement) {
@@ -212,7 +234,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			const cadence = this.plugin.getJournalCadence(journal.path);
 			new Setting(containerEl)
 				.setName(journal.name)
-				.setDesc('Set how often this journal is expected so review and missed-entry awareness stay honest.')
 				.addDropdown(dropdown => {
 					dropdown.addOption('daily', 'Daily');
 					dropdown.addOption('weekdays', 'Weekdays only');
@@ -260,32 +281,38 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			}
 
 			if (cadence.type === 'interval') {
-				new Setting(containerEl)
-					.setName(`${journal.name} interval`)
-					.setDesc('Choose how many days should pass between expected entries, plus the anchor date for the schedule.')
-					.addText(text => {
-						text.setPlaceholder('3')
-							.setValue(String(cadence.intervalDays ?? 3))
-							.onChange(async (value) => {
-								const intervalDays = Math.max(1, Number.parseInt(value, 10) || 1);
-								await this.plugin.updateJournalCadence(journal.path, {
-									type: 'interval',
-									intervalDays,
-									startDate: cadence.startDate,
-								});
-							});
-					})
-					.addText(text => {
-						text.inputEl.type = 'date';
-						text.setValue(cadence.startDate ?? '')
-							.onChange(async (value) => {
-								await this.plugin.updateJournalCadence(journal.path, {
-									type: 'interval',
-									intervalDays: cadence.intervalDays ?? 3,
-									startDate: value,
-								});
-							});
+				const detail = containerEl.createDiv({ cls: 'journalyst-cadence-detail' });
+				const fieldGrid = detail.createDiv({ cls: 'journalyst-cadence-fields' });
+
+				const intervalField = fieldGrid.createDiv({ cls: 'journalyst-cadence-field' });
+				intervalField.createEl('span', { text: 'Every how many days', cls: 'journalyst-cadence-label' });
+				const intervalInput = intervalField.createEl('input', { type: 'number' });
+				intervalInput.min = '1';
+				intervalInput.step = '1';
+				intervalInput.value = String(cadence.intervalDays ?? 3);
+				intervalInput.addClass('journalyst-cadence-input');
+				intervalInput.addEventListener('change', async () => {
+					const intervalDays = Math.max(1, Number.parseInt(intervalInput.value, 10) || 1);
+					intervalInput.value = String(intervalDays);
+					await this.plugin.updateJournalCadence(journal.path, {
+						type: 'interval',
+						intervalDays,
+						startDate: cadence.startDate,
 					});
+				});
+
+				const anchorField = fieldGrid.createDiv({ cls: 'journalyst-cadence-field' });
+				anchorField.createEl('span', { text: 'Anchor date', cls: 'journalyst-cadence-label' });
+				const anchorInput = anchorField.createEl('input', { type: 'date' });
+				anchorInput.value = cadence.startDate ?? '';
+				anchorInput.addClass('journalyst-cadence-input');
+				anchorInput.addEventListener('change', async () => {
+					await this.plugin.updateJournalCadence(journal.path, {
+						type: 'interval',
+						intervalDays: cadence.intervalDays ?? 3,
+						startDate: anchorInput.value,
+					});
+				});
 			}
 		}
 	}
@@ -372,17 +399,19 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			return;
 		}
 
+		this.renderSubsectionIntro(
+			containerEl,
+			'Journal template assignments',
+			'Choose which template file each journal should use when Journalyst creates a new entry.'
+		);
+
 		for (const journal of this.plugin.journals) {
 			const templatePath = this.plugin.getJournalTemplatePath(templateEngine, journal.path);
 			const templateStatus = await this.plugin.getJournalTemplateStatus(templateEngine, journal.path);
 			const warningMessage = this.getTemplateWarningMessage(templateStatus, templatePath);
-			const description = warningMessage
-				? `Template for journal entries in ${journal.path}. Warning: ${warningMessage}.`
-				: `Template for journal entries in ${journal.path}.`;
 
-			new Setting(containerEl)
+			const setting = new Setting(containerEl)
 				.setName(journal.name)
-				.setDesc(description)
 				.addDropdown(dropdown => {
 					dropdown.addOption('', 'None');
 
@@ -401,13 +430,11 @@ export class JournalystSettingsTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 							this.display();
 						});
-				})
-				.addButton(button => {
-					button.setButtonText('Test today')
-						.onClick(async () => {
-							await this.plugin.createJournalEntry(journal);
-						});
 				});
+
+			if (warningMessage) {
+				setting.setDesc(`Warning: ${warningMessage}.`);
+			}
 		}
 	}
 
@@ -638,11 +665,15 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private async renderCustomPromptLists(containerEl: HTMLElement) {
+		const customLists = Object.values(this.plugin.getCustomPromptLists());
+
 		new Setting(containerEl)
-			.setName('Manage prompt libraries')
-			.setDesc('Create settings-managed prompt lists using one prompt per line.')
+			.setName('Custom prompt lists')
+			.setDesc(customLists.length === 0
+				? 'You do not have any custom prompt lists yet.'
+				: 'Settings-managed prompt lists use one prompt per line.')
 			.addButton(button => {
-				button.setButtonText('Add list')
+				button.setButtonText(customLists.length === 0 ? 'Add first list' : 'Add list')
 					.setCta()
 					.onClick(async () => {
 						const listId = this.plugin.createCustomPromptListId();
@@ -652,7 +683,15 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			});
 
-		Object.values(this.plugin.getCustomPromptLists()).forEach(list => {
+		if (customLists.length === 0) {
+			containerEl.createEl('p', {
+				text: 'Built-in prompt libraries are always available when you assign prompts to a journal. Add a custom list here only if you want your own reusable bank.',
+				cls: 'journalyst-settings-empty-note',
+			});
+			return;
+		}
+
+		customLists.forEach(list => {
 			const draft = this.getCustomPromptListDraft(list.id, list.name, list.prompts.join('\n'));
 			new Setting(containerEl)
 				.setName(list.name)
@@ -705,9 +744,8 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			const resolvedList = await this.plugin.getResolvedPromptList(journal.path);
 			const promptOptions = resolvedList?.prompts ?? [];
 
-			new Setting(containerEl)
+			const journalSetting = new Setting(containerEl)
 				.setName(journal.name)
-				.setDesc(promptStatus ?? 'Add prompt rotation, weekday overrides, and prompt delivery behavior for this journal.')
 				.addToggle(toggle => {
 					toggle.setValue(promptSettings.enabled)
 						.onChange(async value => {
@@ -717,20 +755,19 @@ export class JournalystSettingsTab extends PluginSettingTab {
 							});
 							this.display();
 						});
-				})
-				.addButton(button => {
-					button.setButtonText(this.promptPreviewJournalPath === journal.path ? 'Hide preview' : 'Preview')
-						.onClick(() => {
-							this.promptPreviewJournalPath = this.promptPreviewJournalPath === journal.path ? null : journal.path;
-							this.display();
-						});
 				});
+
+			if (promptStatus) {
+				journalSetting.setDesc(promptStatus);
+			}
 
 			if (!promptSettings.enabled) {
 				continue;
 			}
 
-			new Setting(containerEl)
+			const detailsContainer = containerEl.createDiv({ cls: 'journalyst-prompt-journal-details' });
+
+			new Setting(detailsContainer)
 				.setName(`${journal.name} source`)
 				.setDesc('Choose where this journal should pull prompts from.')
 				.addDropdown(dropdown => {
@@ -761,7 +798,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					? this.plugin.getBuiltInPromptLists()
 					: this.plugin.getCustomPromptLists();
 
-				new Setting(containerEl)
+				new Setting(detailsContainer)
 					.setName(`${journal.name} prompt list`)
 					.addDropdown(dropdown => {
 						Object.values(listOptions).forEach(list => {
@@ -783,7 +820,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			}
 
 			if (promptSettings.sourceType === 'file') {
-				new Setting(containerEl)
+				new Setting(detailsContainer)
 					.setName(`${journal.name} prompt note`)
 					.setDesc('Journalyst reads one markdown list item per prompt from the selected note.')
 					.addDropdown(dropdown => {
@@ -804,7 +841,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			}
 
-			new Setting(containerEl)
+			new Setting(detailsContainer)
 				.setName(`${journal.name} selection`)
 				.addDropdown(dropdown => {
 					dropdown.addOption('static', 'Static prompt');
@@ -834,7 +871,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				});
 
 			if (promptSettings.selectionMode === 'static' && promptOptions.length > 0) {
-				new Setting(containerEl)
+				new Setting(detailsContainer)
 					.setName(`${journal.name} static prompt`)
 					.addDropdown(dropdown => {
 						promptOptions.forEach(prompt => {
@@ -852,7 +889,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			}
 
 			if (promptOptions.length > 0) {
-				const weekdaysContainer = containerEl.createDiv({ cls: 'journalyst-prompt-weekdays' });
+				const weekdaysContainer = detailsContainer.createDiv({ cls: 'journalyst-prompt-weekdays' });
 				weekdaysContainer.createEl('span', { text: 'Weekday overrides', cls: 'journalyst-cadence-label' });
 				['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach((label, index) => {
 					new Setting(weekdaysContainer)
@@ -882,17 +919,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				});
 			}
 
-			if (this.promptPreviewJournalPath === journal.path) {
-				const previewPrompts = await this.plugin.getPromptPreview(journal.path, 3);
-				const previewContainer = containerEl.createDiv({ cls: 'journalyst-prompt-preview' });
-				if (previewPrompts.length === 0) {
-					previewContainer.createEl('p', { text: 'No prompts available to preview yet.', cls: 'journalyst-migration-summary' });
-				} else {
-					previewPrompts.forEach(prompt => {
-						previewContainer.createEl('div', { text: prompt.text, cls: 'journalyst-prompt-preview-item' });
-					});
-				}
-			}
 		}
 	}
 
