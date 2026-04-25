@@ -1,52 +1,43 @@
-import { Plugin, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
+import { Notice, Plugin, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
 import { JournalystSettingsTab } from "./views/Settings";
 
-interface JournalystPluginSettings {
+export interface JournalystPluginSettings {
     rootDirectory: string;
+    journalTemplates: Record<string, string>;
 }
 
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
-	rootDirectory: '/'
+	rootDirectory: '/',
+    journalTemplates: {},
+}
+
+interface TemplaterPlugin {
+    templater?: {
+        create_new_note_from_template: (
+            template: TFile,
+            folder?: TFolder | string,
+            filename?: string,
+            openNewNote?: boolean,
+        ) => Promise<TFile | undefined>;
+    };
 }
 
 export default class JournalystPlugin extends Plugin {
 	settings: JournalystPluginSettings;
     journals: TFolder[] = [];
+    private journalCommandIds: string[] = [];
 
 	async onload() {
 		await this.loadSettings();
         this.addSettingTab(new JournalystSettingsTab(this.app, this));
 
-		const ribbonIconEl = this.addRibbonIcon('book-copy', 'Go to Journalyst view', () => {
+		this.addRibbonIcon('book-copy', 'Go to Journalyst view', () => {
             this.activateView();
         });
 
         this.app.workspace.onLayoutReady(() => {
-            const rootFolder = this.app.vault.getAbstractFileByPath(this.settings.rootDirectory);
-
-            if (rootFolder instanceof TFolder === false) {
-                return;
-            }
-
-            rootFolder.children.forEach(child => {
-                if (child instanceof TFolder === false) {
-                    return;
-                }
-
-                this.journals.push(child);
-
-                this.addCommand({
-                    id: 'create-journal-' + child.name,
-                    name: 'Create new journal in ' + child.name,
-                    callback: () => {
-                        const todaysDate = moment().format('YYYY-MM-DD');
-                        const newFileName = todaysDate + '.md';
-                        const fullPath = normalizePath(child.path + '/' + newFileName);
-                        this.app.vault.create(fullPath, '---\ntitle: ' + todaysDate + '\n---\n')
-                    }
-                })
-            })
+            this.refreshJournals();
 
             this.registerView(
                 VIEW_TYPE_SIDE_BAR,
@@ -68,32 +59,105 @@ export default class JournalystPlugin extends Plugin {
 	onunload() {}
 
     private onItemChange() {
+        this.refreshJournals();
+    }
+
+    refreshJournals() {
         const rootFolder = this.app.vault.getAbstractFileByPath(this.settings.rootDirectory);
 
-            if (rootFolder instanceof TFolder === false) {
+        this.journalCommandIds.forEach(commandId => this.removeCommand(commandId));
+        this.journalCommandIds = [];
+        this.journals = [];
+
+        if (!(rootFolder instanceof TFolder)) {
+            return;
+        }
+
+        rootFolder.children.forEach((child, index) => {
+            if (!(child instanceof TFolder)) {
                 return;
             }
 
-            this.journals = []
+            this.journals.push(child);
+            this.addJournalCommand(child, index);
+        })
+    }
 
-            rootFolder.children.forEach(child => {
-                if (child instanceof TFolder === false) {
-                    return;
-                }
+    private addJournalCommand(journal: TFolder, index: number) {
+        const commandId = 'create-journal-' + index + '-' + journal.path.replace(/[^a-zA-Z0-9-]/g, '-');
+        this.journalCommandIds.push(commandId);
 
-                this.journals.push(child);
+        this.addCommand({
+            id: commandId,
+            name: 'Create new journal in ' + journal.name,
+            callback: () => {
+                this.createJournalEntry(journal);
+            }
+        })
+    }
 
-                this.addCommand({
-                    id: 'create-journal-' + child.name,
-                    name: 'Create new journal in ' + child.name,
-                    callback: () => {
-                        const todaysDate = moment().format('YYYY-MM-DD');
-                        const newFileName = todaysDate + '.md';
-                        const fullPath = normalizePath(child.path + '/' + newFileName);
-                        this.app.vault.create(fullPath, '---\ntitle: ' + todaysDate + '\n---\n')
-                    }
-                })
-            })
+    async createJournalEntry(journalFolder: TFolder, date = moment().format('YYYY-MM-DD')) {
+        const newFileName = date + '.md';
+        const fullPath = normalizePath(journalFolder.path + '/' + newFileName);
+        const existingFile = this.app.vault.getAbstractFileByPath(fullPath);
+
+        if (existingFile instanceof TFile) {
+            await this.app.workspace.openLinkText(existingFile.path, '/', false);
+            return existingFile;
+        }
+
+        const templatePath = this.settings.journalTemplates[journalFolder.path];
+        if (templatePath) {
+            const fileFromTemplate = await this.createJournalEntryFromTemplate(journalFolder, templatePath, date);
+
+            if (fileFromTemplate) {
+                await this.app.workspace.openLinkText(fileFromTemplate.path, '/', false);
+                return fileFromTemplate;
+            }
+        }
+
+        const file = await this.app.vault.create(fullPath, this.getDefaultJournalEntryContents(date));
+        await this.app.workspace.openLinkText(file.path, '/', false);
+        return file;
+    }
+
+    private async createJournalEntryFromTemplate(journalFolder: TFolder, templatePath: string, date: string) {
+        const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
+
+        if (!(templateFile instanceof TFile)) {
+            new Notice(`Journalyst could not find template "${templatePath}". Created a default journal entry instead.`);
+            return null;
+        }
+
+        const templater = this.getTemplaterPlugin();
+
+        if (!templater?.templater?.create_new_note_from_template) {
+            new Notice('Journalyst could not find Templater. Created a default journal entry instead.');
+            return null;
+        }
+
+        try {
+            const file = await templater.templater.create_new_note_from_template(templateFile, journalFolder, date, false);
+            return file ?? null;
+        } catch (error) {
+            console.error('Journalyst failed to create a journal entry from Templater.', error);
+            new Notice('Journalyst could not apply the configured template. Created a default journal entry instead.');
+            return null;
+        }
+    }
+
+    private getTemplaterPlugin(): TemplaterPlugin | undefined {
+        const appWithPlugins = this.app as typeof this.app & {
+            plugins?: {
+                plugins?: Record<string, unknown>;
+            };
+        };
+
+        return appWithPlugins.plugins?.plugins?.['templater-obsidian'] as TemplaterPlugin | undefined;
+    }
+
+    private getDefaultJournalEntryContents(date: string) {
+        return '---\ntitle: ' + date + '\n---\n';
     }
 
     async activateView() {
@@ -109,6 +173,9 @@ export default class JournalystPlugin extends Plugin {
             // Our view could not be found in the workspace, create a new leaf
             // in the right sidebar for it
             leaf = workspace.getRightLeaf(false);
+            if (!leaf) {
+                return;
+            }
             await leaf.setViewState({ type: VIEW_TYPE_SIDE_BAR, active: true });
         }
 
@@ -119,6 +186,7 @@ export default class JournalystPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.settings.journalTemplates = this.settings.journalTemplates ?? {};
 	}
 
 	async saveSettings() {
