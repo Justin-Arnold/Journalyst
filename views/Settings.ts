@@ -13,6 +13,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		const {containerEl} = this;
 
 		containerEl.empty();
+		this.plugin.refreshJournals();
 
 		new Setting(containerEl)
 			.setName('Journalyst home directory')
@@ -27,7 +28,36 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.rootDirectory = value;
 						await this.plugin.saveSettings();
+						this.plugin.refreshJournals();
+						this.display();
 					});
 			});
+
+		containerEl.createEl('h3', { text: 'Templater templates' });
+
+		this.plugin.journals.forEach(journal => {
+			new Setting(containerEl)
+				.setName(journal.name)
+				.setDesc(`Template for journal entries in ${journal.path}.`)
+				.addDropdown(dropdown => {
+					dropdown.addOption('', 'None');
+
+					this.app.vault.getMarkdownFiles()
+						.forEach(file => {
+							dropdown.addOption(file.path, file.path);
+						});
+
+					dropdown.setValue(this.plugin.settings.journalTemplates[journal.path] ?? '')
+						.onChange(async (value) => {
+							if (value) {
+								this.plugin.settings.journalTemplates[journal.path] = value;
+							} else {
+								delete this.plugin.settings.journalTemplates[journal.path];
+							}
+
+							await this.plugin.saveSettings();
+						});
+				});
+		});
 	}
 }
