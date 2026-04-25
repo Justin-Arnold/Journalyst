@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf, TFolder, moment } from "obsidian";
+import { getCadenceStatus } from "../cadence";
 import JournalystPlugin from "../main";
 
 
@@ -62,6 +63,7 @@ export class SideBarView extends ItemView {
             const journalSection = this.rootContainer.createEl("div")
             journalSection.addClass("journal-section");
             journalSection.createEl("h4", { text: journal.name });
+            this.addCadenceSummary(journal, journalSection);
 
             this.createHeatMap(journal, journalSection)
 
@@ -111,5 +113,33 @@ export class SideBarView extends ItemView {
                 day.addClass("heat-map-day-exists");
             }
         }
+    }
+
+    private addCadenceSummary(journal: TFolder, journalSection: HTMLElement) {
+        const cadence = this.plugin.getJournalCadence(journal.path);
+        const entryDates = journal.children
+            .map(file => this.plugin.parseJournalDateFromFile(file))
+            .filter((date): date is string => !!date)
+            .sort();
+        const dateSet = new Set(entryDates);
+        const today = moment().format('YYYY-MM-DD');
+        const cadenceStatus = getCadenceStatus(cadence, dateSet, today, entryDates[0] ?? null);
+        const summary = journalSection.createDiv({ cls: 'journal-section-meta' });
+        summary.createEl('span', { text: cadenceStatus.cadenceLabel, cls: 'journal-section-meta-label' });
+
+        let statusText = 'Flexible pace';
+        if (cadenceStatus.isTracked) {
+            if (cadenceStatus.expectedToday && !dateSet.has(today)) {
+                statusText = 'Due today';
+            } else if (cadenceStatus.outstandingMisses > 0) {
+                statusText = `${cadenceStatus.outstandingMisses} missed`;
+            } else if (dateSet.has(today)) {
+                statusText = 'On track';
+            } else if (cadenceStatus.nextExpectedDate) {
+                statusText = `Next ${cadenceStatus.nextExpectedDate}`;
+            }
+        }
+
+        summary.createEl('span', { text: statusText, cls: 'journal-section-meta-status' });
     }
 }

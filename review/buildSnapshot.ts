@@ -1,4 +1,15 @@
 import { TFolder, moment } from 'obsidian';
+import {
+    getCadenceLabel,
+    getCadenceStatus,
+    getCurrentCadenceStreak,
+    getExpectedDatesInRange,
+    getLongestCadenceStreak,
+    getLongestMissStretch,
+    isCadenceTracked,
+    isExpectedOnDate,
+    normalizeJournalCadence,
+} from '../cadence';
 import { JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
     ActivityCell,
@@ -15,20 +26,23 @@ const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
 export function buildJournalReviewSnapshot(journal: TFolder, anchorDate: string, journalDateSettings: JournalDateSettings): JournalReviewSnapshot {
     const entries = getJournalEntries(journal, journalDateSettings);
     const entryByDate = new Map(entries.map(entry => [entry.date, entry]));
+    const cadence = normalizeJournalCadence((journalDateSettings as JournalDateSettings & { journalCadences?: Record<string, import('../cadence').JournalCadenceConfig> }).journalCadences?.[journal.path]);
     const anchor = moment(anchorDate, 'YYYY-MM-DD', true);
     const normalizedAnchor = anchor.isValid() ? anchor : moment();
     const normalizedAnchorDate = normalizedAnchor.format('YYYY-MM-DD');
+    const dateSet = new Set(entries.map(entry => entry.date));
+    const firstEntryDate = entries[0]?.date ?? null;
 
     return {
         journalPath: journal.path,
         journalName: journal.name,
         anchor: { date: normalizedAnchorDate },
         lookbacks: buildLookbacks(normalizedAnchor, entryByDate),
-        calendarSummaries: buildCalendarSummaries(normalizedAnchor, entryByDate),
-        rollingSummaries: buildRollingSummaries(normalizedAnchor, entryByDate),
-        insights: buildInsights(entries, normalizedAnchorDate),
+        calendarSummaries: buildCalendarSummaries(normalizedAnchor, entryByDate, cadence),
+        rollingSummaries: buildRollingSummaries(normalizedAnchor, entryByDate, cadence),
+        insights: buildInsights(entries, normalizedAnchorDate, cadence),
         entryCount: entries.length,
-        recentActivity: buildRecentActivity(normalizedAnchor, entryByDate),
+        recentActivity: buildRecentActivity(normalizedAnchor, entryByDate, cadence),
         weekdayDistribution: buildWeekdayDistribution(entries),
         monthlyActivity: buildMonthlyActivity(entries, normalizedAnchor),
     };
@@ -66,21 +80,21 @@ function buildLookbacks(anchor: moment.Moment, entryByDate: Map<string, JournalE
     }));
 }
 
-function buildCalendarSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>): PeriodSummary[] {
+function buildCalendarSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): PeriodSummary[] {
     return [
-        createPeriodSummary('This week', anchor.clone().startOf('week'), anchor.clone(), entryByDate),
-        createPeriodSummary('This month', anchor.clone().startOf('month'), anchor.clone(), entryByDate),
-        createPeriodSummary('This quarter', anchor.clone().startOf('quarter'), anchor.clone(), entryByDate),
-        createPeriodSummary('This year', anchor.clone().startOf('year'), anchor.clone(), entryByDate),
+        createPeriodSummary('This week', anchor.clone().startOf('week'), anchor.clone(), entryByDate, cadence),
+        createPeriodSummary('This month', anchor.clone().startOf('month'), anchor.clone(), entryByDate, cadence),
+        createPeriodSummary('This quarter', anchor.clone().startOf('quarter'), anchor.clone(), entryByDate, cadence),
+        createPeriodSummary('This year', anchor.clone().startOf('year'), anchor.clone(), entryByDate, cadence),
     ];
 }
 
-function buildRollingSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>): PeriodSummary[] {
+function buildRollingSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): PeriodSummary[] {
     return [
-        createRollingSummary('Last 7 days', 7, anchor, entryByDate),
-        createRollingSummary('Last 30 days', 30, anchor, entryByDate),
-        createRollingSummary('Last 90 days', 90, anchor, entryByDate),
-        createRollingSummary('Last 365 days', 365, anchor, entryByDate),
+        createRollingSummary('Last 7 days', 7, anchor, entryByDate, cadence),
+        createRollingSummary('Last 30 days', 30, anchor, entryByDate, cadence),
+        createRollingSummary('Last 90 days', 90, anchor, entryByDate, cadence),
+        createRollingSummary('Last 365 days', 365, anchor, entryByDate, cadence),
     ];
 }
 
@@ -89,9 +103,10 @@ function createRollingSummary(
     durationDays: number,
     anchor: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
+    cadence: import('../cadence').JournalCadenceConfig,
 ): PeriodSummary {
     const start = anchor.clone().subtract(durationDays - 1, 'days');
-    return createPeriodSummary(label, start, anchor.clone(), entryByDate);
+    return createPeriodSummary(label, start, anchor.clone(), entryByDate, cadence);
 }
 
 function createPeriodSummary(
@@ -99,21 +114,25 @@ function createPeriodSummary(
     start: moment.Moment,
     end: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
+    cadence: import('../cadence').JournalCadenceConfig,
 ): PeriodSummary {
     const startDate = start.format('YYYY-MM-DD');
     const endDate = end.format('YYYY-MM-DD');
-    let completedDays = 0;
-    let current = start.clone();
-
-    while (current.isSameOrBefore(end, 'day')) {
-        if (entryByDate.has(current.format('YYYY-MM-DD'))) {
-            completedDays += 1;
-        }
-
-        current.add(1, 'day');
+    if (!isCadenceTracked(cadence)) {
+        return {
+            label,
+            startDate,
+            endDate,
+            completedDays: 0,
+            totalDays: 0,
+            completionRate: 0,
+            tracked: false,
+        };
     }
 
-    const totalDays = end.diff(start, 'days') + 1;
+    const expectedDates = getExpectedDatesInRange(cadence, startDate, endDate);
+    const completedDays = expectedDates.filter(date => entryByDate.has(date)).length;
+    const totalDays = expectedDates.length;
     const completionRate = totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0;
 
     return {
@@ -123,40 +142,55 @@ function createPeriodSummary(
         completedDays,
         totalDays,
         completionRate,
+        tracked: true,
     };
 }
 
-function buildInsights(entries: JournalEntryRecord[], anchorDate: string): ReviewInsights {
+function buildInsights(entries: JournalEntryRecord[], anchorDate: string, cadence: import('../cadence').JournalCadenceConfig): ReviewInsights {
+    const cadenceLabel = getCadenceLabel(cadence);
+    const dateSet = new Set(entries.map(entry => entry.date));
+    const firstEntryDate = entries[0]?.date ?? null;
+    const cadenceStatus = getCadenceStatus(cadence, dateSet, anchorDate, firstEntryDate);
+
     if (entries.length === 0) {
         return {
             currentStreak: 0,
             longestStreak: 0,
-            longestGapDays: 0,
+            longestMissStretch: 0,
             totalEntries: 0,
             busiestWeekday: null,
             busiestMonth: null,
+            cadenceLabel,
+            expectedToday: cadenceStatus.expectedToday,
+            outstandingMisses: cadenceStatus.outstandingMisses,
+            nextExpectedDate: cadenceStatus.nextExpectedDate,
+            isTracked: cadenceStatus.isTracked,
         };
     }
 
     const dates = entries.map(entry => entry.date);
-    const dateSet = new Set(dates);
-    const currentStreak = getCurrentStreak(dateSet, anchorDate);
-    const longestStreak = getLongestStreak(dates);
-    const longestGapDays = getLongestGapDays(dates);
+    const currentStreak = getCurrentCadenceStreak(cadence, dateSet, anchorDate);
+    const longestStreak = getLongestCadenceStreak(cadence, dateSet, dates);
+    const longestMissStretch = getLongestMissStretch(cadence, dateSet, firstEntryDate, anchorDate);
     const busiestWeekday = getBusiestWeekday(entries);
     const busiestMonth = getBusiestMonth(entries);
 
     return {
         currentStreak,
         longestStreak,
-        longestGapDays,
+        longestMissStretch,
         totalEntries: entries.length,
         busiestWeekday,
         busiestMonth,
+        cadenceLabel,
+        expectedToday: cadenceStatus.expectedToday,
+        outstandingMisses: cadenceStatus.outstandingMisses,
+        nextExpectedDate: cadenceStatus.nextExpectedDate,
+        isTracked: cadenceStatus.isTracked,
     };
 }
 
-function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>): ActivityCell[] {
+function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): ActivityCell[] {
     const cells: ActivityCell[] = [];
     const start = anchor.clone().subtract(34, 'days');
     let cursor = start.clone();
@@ -166,6 +200,7 @@ function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, Jou
         cells.push({
             date,
             hasEntry: entryByDate.has(date),
+            isExpected: isExpectedOnDate(cadence, date),
         });
         cursor.add(1, 'day');
     }
@@ -206,62 +241,6 @@ function buildMonthlyActivity(entries: JournalEntryRecord[], anchor: moment.Mome
     }
 
     return data;
-}
-
-function getCurrentStreak(dateSet: Set<string>, anchorDate: string): number {
-    let streak = 0;
-    let cursor = moment(anchorDate, 'YYYY-MM-DD', true);
-
-    while (dateSet.has(cursor.format('YYYY-MM-DD'))) {
-        streak += 1;
-        cursor = cursor.subtract(1, 'day');
-    }
-
-    return streak;
-}
-
-function getLongestStreak(dates: string[]): number {
-    let longest = 0;
-    let current = 0;
-    let previous: moment.Moment | null = null;
-
-    dates.forEach(date => {
-        const currentDate = moment(date, 'YYYY-MM-DD', true);
-
-        if (!previous || currentDate.diff(previous, 'days') !== 1) {
-            current = 1;
-        } else {
-            current += 1;
-        }
-
-        if (current > longest) {
-            longest = current;
-        }
-
-        previous = currentDate;
-    });
-
-    return longest;
-}
-
-function getLongestGapDays(dates: string[]): number {
-    if (dates.length < 2) {
-        return 0;
-    }
-
-    let longestGap = 0;
-
-    for (let index = 1; index < dates.length; index += 1) {
-        const previous = moment(dates[index - 1], 'YYYY-MM-DD', true);
-        const current = moment(dates[index], 'YYYY-MM-DD', true);
-        const gapDays = Math.max(0, current.diff(previous, 'days') - 1);
-
-        if (gapDays > longestGap) {
-            longestGap = gapDays;
-        }
-    }
-
-    return longestGap;
 }
 
 function getBusiestWeekday(entries: JournalEntryRecord[]): string | null {

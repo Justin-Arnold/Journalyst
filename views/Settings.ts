@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { JournalCadenceType } from "../cadence";
 import { TemplateEngine } from "../templates/types";
 import JournalystPlugin from "../main";
 
@@ -144,6 +145,88 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						cls: 'journalyst-migration-summary',
 					});
 				}
+			}
+		}
+
+		containerEl.createEl('h3', { text: 'Journal cadence' });
+		for (const journal of this.plugin.journals) {
+			const cadence = this.plugin.getJournalCadence(journal.path);
+			new Setting(containerEl)
+				.setName(journal.name)
+				.setDesc('Set how often this journal is expected so review and missed-entry awareness stay honest.')
+				.addDropdown(dropdown => {
+					dropdown.addOption('daily', 'Daily');
+					dropdown.addOption('weekdays', 'Weekdays only');
+					dropdown.addOption('weekly-days', 'Specific weekdays');
+					dropdown.addOption('interval', 'Custom interval');
+					dropdown.addOption('adhoc', 'Ad hoc / no tracking');
+					dropdown.setValue(cadence.type)
+						.onChange(async (value: JournalCadenceType) => {
+							const nextCadence = value === 'weekly-days'
+								? { type: value, weekdays: cadence.weekdays ?? [1] }
+								: value === 'interval'
+									? { type: value, intervalDays: cadence.intervalDays ?? 3, startDate: cadence.startDate }
+									: { type: value };
+							await this.plugin.updateJournalCadence(journal.path, nextCadence);
+							this.display();
+						});
+				});
+
+			if (cadence.type === 'weekly-days') {
+				const detail = containerEl.createDiv({ cls: 'journalyst-cadence-detail' });
+				detail.createEl('span', { text: 'Expected weekdays', cls: 'journalyst-cadence-label' });
+				const buttonRow = detail.createDiv({ cls: 'journalyst-cadence-weekdays' });
+
+				['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach((label, day) => {
+					const button = buttonRow.createEl('button', { text: label, cls: 'journalyst-cadence-day' });
+					button.type = 'button';
+					if (cadence.weekdays?.includes(day)) {
+						button.addClass('is-selected');
+					}
+					button.addEventListener('click', async () => {
+						const nextWeekdays = new Set(cadence.weekdays ?? []);
+						if (nextWeekdays.has(day)) {
+							nextWeekdays.delete(day);
+						} else {
+							nextWeekdays.add(day);
+						}
+
+						await this.plugin.updateJournalCadence(journal.path, {
+							type: 'weekly-days',
+							weekdays: Array.from(nextWeekdays).sort((left, right) => left - right),
+						});
+						this.display();
+					});
+				});
+			}
+
+			if (cadence.type === 'interval') {
+				new Setting(containerEl)
+					.setName(`${journal.name} interval`)
+					.setDesc('Choose how many days should pass between expected entries, plus the anchor date for the schedule.')
+					.addText(text => {
+						text.setPlaceholder('3')
+							.setValue(String(cadence.intervalDays ?? 3))
+							.onChange(async (value) => {
+								const intervalDays = Math.max(1, Number.parseInt(value, 10) || 1);
+								await this.plugin.updateJournalCadence(journal.path, {
+									type: 'interval',
+									intervalDays,
+									startDate: cadence.startDate,
+								});
+							});
+					})
+					.addText(text => {
+						text.inputEl.type = 'date';
+						text.setValue(cadence.startDate ?? '')
+							.onChange(async (value) => {
+								await this.plugin.updateJournalCadence(journal.path, {
+									type: 'interval',
+									intervalDays: cadence.intervalDays ?? 3,
+									startDate: value,
+								});
+							});
+					});
 			}
 		}
 

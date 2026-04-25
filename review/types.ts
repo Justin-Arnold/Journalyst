@@ -22,20 +22,27 @@ export interface PeriodSummary {
     completedDays: number;
     totalDays: number;
     completionRate: number;
+    tracked: boolean;
 }
 
 export interface ReviewInsights {
     currentStreak: number;
     longestStreak: number;
-    longestGapDays: number;
+    longestMissStretch: number;
     totalEntries: number;
     busiestWeekday: string | null;
     busiestMonth: string | null;
+    cadenceLabel: string;
+    expectedToday: boolean;
+    outstandingMisses: number;
+    nextExpectedDate: string | null;
+    isTracked: boolean;
 }
 
 export interface ActivityCell {
     date: string;
     hasEntry: boolean;
+    isExpected: boolean;
 }
 
 export interface DistributionDatum {

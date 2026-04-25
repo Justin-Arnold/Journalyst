@@ -1,4 +1,5 @@
 import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
+import { JournalCadenceConfig, normalizeJournalCadence } from "./cadence";
 import { createTemplateStrategies } from "./templates/strategies";
 import {
     buildJournalMigrationPlan,
@@ -26,6 +27,7 @@ export interface JournalystPluginSettings {
     rootDirectory: string;
     noteDateFormat: string;
     noteDateFormatHistory: string[];
+    journalCadences: Record<string, JournalCadenceConfig>;
     templateEngine: TemplateEngine;
     templateFailureBehavior: TemplateFailureBehavior;
     templaterJournalTemplates: Record<string, string>;
@@ -37,6 +39,7 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
 	rootDirectory: '/',
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
+    journalCadences: {},
     templateEngine: 'templater',
     templateFailureBehavior: 'fallback-default',
     templaterJournalTemplates: {},
@@ -349,6 +352,15 @@ export default class JournalystPlugin extends Plugin {
         return buildJournalMigrationPlan(this.journals, this.settings);
     }
 
+    getJournalCadence(journalPath: string) {
+        return normalizeJournalCadence(this.settings.journalCadences[journalPath]);
+    }
+
+    async updateJournalCadence(journalPath: string, cadence: JournalCadenceConfig) {
+        this.settings.journalCadences[journalPath] = normalizeJournalCadence(cadence);
+        await this.saveSettings();
+    }
+
     getJournalMigrationPlanForFormat(noteDateFormat: string) {
         return buildJournalMigrationPlan(this.journals, {
             ...this.settings,
@@ -500,6 +512,7 @@ export default class JournalystPlugin extends Plugin {
 
         this.settings.templaterJournalTemplates = this.remapTemplateMapPaths(this.settings.templaterJournalTemplates, oldPath, newPath);
         this.settings.coreJournalTemplates = this.remapTemplateMapPaths(this.settings.coreJournalTemplates, oldPath, newPath);
+        this.settings.journalCadences = this.remapCadenceMapPaths(this.settings.journalCadences, oldPath, newPath);
     }
 
     private remapTemplateMapPaths(templateMap: Record<string, string>, oldPath: string, newPath: string) {
@@ -520,6 +533,26 @@ export default class JournalystPlugin extends Plugin {
         });
 
         return remappedTemplateMap;
+    }
+
+    private remapCadenceMapPaths(cadenceMap: Record<string, JournalCadenceConfig>, oldPath: string, newPath: string) {
+        const remappedCadenceMap: Record<string, JournalCadenceConfig> = {};
+
+        Object.entries(cadenceMap).forEach(([journalPath, cadence]) => {
+            if (journalPath === oldPath) {
+                remappedCadenceMap[newPath] = cadence;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedCadenceMap[newPath + journalPath.slice(oldPath.length)] = cadence;
+                return;
+            }
+
+            remappedCadenceMap[journalPath] = cadence;
+        });
+
+        return remappedCadenceMap;
     }
 
     private async getCoreTemplatesSettings() {
@@ -665,6 +698,7 @@ export default class JournalystPlugin extends Plugin {
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
         this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];
+        this.settings.journalCadences = this.settings.journalCadences ?? {};
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
         this.settings.templateFailureBehavior = this.settings.templateFailureBehavior ?? 'fallback-default';
 	}

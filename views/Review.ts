@@ -122,10 +122,10 @@ export class ReviewView extends ItemView {
 
         const keyStats = section.createEl('div', { cls: 'journalyst-review-overview-stats' });
         [
-            { label: 'Entries', value: `${snapshot.insights.totalEntries}` },
-            { label: 'Current streak', value: `${snapshot.insights.currentStreak}d` },
-            { label: 'Longest streak', value: `${snapshot.insights.longestStreak}d` },
-            { label: 'Best rhythm', value: snapshot.insights.busiestWeekday ?? 'Building' },
+            { label: 'Cadence', value: snapshot.insights.cadenceLabel },
+            { label: 'Current streak', value: snapshot.insights.isTracked ? `${snapshot.insights.currentStreak}` : 'Off' },
+            { label: 'Missed now', value: snapshot.insights.isTracked ? `${snapshot.insights.outstandingMisses}` : 'Off' },
+            { label: 'Next expected', value: snapshot.insights.nextExpectedDate ?? 'Flexible' },
         ].forEach(stat => {
             const card = keyStats.createEl('div', { cls: 'journalyst-review-stat-pill' });
             card.createEl('span', { text: stat.label, cls: 'journalyst-review-label' });
@@ -149,9 +149,12 @@ export class ReviewView extends ItemView {
             const cellEl = activityStrip.createEl('div', { cls: 'journalyst-review-activity-cell' });
             if (cell.hasEntry) {
                 cellEl.addClass('is-active');
+            } else if (cell.isExpected) {
+                cellEl.addClass('is-missed');
             }
-            cellEl.setAttribute('aria-label', `${cell.date}: ${cell.hasEntry ? 'entry written' : 'no entry'}`);
-            cellEl.setAttribute('title', `${cell.date}: ${cell.hasEntry ? 'entry written' : 'no entry'}`);
+            const status = cell.hasEntry ? 'entry written' : cell.isExpected ? 'expected but missed' : 'not expected';
+            cellEl.setAttribute('aria-label', `${cell.date}: ${status}`);
+            cellEl.setAttribute('title', `${cell.date}: ${status}`);
         });
 
         const weekdayCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
@@ -200,17 +203,22 @@ export class ReviewView extends ItemView {
         summaries.forEach(summary => {
             const card = grid.createEl('div', { cls: 'journalyst-review-card' });
             card.createEl('span', { text: summary.label, cls: 'journalyst-review-label' });
-            const statRow = card.createEl('div', { cls: 'journalyst-review-stat-row' });
-            statRow.createEl('strong', { text: `${summary.completedDays}/${summary.totalDays}` });
-            statRow.createEl('span', { text: `${summary.completionRate}%`, cls: 'journalyst-review-emphasis' });
-            const meter = card.createEl('div', { cls: 'journalyst-review-meter' });
-            meter.createEl('div', {
-                cls: 'journalyst-review-meter-fill',
-                attr: {
-                    style: `width: ${summary.completionRate}%`,
-                },
-            });
-            card.createEl('span', { text: `${summary.completionRate}% completion`, cls: 'journalyst-review-meta' });
+            if (summary.tracked) {
+                const statRow = card.createEl('div', { cls: 'journalyst-review-stat-row' });
+                statRow.createEl('strong', { text: `${summary.completedDays}/${summary.totalDays}` });
+                statRow.createEl('span', { text: `${summary.completionRate}%`, cls: 'journalyst-review-emphasis' });
+                const meter = card.createEl('div', { cls: 'journalyst-review-meter' });
+                meter.createEl('div', {
+                    cls: 'journalyst-review-meter-fill',
+                    attr: {
+                        style: `width: ${summary.completionRate}%`,
+                    },
+                });
+                card.createEl('span', { text: `${summary.completionRate}% of expected entries`, cls: 'journalyst-review-meta' });
+            } else {
+                card.createEl('strong', { text: 'Not tracked' });
+                card.createEl('span', { text: 'This journal uses an ad hoc cadence, so completion is not scored.', cls: 'journalyst-review-meta' });
+            }
             card.createEl('span', { text: `${summary.startDate} to ${summary.endDate}`, cls: 'journalyst-review-meta' });
         });
     }
@@ -219,10 +227,12 @@ export class ReviewView extends ItemView {
         const section = this.createSection('Insights');
         const grid = section.createEl('div', { cls: 'journalyst-review-grid' });
         const insights = [
-            { label: 'Current streak', value: `${snapshot.insights.currentStreak} days` },
-            { label: 'Longest streak', value: `${snapshot.insights.longestStreak} days` },
-            { label: 'Longest gap', value: snapshot.entryCount < 2 ? 'Not enough history yet' : `${snapshot.insights.longestGapDays} days` },
+            { label: 'Current streak', value: snapshot.insights.isTracked ? `${snapshot.insights.currentStreak} expected hits` : 'Not tracked' },
+            { label: 'Longest streak', value: snapshot.insights.isTracked ? `${snapshot.insights.longestStreak} expected hits` : 'Not tracked' },
+            { label: 'Longest miss stretch', value: snapshot.insights.isTracked ? `${snapshot.insights.longestMissStretch} misses` : 'Not tracked' },
             { label: 'Total entries', value: `${snapshot.insights.totalEntries}` },
+            { label: 'Expected today', value: snapshot.insights.isTracked ? (snapshot.insights.expectedToday ? 'Yes' : 'No') : 'Flexible' },
+            { label: 'Outstanding misses', value: snapshot.insights.isTracked ? `${snapshot.insights.outstandingMisses}` : 'Flexible' },
             { label: 'Busiest weekday', value: snapshot.insights.busiestWeekday ?? 'Not enough history yet' },
             { label: 'Busiest month', value: snapshot.insights.busiestMonth ?? 'Not enough history yet' },
         ];

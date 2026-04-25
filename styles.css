@@ -35,6 +35,24 @@
     gap: 0.5rem;
 }
 
+.journal-section-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0.2rem 0 0.75rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.journal-section-meta-label,
+.journal-section-meta-status {
+    min-width: 0;
+}
+
+.journal-section-meta-status {
+    color: var(--text-faint);
+}
+
 .journalyst-review-view {
     padding: 1.25rem;
     max-width: 1120px;
@@ -249,6 +267,11 @@
     border-color: rgba(var(--interactive-accent-rgb), 1);
 }
 
+.journalyst-review-activity-cell.is-missed {
+    background: rgba(var(--color-red-rgb), 0.18);
+    border-color: rgba(var(--color-red-rgb), 0.45);
+}
+
 .journalyst-review-bar-chart,
 .journalyst-review-month-chart {
     display: grid;
@@ -330,6 +353,39 @@
     grid-column: 1 / -1;
     color: var(--text-error);
     font-size: 0.85rem;
+}
+
+.journalyst-migration-summary {
+    color: var(--text-muted);
+    margin-top: 0.6rem;
+}
+
+.journalyst-cadence-detail {
+    margin: -0.2rem 0 1rem;
+}
+
+.journalyst-cadence-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.45rem;
+}
+
+.journalyst-cadence-weekdays {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.journalyst-cadence-day {
+    min-width: 2rem;
+    padding: 0.35rem 0.55rem;
+}
+
+.journalyst-cadence-day.is-selected {
+    background: rgba(var(--interactive-accent-rgb), 0.18);
+    color: var(--text-normal);
+    border-color: rgba(var(--interactive-accent-rgb), 0.55);
 }
 
 @media (max-width: 900px) {
