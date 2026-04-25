@@ -122,10 +122,10 @@ export default class JournalystPlugin extends Plugin {
         this.initializeTemplateStrategies();
         this.addSettingTab(new JournalystSettingsTab(this.app, this));
 
-		this.addRibbonIcon('book-copy', 'Go to Journalyst view', () => {
+		this.addRibbonIcon('notebook-pen', 'Go to Journalyst view', () => {
             this.activateView();
         });
-        this.addRibbonIcon('history', 'Open Journalyst sidebar', () => {
+        this.addRibbonIcon('notebook', 'Open Journalyst sidebar', () => {
             this.activateSidebarView();
         });
 

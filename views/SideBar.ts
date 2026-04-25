@@ -21,6 +21,10 @@ export class SideBarView extends ItemView {
         return "Journalyst Sidebar";
     }
 
+    getIcon() {
+        return "notebook";
+    }
+
     async onOpen() {
         this.rootContainer = this.containerEl.children[1];
         this.renderView();

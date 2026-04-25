@@ -1,4 +1,4 @@
-import { ItemView, moment, normalizePath, WorkspaceLeaf } from "obsidian";
+import { ItemView, moment, normalizePath, setIcon, WorkspaceLeaf } from "obsidian";
 import {
     buildJournalAnalyticsSnapshot,
     buildJournalReviewSnapshot,
@@ -39,6 +39,10 @@ export class ReviewView extends ItemView {
 
     getDisplayText() {
         return "Journalyst";
+    }
+
+    getIcon() {
+        return "notebook-pen";
     }
 
     async onOpen() {
@@ -146,18 +150,20 @@ export class ReviewView extends ItemView {
         }
 
         const tabs = this.rootContainer.createEl('div', { cls: 'journalyst-review-tabs' });
-        this.renderTabButton(tabs, 'home', 'Home');
-        this.renderTabButton(tabs, 'review', 'Review');
-        this.renderTabButton(tabs, 'analytics', 'Analytics');
-        this.renderTabButton(tabs, 'synthesis', 'Synthesis');
+        this.renderTabButton(tabs, 'home', 'Home', 'house');
+        this.renderTabButton(tabs, 'review', 'Review', 'history');
+        this.renderTabButton(tabs, 'analytics', 'Analytics', 'chart-column');
+        this.renderTabButton(tabs, 'synthesis', 'Synthesis', 'file-pen-line');
     }
 
-    private renderTabButton(container: HTMLElement, tab: ReviewWorkspaceTab, label: string) {
+    private renderTabButton(container: HTMLElement, tab: ReviewWorkspaceTab, label: string, icon: string) {
         const button = container.createEl('button', {
             cls: 'journalyst-review-tab',
-            text: label,
         });
         button.type = 'button';
+        const iconEl = button.createEl('span', { cls: 'journalyst-review-tab-icon' });
+        setIcon(iconEl, icon);
+        button.createEl('span', { text: label });
         if (this.activeTab === tab) {
             button.addClass('is-active');
         }

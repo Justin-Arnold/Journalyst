@@ -158,11 +158,20 @@
     color: var(--text-muted);
     padding: 0.5rem 0.85rem;
     border-radius: var(--radius-s);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
 }
 
 .journalyst-review-tab.is-active {
     background: rgba(var(--interactive-accent-rgb), 0.18);
     color: var(--text-normal);
+}
+
+.journalyst-review-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .journalyst-review-overview {
