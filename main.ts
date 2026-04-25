@@ -25,6 +25,17 @@ import {
     resolvePromptForJournal,
     resolvePromptList,
 } from "./prompts";
+import {
+    buildReminderHistoryKey,
+    buildSynthesisReminderFileName,
+    getReminderEventsForJournal,
+    hasAnyEnabledReminder,
+    JournalReminderSettings,
+    normalizeJournalReminderSettings,
+    ReminderOccurrenceRecord,
+    ResolvedReminderEvent,
+    ReviewReminderPeriod,
+} from "./reminders";
 import { buildSynthesisNotePreview } from "./review/buildSnapshot";
 import { ReviewWorkspaceTab, SynthesisPeriodType } from "./review/types";
 import { createTemplateStrategies } from "./templates/strategies";
@@ -54,12 +65,16 @@ import { JournalystSettingsTab } from "./views/Settings";
 export interface JournalystPluginSettings {
     rootDirectory: string;
     basesIntegrationEnabled: boolean;
+    remindersEnabled: boolean;
+    osNotificationsEnabled: boolean;
     noteDateFormat: string;
     noteDateFormatHistory: string[];
     journalCadences: Record<string, JournalCadenceConfig>;
     customPromptLists: Record<string, PromptListDefinition>;
     journalPromptSettings: Record<string, JournalPromptSettings>;
     journalPromptHistory: Record<string, JournalPromptHistory>;
+    journalReminderSettings: Record<string, JournalReminderSettings>;
+    reminderHistory: Record<string, ReminderOccurrenceRecord>;
     templateEngine: TemplateEngine;
     templateFailureBehavior: TemplateFailureBehavior;
     templaterJournalTemplates: Record<string, string>;
@@ -70,12 +85,16 @@ export interface JournalystPluginSettings {
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
 	rootDirectory: '/',
     basesIntegrationEnabled: false,
+    remindersEnabled: false,
+    osNotificationsEnabled: false,
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
     journalCadences: {},
     customPromptLists: {},
     journalPromptSettings: {},
     journalPromptHistory: {},
+    journalReminderSettings: {},
+    reminderHistory: {},
     templateEngine: 'templater',
     templateFailureBehavior: 'fallback-default',
     templaterJournalTemplates: {},
@@ -89,6 +108,7 @@ export default class JournalystPlugin extends Plugin {
     private journalCommandIds: string[] = [];
     // Strategy instances keep engine-specific behavior out of the main plugin flow.
     private templateStrategies: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
+    private lastReminderCheckMinute: string | null = null;
     private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
         journalPath: null,
         anchorDate: moment().format('YYYY-MM-DD'),
@@ -118,7 +138,15 @@ export default class JournalystPlugin extends Plugin {
                 VIEW_TYPE_REVIEW,
                 (leaf) => new ReviewView(leaf, this)
             );
+
+            void this.checkReminderNotifications();
         })
+
+        if (typeof window !== 'undefined') {
+            this.registerInterval(window.setInterval(() => {
+                void this.checkReminderNotifications();
+            }, 60_000));
+        }
 
         this.addCommand({
             id: 'open-journalyst-review',
@@ -633,6 +661,81 @@ export default class JournalystPlugin extends Plugin {
         await this.saveSettings();
     }
 
+    areRemindersEnabled() {
+        return this.settings.remindersEnabled;
+    }
+
+    async updateRemindersEnabled(enabled: boolean) {
+        this.settings.remindersEnabled = enabled;
+        await this.saveSettings();
+        if (enabled) {
+            await this.checkReminderNotifications(true);
+        }
+    }
+
+    areOsNotificationsEnabled() {
+        return this.settings.osNotificationsEnabled;
+    }
+
+    async updateOsNotificationsEnabled(enabled: boolean) {
+        this.settings.osNotificationsEnabled = enabled;
+        await this.saveSettings();
+    }
+
+    getNotificationPermissionStatus() {
+        if (typeof Notification === 'undefined') {
+            return 'unsupported';
+        }
+
+        return Notification.permission;
+    }
+
+    async requestNotificationPermission() {
+        if (typeof Notification === 'undefined') {
+            return 'unsupported';
+        }
+
+        return Notification.requestPermission();
+    }
+
+    async sendTestReminderNotification() {
+        await this.deliverReminderEvent({
+            historyKey: buildReminderHistoryKey('journalyst', 'test', moment().format()),
+            journalPath: '',
+            journalName: 'Journalyst',
+            deliveryMode: this.settings.osNotificationsEnabled ? 'os-preferred' : 'in-app',
+            title: 'Journalyst test reminder',
+            message: 'Notifications are working and ready for your journals.',
+            target: {
+                type: 'review',
+                anchorDate: moment().format('YYYY-MM-DD'),
+                reviewPeriod: 'weekly',
+            },
+        }, false);
+    }
+
+    getJournalReminderSettings(journalPath: string) {
+        return normalizeJournalReminderSettings(this.settings.journalReminderSettings[journalPath]);
+    }
+
+    async updateJournalReminderSettings(journalPath: string, reminderSettings: JournalReminderSettings) {
+        this.settings.journalReminderSettings[journalPath] = normalizeJournalReminderSettings(reminderSettings);
+        this.clearReminderHistoryForJournal(journalPath);
+        await this.saveSettings();
+        await this.checkReminderNotifications(true);
+    }
+
+    getJournalReminderSummary(journalPath: string) {
+        if (!this.settings.remindersEnabled) {
+            return 'Reminders off';
+        }
+
+        const cadence = this.getJournalCadence(journalPath);
+        const reminderSettings = this.getJournalReminderSettings(journalPath);
+
+        return hasAnyEnabledReminder(reminderSettings, cadence) ? 'Reminders active' : 'Reminders off';
+    }
+
     async setReviewState(journalPath: string | null, anchorDate: string, activeTab?: ReviewWorkspaceTab) {
         this.reviewState = {
             journalPath,
@@ -657,6 +760,28 @@ export default class JournalystPlugin extends Plugin {
         }
 
         return this.journals.find(journal => activeFile.path.startsWith(journal.path + '/')) ?? null;
+    }
+
+    async checkReminderNotifications(force = false) {
+        if (!this.settings.remindersEnabled) {
+            return;
+        }
+
+        const now = moment();
+        const currentMinute = now.format('YYYY-MM-DD HH:mm');
+        if (!force && this.lastReminderCheckMinute === currentMinute) {
+            return;
+        }
+
+        this.lastReminderCheckMinute = currentMinute;
+
+        for (const journal of this.journals) {
+            const events = this.getReminderEventsForJournal(journal, now);
+
+            for (const event of events) {
+                await this.deliverReminderEvent(event);
+            }
+        }
     }
 
     async generateBasesForJournal(journal: TFolder | string) {
@@ -750,6 +875,70 @@ export default class JournalystPlugin extends Plugin {
         });
         await this.app.workspace.openLinkText(file.path, '/', false);
         return file;
+    }
+
+    private getReminderEventsForJournal(journal: TFolder, now: moment.Moment) {
+        const entryDates = journal.children
+            .map(file => this.parseJournalDateFromFile(file))
+            .filter((date): date is string => !!date);
+
+        return getReminderEventsForJournal({
+            cadence: this.getJournalCadence(journal.path),
+            dateSet: new Set(entryDates),
+            journalName: journal.name,
+            journalPath: journal.path,
+            reminderSettings: this.getJournalReminderSettings(journal.path),
+            synthesisNoteExists: (period, anchorDate) => this.doesSynthesisNoteExist(journal, period, anchorDate),
+        }, now, this.settings.reminderHistory);
+    }
+
+    private doesSynthesisNoteExist(journal: TFolder, period: ReviewReminderPeriod, anchorDate: string) {
+        const fileName = buildSynthesisReminderFileName(period, anchorDate);
+        return this.app.vault.getAbstractFileByPath(normalizePath(`${journal.path}/${fileName}`)) instanceof TFile;
+    }
+
+    private async deliverReminderEvent(event: ResolvedReminderEvent, persist = true) {
+        new Notice(`${event.title}: ${event.message}`);
+
+        if (event.deliveryMode === 'os-preferred' && this.settings.osNotificationsEnabled) {
+            this.sendOsNotification(event);
+        }
+
+        if (persist) {
+            this.settings.reminderHistory[event.historyKey] = {
+                journalPath: event.journalPath,
+                ruleKey: event.historyKey.split('::')[1] ?? '',
+                occurrenceKey: event.historyKey.split('::')[2] ?? '',
+                sentAt: moment().toISOString(),
+            };
+            await this.saveSettings();
+        }
+    }
+
+    private sendOsNotification(event: ResolvedReminderEvent) {
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+            return;
+        }
+
+        const notification = new Notification(event.title, {
+            body: event.message,
+        });
+
+        notification.onclick = () => {
+            void this.openReminderTarget(event);
+        };
+    }
+
+    private async openReminderTarget(event: ResolvedReminderEvent) {
+        if (event.target.type === 'entry') {
+            const journal = this.getJournalByPath(event.journalPath);
+            if (journal) {
+                await this.createJournalEntry(journal, event.target.anchorDate);
+            }
+            return;
+        }
+
+        await this.activateReviewView(event.journalPath, event.target.anchorDate, 'synthesis');
     }
 
     private getTemplaterPlugin(): TemplaterPlugin | undefined {
@@ -866,6 +1055,8 @@ export default class JournalystPlugin extends Plugin {
         this.settings.journalCadences = this.remapCadenceMapPaths(this.settings.journalCadences, oldPath, newPath);
         this.settings.journalPromptSettings = this.remapPromptSettingsPaths(this.settings.journalPromptSettings, oldPath, newPath);
         this.settings.journalPromptHistory = this.remapPromptHistoryPaths(this.settings.journalPromptHistory, oldPath, newPath);
+        this.settings.journalReminderSettings = this.remapReminderSettingsPaths(this.settings.journalReminderSettings, oldPath, newPath);
+        this.settings.reminderHistory = this.remapReminderHistoryPaths(this.settings.reminderHistory, oldPath, newPath);
     }
 
     private async getJournalBackfillItems(journal: TFolder) {
@@ -1026,6 +1217,45 @@ export default class JournalystPlugin extends Plugin {
         });
 
         return remappedPromptHistoryMap;
+    }
+
+    private remapReminderSettingsPaths(reminderSettingsMap: Record<string, JournalReminderSettings>, oldPath: string, newPath: string) {
+        const remappedReminderSettingsMap: Record<string, JournalReminderSettings> = {};
+
+        Object.entries(reminderSettingsMap).forEach(([journalPath, reminderSettings]) => {
+            if (journalPath === oldPath) {
+                remappedReminderSettingsMap[newPath] = reminderSettings;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedReminderSettingsMap[newPath + journalPath.slice(oldPath.length)] = reminderSettings;
+                return;
+            }
+
+            remappedReminderSettingsMap[journalPath] = reminderSettings;
+        });
+
+        return remappedReminderSettingsMap;
+    }
+
+    private remapReminderHistoryPaths(reminderHistoryMap: Record<string, ReminderOccurrenceRecord>, oldPath: string, newPath: string) {
+        const remappedReminderHistoryMap: Record<string, ReminderOccurrenceRecord> = {};
+
+        Object.values(reminderHistoryMap).forEach(record => {
+            const nextJournalPath = record.journalPath === oldPath
+                ? newPath
+                : record.journalPath.startsWith(oldPath + '/')
+                    ? newPath + record.journalPath.slice(oldPath.length)
+                    : record.journalPath;
+            const historyKey = buildReminderHistoryKey(nextJournalPath, record.ruleKey, record.occurrenceKey);
+            remappedReminderHistoryMap[historyKey] = {
+                ...record,
+                journalPath: nextJournalPath,
+            };
+        });
+
+        return remappedReminderHistoryMap;
     }
 
     private async getCoreTemplatesSettings() {
@@ -1196,6 +1426,8 @@ export default class JournalystPlugin extends Plugin {
         // templater map on load.
         this.settings.templaterJournalTemplates = this.settings.templaterJournalTemplates ?? this.settings.journalTemplates ?? {};
         this.settings.basesIntegrationEnabled = this.settings.basesIntegrationEnabled ?? false;
+        this.settings.remindersEnabled = this.settings.remindersEnabled ?? false;
+        this.settings.osNotificationsEnabled = this.settings.osNotificationsEnabled ?? false;
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
         this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];
@@ -1203,6 +1435,8 @@ export default class JournalystPlugin extends Plugin {
         this.settings.customPromptLists = this.settings.customPromptLists ?? {};
         this.settings.journalPromptSettings = this.settings.journalPromptSettings ?? {};
         this.settings.journalPromptHistory = this.settings.journalPromptHistory ?? {};
+        this.settings.journalReminderSettings = this.settings.journalReminderSettings ?? {};
+        this.settings.reminderHistory = this.settings.reminderHistory ?? {};
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
         this.settings.templateFailureBehavior = this.settings.templateFailureBehavior ?? 'fallback-default';
 	}
@@ -1243,5 +1477,13 @@ export default class JournalystPlugin extends Plugin {
 
     private doesTemplateEngineSupportPromptContext(templateEngine: TemplateEngine) {
         return templateEngine === 'core' || templateEngine === 'templater';
+    }
+
+    private clearReminderHistoryForJournal(journalPath: string) {
+        Object.keys(this.settings.reminderHistory).forEach(historyKey => {
+            if (this.settings.reminderHistory[historyKey]?.journalPath === journalPath) {
+                delete this.settings.reminderHistory[historyKey];
+            }
+        });
     }
 }

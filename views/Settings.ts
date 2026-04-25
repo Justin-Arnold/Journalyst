@@ -1,7 +1,8 @@
-import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { App, DropdownComponent, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import { JournalNotePropertyBackfillItem } from "../bases";
 import { JournalCadenceType } from "../cadence";
 import { JournalPromptSettings, PromptDeliveryMode, PromptSelectionMode, PromptSourceType } from "../prompts";
+import { JournalReminderSettings, ReminderDeliveryMode, ReviewReminderPeriod } from "../reminders";
 import { TemplateEngine } from "../templates/types";
 import JournalystPlugin from "../main";
 
@@ -235,6 +236,8 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			}
 		}
+
+		await this.renderReminderSettings(containerEl);
 
 		await this.renderCustomPromptLists(containerEl);
 		await this.renderJournalPromptSettings(containerEl);
@@ -476,6 +479,113 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				text: `Showing ${visibleItems.length} examples out of ${backfillPreview.length} notes needing backfill.`,
 				cls: 'journalyst-migration-summary',
 			});
+		}
+	}
+
+	private async renderReminderSettings(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'Journal reminders' });
+		const permissionStatus = this.plugin.getNotificationPermissionStatus();
+		const permissionText = permissionStatus === 'granted'
+			? 'OS notifications are available.'
+			: permissionStatus === 'denied'
+				? 'OS notifications are denied, so Journalyst will fall back to in-app notices.'
+				: permissionStatus === 'default'
+					? 'OS notifications are not granted yet. You can request permission below.'
+					: 'OS notifications are not available in this environment. Journalyst will use in-app notices.';
+
+		new Setting(containerEl)
+			.setName('Enable reminders')
+			.setDesc(`Reminders only run while Obsidian is open. ${permissionText}`)
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.areRemindersEnabled())
+					.onChange(async value => {
+						await this.plugin.updateRemindersEnabled(value);
+						this.display();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Prefer OS notifications')
+			.setDesc('When available and permitted, Journalyst will also send operating-system notifications instead of only in-app notices.')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.areOsNotificationsEnabled())
+					.onChange(async value => {
+						await this.plugin.updateOsNotificationsEnabled(value);
+						this.display();
+					});
+			})
+			.addButton(button => {
+				button.setButtonText('Request permission')
+					.setDisabled(permissionStatus === 'granted' || permissionStatus === 'unsupported')
+					.onClick(async () => {
+						await this.plugin.requestNotificationPermission();
+						this.display();
+					});
+			})
+			.addButton(button => {
+				button.setButtonText('Test notification')
+					.setDisabled(!this.plugin.areRemindersEnabled())
+					.onClick(async () => {
+						await this.plugin.sendTestReminderNotification();
+					});
+			});
+
+		if (!this.plugin.areRemindersEnabled()) {
+			return;
+		}
+
+		for (const journal of this.plugin.journals) {
+			const cadence = this.plugin.getJournalCadence(journal.path);
+			const reminderSettings = this.plugin.getJournalReminderSettings(journal.path);
+
+			if (cadence.type !== 'adhoc') {
+				new Setting(containerEl)
+					.setName(`${journal.name} entry reminder`)
+					.setDesc('Notify once when a tracked journal entry is due and still missing.')
+					.addToggle(toggle => {
+						toggle.setValue(reminderSettings.entryReminder.enabled)
+							.onChange(async value => {
+								await this.plugin.updateJournalReminderSettings(journal.path, {
+									...reminderSettings,
+									entryReminder: {
+										...reminderSettings.entryReminder,
+										enabled: value,
+									},
+								});
+								this.display();
+							});
+					})
+					.addText(text => {
+						text.inputEl.type = 'time';
+						text.setValue(reminderSettings.entryReminder.time)
+							.onChange(async value => {
+								await this.plugin.updateJournalReminderSettings(journal.path, {
+									...reminderSettings,
+									entryReminder: {
+										...reminderSettings.entryReminder,
+										time: value,
+									},
+								});
+							});
+					})
+					.addDropdown(dropdown => {
+						this.addReminderDeliveryOptions(dropdown);
+						dropdown.setValue(reminderSettings.entryReminder.deliveryMode)
+							.onChange(async (value: ReminderDeliveryMode) => {
+								await this.plugin.updateJournalReminderSettings(journal.path, {
+									...reminderSettings,
+									entryReminder: {
+										...reminderSettings.entryReminder,
+										deliveryMode: value,
+									},
+								});
+							});
+					});
+			}
+
+			this.renderReviewReminderSetting(containerEl, journal.path, journal.name, reminderSettings, 'weekly');
+			this.renderReviewReminderSetting(containerEl, journal.path, journal.name, reminderSettings, 'monthly');
+			this.renderReviewReminderSetting(containerEl, journal.path, journal.name, reminderSettings, 'quarterly');
 		}
 	}
 
@@ -753,5 +863,143 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		};
 		this.customPromptListDrafts[listId] = nextDraft;
 		return nextDraft;
+	}
+
+	private renderReviewReminderSetting(
+		containerEl: HTMLElement,
+		journalPath: string,
+		journalName: string,
+		reminderSettings: JournalReminderSettings,
+		period: ReviewReminderPeriod,
+	) {
+		const reminder = reminderSettings.reviewReminders[period];
+		const description = period === 'weekly'
+			? 'Notify once each week to review or synthesize this journal.'
+			: period === 'monthly'
+				? 'Notify once each month to reflect on this journal.'
+				: 'Notify once after each quarter ends to summarize this journal.';
+		const label = period === 'weekly'
+			? `${journalName} weekly review`
+			: period === 'monthly'
+				? `${journalName} monthly reflection`
+				: `${journalName} quarter summary`;
+
+		new Setting(containerEl)
+			.setName(label)
+			.setDesc(description)
+			.addToggle(toggle => {
+				toggle.setValue(reminder.enabled)
+					.onChange(async value => {
+						await this.plugin.updateJournalReminderSettings(journalPath, {
+							...reminderSettings,
+							reviewReminders: {
+								...reminderSettings.reviewReminders,
+								[period]: {
+									...reminder,
+									enabled: value,
+								},
+							},
+						});
+						this.display();
+					});
+			})
+			.addText(text => {
+				text.inputEl.type = 'time';
+				text.setValue(reminder.time)
+					.onChange(async value => {
+						await this.plugin.updateJournalReminderSettings(journalPath, {
+							...reminderSettings,
+							reviewReminders: {
+								...reminderSettings.reviewReminders,
+								[period]: {
+									...reminder,
+									time: value,
+								},
+							},
+						});
+					});
+			})
+			.addDropdown(dropdown => {
+				this.addReminderDeliveryOptions(dropdown);
+				dropdown.setValue(reminder.deliveryMode)
+					.onChange(async (value: ReminderDeliveryMode) => {
+						await this.plugin.updateJournalReminderSettings(journalPath, {
+							...reminderSettings,
+							reviewReminders: {
+								...reminderSettings.reviewReminders,
+								[period]: {
+									...reminder,
+									deliveryMode: value,
+								},
+							},
+						});
+					});
+			})
+			.addDropdown(dropdown => {
+				if (period === 'weekly') {
+					const weeklyReminder = reminderSettings.reviewReminders.weekly;
+					['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach((labelText, day) => {
+						dropdown.addOption(day.toString(), labelText);
+					});
+					dropdown.setValue(weeklyReminder.weekday.toString())
+						.onChange(async value => {
+							await this.plugin.updateJournalReminderSettings(journalPath, {
+								...reminderSettings,
+								reviewReminders: {
+									...reminderSettings.reviewReminders,
+									weekly: {
+										...reminderSettings.reviewReminders.weekly,
+										weekday: Number.parseInt(value, 10),
+									},
+								},
+							});
+						});
+					return;
+				}
+
+				if (period === 'monthly') {
+					const monthlyReminder = reminderSettings.reviewReminders.monthly;
+					for (let day = 1; day <= 28; day += 1) {
+						dropdown.addOption(day.toString(), `Day ${day}`);
+					}
+					dropdown.setValue(monthlyReminder.dayOfMonth.toString())
+						.onChange(async value => {
+							await this.plugin.updateJournalReminderSettings(journalPath, {
+								...reminderSettings,
+								reviewReminders: {
+									...reminderSettings.reviewReminders,
+									monthly: {
+										...reminderSettings.reviewReminders.monthly,
+										dayOfMonth: Number.parseInt(value, 10),
+									},
+								},
+							});
+						});
+					return;
+				}
+
+				const quarterlyReminder = reminderSettings.reviewReminders.quarterly;
+				for (let days = 0; days <= 14; days += 1) {
+					dropdown.addOption(days.toString(), days === 0 ? 'Quarter end' : `${days} day${days === 1 ? '' : 's'} after`);
+				}
+				dropdown.setValue(quarterlyReminder.daysAfterQuarterEnd.toString())
+					.onChange(async value => {
+						await this.plugin.updateJournalReminderSettings(journalPath, {
+							...reminderSettings,
+							reviewReminders: {
+								...reminderSettings.reviewReminders,
+								quarterly: {
+									...reminderSettings.reviewReminders.quarterly,
+									daysAfterQuarterEnd: Number.parseInt(value, 10),
+								},
+							},
+						});
+					});
+				});
+	}
+
+	private addReminderDeliveryOptions(dropdown: DropdownComponent) {
+		dropdown.addOption('in-app', 'In-app');
+		dropdown.addOption('os-preferred', 'OS preferred');
 	}
 }

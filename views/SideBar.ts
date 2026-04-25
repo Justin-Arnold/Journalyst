@@ -141,5 +141,6 @@ export class SideBarView extends ItemView {
         }
 
         summary.createEl('span', { text: statusText, cls: 'journal-section-meta-status' });
+        summary.createEl('span', { text: this.plugin.getJournalReminderSummary(journal.path), cls: 'journal-section-meta-status' });
     }
 }
