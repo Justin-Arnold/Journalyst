@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFolder, moment, TAbstractFile } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFolder, moment } from "obsidian";
 import JournalystPlugin from "../main";
 
 
@@ -68,7 +68,7 @@ export class SideBarView extends ItemView {
             const gotoButton = journalSection.createEl("button", { text: "Go to today" });
             gotoButton.addClass("journal-section-button");
             gotoButton.addEventListener("click", () => {
-                this.goToDay(journal);
+                this.plugin.createJournalEntry(journal);
             });
         });
     }
@@ -96,25 +96,12 @@ export class SideBarView extends ItemView {
             const day = heatMapWrapper.createEl("div", { cls: "heat-map-day", text: String(i) });
             const dayString = `${moment().format("YYYY-MM")}-${String(i).padStart(2, '0')}.md`
             day.addEventListener("click", () => {
-                this.goToDay(journal, dayString);
+                this.plugin.createJournalEntry(journal, dayString.replace('.md', ''));
             });
             const dayFile = this.plugin.app.vault.getAbstractFileByPath(journal.path + "/" + dayString);
             if (dayFile) {
                 day.addClass("heat-map-day-exists");
             }
-        }
-    }
-
-    private async goToDay(journalFolder: TFolder, date?: string) {
-        const dayString = date ?? `${moment().format("YYYY-MM")}-${moment().format("DD")}.md`;
-        const dayFile = journalFolder.children.find(file => file.name === dayString);
-        if (dayFile) {
-            this.app.workspace.openLinkText(dayFile.path, '/', false);
-        } else {
-            const newFilePath = `${journalFolder.path}/${dayString}`;
-            const newFileContents = `---\nreviewed: false\n---`
-            const file = await this.app.vault.create(newFilePath, newFileContents)
-            this.app.workspace.openLinkText(file.path, '/', false);
         }
     }
 }
