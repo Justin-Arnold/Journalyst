@@ -13,6 +13,8 @@ import {
     resolvePromptForJournal,
     resolvePromptList,
 } from "./prompts";
+import { buildSynthesisNotePreview } from "./review/buildSnapshot";
+import { ReviewWorkspaceTab, SynthesisPeriodType } from "./review/types";
 import { createTemplateStrategies } from "./templates/strategies";
 import {
     buildJournalMigrationPlan,
@@ -73,9 +75,10 @@ export default class JournalystPlugin extends Plugin {
     private journalCommandIds: string[] = [];
     // Strategy instances keep engine-specific behavior out of the main plugin flow.
     private templateStrategies: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
-    private reviewState: { journalPath: string | null; anchorDate: string } = {
+    private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
         journalPath: null,
         anchorDate: moment().format('YYYY-MM-DD'),
+        activeTab: 'review',
     };
 
 	async onload() {
@@ -108,6 +111,22 @@ export default class JournalystPlugin extends Plugin {
             name: 'Open Journalyst review',
             callback: () => {
                 this.activateReviewView();
+            }
+        });
+
+        this.addCommand({
+            id: 'open-journalyst-analytics',
+            name: 'Open Journalyst analytics',
+            callback: () => {
+                this.activateReviewView(undefined, undefined, 'analytics');
+            }
+        });
+
+        this.addCommand({
+            id: 'open-journalyst-synthesis',
+            name: 'Open Journalyst synthesis',
+            callback: () => {
+                this.activateReviewView(undefined, undefined, 'synthesis');
             }
         });
 
@@ -558,10 +577,11 @@ export default class JournalystPlugin extends Plugin {
         return this.reviewState;
     }
 
-    async setReviewState(journalPath: string | null, anchorDate: string) {
+    async setReviewState(journalPath: string | null, anchorDate: string, activeTab?: ReviewWorkspaceTab) {
         this.reviewState = {
             journalPath,
             anchorDate,
+            activeTab: activeTab ?? this.reviewState.activeTab,
         };
     }
 
@@ -581,6 +601,27 @@ export default class JournalystPlugin extends Plugin {
         }
 
         return this.journals.find(journal => activeFile.path.startsWith(journal.path + '/')) ?? null;
+    }
+
+    async createSynthesisNote(journalPath: string, anchorDate: string, periodType: SynthesisPeriodType) {
+        const journal = this.getJournalByPath(journalPath);
+        if (!journal) {
+            new Notice('Journalyst could not find that journal for synthesis.');
+            return null;
+        }
+
+        const preview = buildSynthesisNotePreview(journal, anchorDate, this.settings, periodType);
+        const filePath = normalizePath(journal.path + '/' + preview.payload.fileName);
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+
+        if (existingFile instanceof TFile) {
+            await this.app.workspace.openLinkText(existingFile.path, '/', false);
+            return existingFile;
+        }
+
+        const file = await this.app.vault.create(filePath, preview.payload.body);
+        await this.app.workspace.openLinkText(file.path, '/', false);
+        return file;
     }
 
     private getTemplaterPlugin(): TemplaterPlugin | undefined {
@@ -883,10 +924,10 @@ export default class JournalystPlugin extends Plugin {
         workspace.revealLeaf(leaf);
     }
 
-    async activateReviewView(journalPath?: string | null, anchorDate = moment().format('YYYY-MM-DD')) {
+    async activateReviewView(journalPath?: string | null, anchorDate = moment().format('YYYY-MM-DD'), activeTab?: ReviewWorkspaceTab) {
         const { workspace } = this.app;
         const targetJournalPath = journalPath ?? this.inferCurrentJournal()?.path ?? this.getDefaultReviewJournalPath();
-        await this.setReviewState(targetJournalPath, anchorDate);
+        await this.setReviewState(targetJournalPath, anchorDate, activeTab);
 
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_REVIEW);
@@ -903,7 +944,7 @@ export default class JournalystPlugin extends Plugin {
 
         const reviewView = leaf.view;
         if (reviewView instanceof ReviewView) {
-            reviewView.updateReviewState(targetJournalPath, anchorDate);
+            reviewView.updateReviewState(targetJournalPath, anchorDate, activeTab);
         }
 
         workspace.revealLeaf(leaf);

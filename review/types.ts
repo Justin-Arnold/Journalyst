@@ -9,6 +9,9 @@ export interface ReviewAnchor {
     date: string;
 }
 
+export type ReviewWorkspaceTab = 'review' | 'analytics' | 'synthesis';
+export type SynthesisPeriodType = 'weekly' | 'monthly' | 'quarterly';
+
 export interface LookbackResult {
     label: string;
     targetDate: string;
@@ -50,6 +53,33 @@ export interface DistributionDatum {
     value: number;
 }
 
+export interface RankedPeriod {
+    label: string;
+    startDate: string;
+    endDate: string;
+    completedDays: number;
+    totalDays: number;
+    completionRate: number;
+}
+
+export interface RollingComparison {
+    label: string;
+    current: PeriodSummary;
+    previous: PeriodSummary;
+    rateDelta: number;
+}
+
+export interface AnalyticsCallout {
+    title: string;
+    body: string;
+}
+
+export interface YearActivityCell extends ActivityCell {
+    monthLabel: string;
+    dayLabel: string;
+    isFuture: boolean;
+}
+
 export interface JournalReviewSnapshot {
     journalPath: string;
     journalName: string;
@@ -60,6 +90,43 @@ export interface JournalReviewSnapshot {
     insights: ReviewInsights;
     entryCount: number;
     recentActivity: ActivityCell[];
+    reviewCallouts: AnalyticsCallout[];
+}
+
+export interface JournalAnalyticsSnapshot {
+    journalPath: string;
+    journalName: string;
+    anchor: ReviewAnchor;
+    insights: ReviewInsights;
+    yearActivity: YearActivityCell[];
     weekdayDistribution: DistributionDatum[];
     monthlyActivity: DistributionDatum[];
+    rollingComparisons: RollingComparison[];
+    rankedPeriods: {
+        best: RankedPeriod | null;
+        worst: RankedPeriod | null;
+    };
+    callouts: AnalyticsCallout[];
+}
+
+export interface SynthesisNotePayload {
+    title: string;
+    fileName: string;
+    startDate: string;
+    endDate: string;
+    body: string;
+}
+
+export interface SynthesisNotePreview {
+    periodType: SynthesisPeriodType;
+    title: string;
+    fileName: string;
+    startDate: string;
+    endDate: string;
+    summary: PeriodSummary;
+    notableEntries: JournalEntryRecord[];
+    strongestPatterns: string[];
+    weakestPatterns: string[];
+    reflectionPrompts: string[];
+    payload: SynthesisNotePayload;
 }

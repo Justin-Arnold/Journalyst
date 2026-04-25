@@ -1,6 +1,21 @@
-import { ItemView, moment, WorkspaceLeaf } from "obsidian";
-import { buildJournalReviewSnapshot } from "../review/buildSnapshot";
-import { DistributionDatum, JournalReviewSnapshot, PeriodSummary } from "../review/types";
+import { ItemView, moment, normalizePath, WorkspaceLeaf } from "obsidian";
+import {
+    buildJournalAnalyticsSnapshot,
+    buildJournalReviewSnapshot,
+    buildSynthesisNotePreview,
+} from "../review/buildSnapshot";
+import {
+    AnalyticsCallout,
+    DistributionDatum,
+    JournalAnalyticsSnapshot,
+    JournalReviewSnapshot,
+    PeriodSummary,
+    RankedPeriod,
+    ReviewWorkspaceTab,
+    SynthesisNotePreview,
+    SynthesisPeriodType,
+    YearActivityCell,
+} from "../review/types";
 import JournalystPlugin from "../main";
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
@@ -10,6 +25,7 @@ export class ReviewView extends ItemView {
     rootContainer: Element;
     selectedJournalPath: string | null = null;
     anchorDate: string = moment().format('YYYY-MM-DD');
+    activeTab: ReviewWorkspaceTab = 'review';
 
     constructor(leaf: WorkspaceLeaf, plugin: JournalystPlugin) {
         super(leaf);
@@ -35,9 +51,10 @@ export class ReviewView extends ItemView {
         this.registerEvent(this.app.vault.on('modify', () => this.onReviewDataChanged()));
     }
 
-    updateReviewState(journalPath: string | null, anchorDate?: string) {
+    updateReviewState(journalPath: string | null, anchorDate?: string, activeTab?: ReviewWorkspaceTab) {
         this.selectedJournalPath = journalPath;
         this.anchorDate = anchorDate ?? this.anchorDate;
+        this.activeTab = activeTab ?? this.activeTab;
         this.render();
     }
 
@@ -51,6 +68,7 @@ export class ReviewView extends ItemView {
         const reviewState = this.plugin.getReviewState();
         this.selectedJournalPath = reviewState.journalPath ?? this.plugin.getDefaultReviewJournalPath();
         this.anchorDate = reviewState.anchorDate;
+        this.activeTab = reviewState.activeTab;
     }
 
     private render() {
@@ -65,13 +83,23 @@ export class ReviewView extends ItemView {
             return;
         }
 
-        const snapshot = buildJournalReviewSnapshot(selectedJournal, this.anchorDate, this.plugin.settings);
-        this.renderOverview(snapshot);
-        this.renderVisualizations(snapshot);
-        this.renderLookbacks(snapshot);
-        this.renderSummaryGrid('Calendar summary', snapshot.calendarSummaries);
-        this.renderSummaryGrid('Rolling summary', snapshot.rollingSummaries);
-        this.renderInsights(snapshot);
+        const reviewSnapshot = buildJournalReviewSnapshot(selectedJournal, this.anchorDate, this.plugin.settings);
+        const analyticsSnapshot = buildJournalAnalyticsSnapshot(selectedJournal, this.anchorDate, this.plugin.settings);
+        const synthesisPreviews = (['weekly', 'monthly', 'quarterly'] as SynthesisPeriodType[]).map(periodType =>
+            buildSynthesisNotePreview(selectedJournal, this.anchorDate, this.plugin.settings, periodType)
+        );
+
+        if (this.activeTab === 'analytics') {
+            this.renderAnalyticsTab(analyticsSnapshot);
+            return;
+        }
+
+        if (this.activeTab === 'synthesis') {
+            this.renderSynthesisTab(selectedJournal.path, synthesisPreviews);
+            return;
+        }
+
+        this.renderReviewTab(reviewSnapshot);
     }
 
     private renderHeader() {
@@ -90,7 +118,7 @@ export class ReviewView extends ItemView {
 
         journalSelect.addEventListener('change', async () => {
             this.selectedJournalPath = journalSelect.value || null;
-            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate);
+            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, this.activeTab);
             this.render();
         });
 
@@ -105,48 +133,167 @@ export class ReviewView extends ItemView {
 
         dateInput.addEventListener('change', async () => {
             this.anchorDate = dateInput.value || moment().format('YYYY-MM-DD');
-            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate);
+            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, this.activeTab);
+            this.render();
+        });
+
+        const tabs = this.rootContainer.createEl('div', { cls: 'journalyst-review-tabs' });
+        this.renderTabButton(tabs, 'review', 'Review');
+        this.renderTabButton(tabs, 'analytics', 'Analytics');
+        this.renderTabButton(tabs, 'synthesis', 'Synthesis');
+    }
+
+    private renderTabButton(container: HTMLElement, tab: ReviewWorkspaceTab, label: string) {
+        const button = container.createEl('button', {
+            cls: 'journalyst-review-tab',
+            text: label,
+        });
+        button.type = 'button';
+        if (this.activeTab === tab) {
+            button.addClass('is-active');
+        }
+        button.addEventListener('click', async () => {
+            this.activeTab = tab;
+            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, tab);
             this.render();
         });
     }
 
-    private renderOverview(snapshot: JournalReviewSnapshot) {
-        const section = this.rootContainer.createEl('section', { cls: 'journalyst-review-overview' });
-
-        const summary = section.createEl('div', { cls: 'journalyst-review-overview-copy' });
-        summary.createEl('h3', { text: snapshot.journalName });
-        summary.createEl('p', {
-            text: `Review anchored to ${snapshot.anchor.date}. Track consistency, revisit old notes, and spot your journaling rhythm.`,
-            cls: 'journalyst-review-section-description',
-        });
-
-        const keyStats = section.createEl('div', { cls: 'journalyst-review-overview-stats' });
-        [
+    private renderReviewTab(snapshot: JournalReviewSnapshot) {
+        this.renderOverview(snapshot.journalName, snapshot.anchor.date, [
             { label: 'Cadence', value: snapshot.insights.cadenceLabel },
             { label: 'Current streak', value: snapshot.insights.isTracked ? `${snapshot.insights.currentStreak}` : 'Off' },
             { label: 'Missed now', value: snapshot.insights.isTracked ? `${snapshot.insights.outstandingMisses}` : 'Off' },
             { label: 'Next expected', value: snapshot.insights.nextExpectedDate ?? 'Flexible' },
-        ].forEach(stat => {
+        ]);
+
+        this.renderCallouts('Highlights', snapshot.reviewCallouts);
+        this.renderLookbacks(snapshot);
+        this.renderRecentActivity(snapshot);
+        this.renderSummaryGrid('Calendar summary', snapshot.calendarSummaries);
+        this.renderSummaryGrid('Rolling summary', snapshot.rollingSummaries);
+        this.renderInsights(snapshot);
+    }
+
+    private renderAnalyticsTab(snapshot: JournalAnalyticsSnapshot) {
+        this.renderOverview(snapshot.journalName, snapshot.anchor.date, [
+            { label: 'Cadence', value: snapshot.insights.cadenceLabel },
+            { label: 'Longest streak', value: snapshot.insights.isTracked ? `${snapshot.insights.longestStreak}` : 'Off' },
+            { label: 'Longest miss', value: snapshot.insights.isTracked ? `${snapshot.insights.longestMissStretch}` : 'Off' },
+            { label: 'Total entries', value: `${snapshot.insights.totalEntries}` },
+        ]);
+
+        this.renderCallouts('Pattern callouts', snapshot.callouts);
+        this.renderYearCalendar(snapshot.yearActivity);
+
+        const chartsSection = this.createSection('Visuals', 'Consistency and volume over time.');
+        const grid = chartsSection.createEl('div', { cls: 'journalyst-review-visual-grid' });
+
+        const weekdayCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
+        weekdayCard.createEl('h5', { text: 'Weekday rhythm' });
+        weekdayCard.createEl('p', { text: 'Which days you most naturally write on.', cls: 'journalyst-review-meta' });
+        this.renderBarChart(weekdayCard, snapshot.weekdayDistribution, 'journalyst-review-bar-chart');
+
+        const monthCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
+        monthCard.createEl('h5', { text: 'Monthly volume' });
+        monthCard.createEl('p', { text: 'Entries per month across the last year.', cls: 'journalyst-review-meta' });
+        this.renderBarChart(monthCard, snapshot.monthlyActivity, 'journalyst-review-month-chart');
+
+        const rankedCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
+        rankedCard.createEl('h5', { text: 'Best and worst periods' });
+        rankedCard.createEl('p', { text: 'Recent months ranked by cadence-aware completion.', cls: 'journalyst-review-meta' });
+        this.renderRankedPeriods(rankedCard, snapshot.rankedPeriods.best, snapshot.rankedPeriods.worst);
+
+        this.renderRollingComparisons(snapshot.rollingComparisons);
+    }
+
+    private renderSynthesisTab(journalPath: string, previews: SynthesisNotePreview[]) {
+        const section = this.createSection('Synthesis', 'Turn the current review period into a structured reflection note.');
+        const grid = section.createEl('div', { cls: 'journalyst-review-grid' });
+
+        previews.forEach(preview => {
+            const card = grid.createEl('div', { cls: 'journalyst-review-card journalyst-synthesis-card' });
+            card.createEl('span', { text: preview.periodType, cls: 'journalyst-review-label' });
+            card.createEl('strong', { text: preview.title });
+            card.createEl('span', { text: `${preview.startDate} to ${preview.endDate}`, cls: 'journalyst-review-meta' });
+            card.createEl('span', {
+                text: preview.summary.tracked
+                    ? `${preview.summary.completedDays}/${preview.summary.totalDays} expected entries (${preview.summary.completionRate}%)`
+                    : 'Ad hoc journal; completion is not scored.',
+                cls: 'journalyst-review-meta',
+            });
+
+            const notable = card.createEl('div', { cls: 'journalyst-synthesis-list' });
+            notable.createEl('span', { text: 'Notable entries', cls: 'journalyst-review-label' });
+            if (preview.notableEntries.length === 0) {
+                notable.createEl('span', { text: 'No entries in this period yet.', cls: 'journalyst-review-meta' });
+            } else {
+                preview.notableEntries.forEach(entry => {
+                    const button = notable.createEl('button', { cls: 'journalyst-synthesis-link', text: entry.displayLabel });
+                    button.type = 'button';
+                    button.addEventListener('click', () => {
+                        void this.openReviewedNote(entry.filePath);
+                    });
+                });
+            }
+
+            const prompts = card.createEl('div', { cls: 'journalyst-synthesis-list' });
+            prompts.createEl('span', { text: 'Reflection prompts', cls: 'journalyst-review-label' });
+            preview.reflectionPrompts.forEach(prompt => {
+                prompts.createEl('div', { text: prompt, cls: 'journalyst-review-meta' });
+            });
+
+            const filePath = normalizePath(`${journalPath}/${preview.fileName}`);
+            const existingFile = this.app.vault.getFileByPath(filePath);
+            const action = card.createEl('button', {
+                cls: 'mod-cta',
+                text: existingFile ? 'Open note' : 'Create note',
+            });
+            action.type = 'button';
+            action.addEventListener('click', () => {
+                void this.plugin.createSynthesisNote(journalPath, this.anchorDate, preview.periodType);
+            });
+        });
+    }
+
+    private renderOverview(journalName: string, anchorDate: string, stats: Array<{ label: string; value: string }>) {
+        const section = this.rootContainer.createEl('section', { cls: 'journalyst-review-overview' });
+        const summary = section.createEl('div', { cls: 'journalyst-review-overview-copy' });
+        summary.createEl('h3', { text: journalName });
+        summary.createEl('p', {
+            text: `Review anchored to ${anchorDate}. Track consistency, revisit old notes, and turn patterns into reflection.`,
+            cls: 'journalyst-review-section-description',
+        });
+
+        const keyStats = section.createEl('div', { cls: 'journalyst-review-overview-stats' });
+        stats.forEach(stat => {
             const card = keyStats.createEl('div', { cls: 'journalyst-review-stat-pill' });
             card.createEl('span', { text: stat.label, cls: 'journalyst-review-label' });
             card.createEl('strong', { text: stat.value });
         });
     }
 
-    private renderVisualizations(snapshot: JournalReviewSnapshot) {
-        const section = this.createSection('Patterns', 'A quick visual read on consistency and rhythm.');
-        const grid = section.createEl('div', { cls: 'journalyst-review-visual-grid' });
+    private renderCallouts(title: string, callouts: AnalyticsCallout[]) {
+        if (callouts.length === 0) {
+            return;
+        }
 
-        const activityCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
-        activityCard.createEl('h5', { text: 'Recent activity' });
-        activityCard.createEl('p', {
-            text: 'The last 35 days, read left to right.',
-            cls: 'journalyst-review-meta',
+        const section = this.createSection(title);
+        const grid = section.createEl('div', { cls: 'journalyst-review-grid' });
+        callouts.forEach(callout => {
+            const card = grid.createEl('div', { cls: 'journalyst-review-card' });
+            card.createEl('span', { text: callout.title, cls: 'journalyst-review-label' });
+            card.createEl('strong', { text: callout.body });
         });
-        const activityStrip = activityCard.createEl('div', { cls: 'journalyst-review-activity-strip' });
+    }
+
+    private renderRecentActivity(snapshot: JournalReviewSnapshot) {
+        const section = this.createSection('Recent activity', 'A quick read on the last 35 days.');
+        const card = section.createEl('div', { cls: 'journalyst-review-card' });
+        const strip = card.createEl('div', { cls: 'journalyst-review-activity-strip' });
 
         snapshot.recentActivity.forEach(cell => {
-            const cellEl = activityStrip.createEl('div', { cls: 'journalyst-review-activity-cell' });
+            const cellEl = strip.createEl('div', { cls: 'journalyst-review-activity-cell' });
             if (cell.hasEntry) {
                 cellEl.addClass('is-active');
             } else if (cell.isExpected) {
@@ -156,22 +303,6 @@ export class ReviewView extends ItemView {
             cellEl.setAttribute('aria-label', `${cell.date}: ${status}`);
             cellEl.setAttribute('title', `${cell.date}: ${status}`);
         });
-
-        const weekdayCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
-        weekdayCard.createEl('h5', { text: 'Weekday rhythm' });
-        weekdayCard.createEl('p', {
-            text: 'Which days are naturally sticky for this journal.',
-            cls: 'journalyst-review-meta',
-        });
-        this.renderBarChart(weekdayCard, snapshot.weekdayDistribution, 'journalyst-review-bar-chart');
-
-        const monthCard = grid.createEl('div', { cls: 'journalyst-review-visual-card' });
-        monthCard.createEl('h5', { text: 'Monthly volume' });
-        monthCard.createEl('p', {
-            text: 'Entries per month across the last year.',
-            cls: 'journalyst-review-meta',
-        });
-        this.renderBarChart(monthCard, snapshot.monthlyActivity, 'journalyst-review-month-chart');
     }
 
     private renderLookbacks(snapshot: JournalReviewSnapshot) {
@@ -210,9 +341,7 @@ export class ReviewView extends ItemView {
                 const meter = card.createEl('div', { cls: 'journalyst-review-meter' });
                 meter.createEl('div', {
                     cls: 'journalyst-review-meter-fill',
-                    attr: {
-                        style: `width: ${summary.completionRate}%`,
-                    },
+                    attr: { style: `width: ${summary.completionRate}%` },
                 });
                 card.createEl('span', { text: `${summary.completionRate}% of expected entries`, cls: 'journalyst-review-meta' });
             } else {
@@ -233,8 +362,6 @@ export class ReviewView extends ItemView {
             { label: 'Total entries', value: `${snapshot.insights.totalEntries}` },
             { label: 'Expected today', value: snapshot.insights.isTracked ? (snapshot.insights.expectedToday ? 'Yes' : 'No') : 'Flexible' },
             { label: 'Outstanding misses', value: snapshot.insights.isTracked ? `${snapshot.insights.outstandingMisses}` : 'Flexible' },
-            { label: 'Busiest weekday', value: snapshot.insights.busiestWeekday ?? 'Not enough history yet' },
-            { label: 'Busiest month', value: snapshot.insights.busiestMonth ?? 'Not enough history yet' },
         ];
 
         insights.forEach(insight => {
@@ -242,13 +369,57 @@ export class ReviewView extends ItemView {
             card.createEl('span', { text: insight.label, cls: 'journalyst-review-label' });
             card.createEl('strong', { text: insight.value });
         });
+    }
 
-        if (snapshot.entryCount < 3) {
-            section.createEl('p', {
-                text: 'Not enough history yet for deeper patterns, but new entries will immediately improve these review cards.',
-                cls: 'journalyst-review-empty-text',
+    private renderYearCalendar(cells: YearActivityCell[]) {
+        const section = this.createSection('Yearly consistency', 'Expected, completed, and missed days across the current year.');
+        const calendar = section.createEl('div', { cls: 'journalyst-review-year-calendar' });
+        const weeks = this.chunkIntoWeeks(cells);
+
+        weeks.forEach(week => {
+            const weekColumn = calendar.createEl('div', { cls: 'journalyst-review-year-week' });
+            week.forEach(cell => {
+                const cellEl = weekColumn.createEl('div', { cls: 'journalyst-review-year-cell' });
+                if (cell.hasEntry) {
+                    cellEl.addClass('is-active');
+                } else if (cell.isExpected && !cell.isFuture) {
+                    cellEl.addClass('is-missed');
+                } else if (cell.isFuture) {
+                    cellEl.addClass('is-future');
+                }
+                cellEl.setAttribute('title', `${cell.date}: ${cell.hasEntry ? 'entry written' : cell.isExpected ? 'expected but missed' : cell.isFuture ? 'future day' : 'not expected'}`);
             });
-        }
+        });
+    }
+
+    private renderRollingComparisons(comparisons: import("../review/types").RollingComparison[]) {
+        const section = this.createSection('Momentum', 'Compare your current pace with the immediately previous period.');
+        const grid = section.createEl('div', { cls: 'journalyst-review-grid' });
+
+        comparisons.forEach(comparison => {
+            const card = grid.createEl('div', { cls: 'journalyst-review-card' });
+            card.createEl('span', { text: comparison.label, cls: 'journalyst-review-label' });
+            card.createEl('strong', { text: `${comparison.current.completionRate}%` });
+            card.createEl('span', { text: `Previous: ${comparison.previous.completionRate}%`, cls: 'journalyst-review-meta' });
+            card.createEl('span', {
+                text: `${comparison.rateDelta >= 0 ? '+' : ''}${comparison.rateDelta}% change`,
+                cls: 'journalyst-review-meta',
+            });
+        });
+    }
+
+    private renderRankedPeriods(container: HTMLElement, best: RankedPeriod | null, worst: RankedPeriod | null) {
+        const list = container.createEl('div', { cls: 'journalyst-synthesis-list' });
+
+        const renderPeriod = (label: string, period: RankedPeriod | null) => {
+            const row = list.createEl('div', { cls: 'journalyst-review-meta' });
+            row.textContent = period
+                ? `${label}: ${period.label} (${period.completionRate}%)`
+                : `${label}: not enough history yet`;
+        };
+
+        renderPeriod('Best', best);
+        renderPeriod('Worst', worst);
     }
 
     private createSection(title: string, description?: string) {
@@ -282,6 +453,14 @@ export class ReviewView extends ItemView {
             }
             column.createEl('span', { text: item.label, cls: 'journalyst-review-bar-label' });
         });
+    }
+
+    private chunkIntoWeeks<T>(items: T[]) {
+        const chunks: T[][] = [];
+        for (let index = 0; index < items.length; index += 7) {
+            chunks.push(items.slice(index, index + 7));
+        }
+        return chunks;
     }
 
     private async openReviewedNote(filePath: string) {
