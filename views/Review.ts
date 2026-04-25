@@ -193,19 +193,13 @@ export class ReviewView extends ItemView {
             { label: 'Reminders active', value: `${summary.remindersActiveCount}` },
         ], [
             {
-                label: 'Open sidebar',
-                onClick: () => {
-                    void this.plugin.activateSidebarView();
-                },
-            },
-            {
-                label: 'Sidebar: Home',
+                label: 'Home sidebar',
                 onClick: () => {
                     void this.plugin.activateSidebarView('home-mini');
                 },
             },
             {
-                label: 'Sidebar: Journals',
+                label: 'Journals sidebar',
                 onClick: () => {
                     void this.plugin.activateSidebarView('journals-mini');
                 },

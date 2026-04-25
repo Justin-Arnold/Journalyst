@@ -1417,6 +1417,10 @@ export default class JournalystPlugin extends Plugin {
             await leaf.setViewState({ type: VIEW_TYPE_SIDE_BAR, active: true });
         }
 
+        if (leaf.view instanceof SideBarView) {
+            leaf.view.renderView();
+        }
+
         // "Reveal" the leaf in case it is in a collapsed sidebar
         workspace.revealLeaf(leaf);
     }
