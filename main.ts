@@ -1,6 +1,14 @@
 import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
 import { createTemplateStrategies } from "./templates/strategies";
 import {
+    buildJournalMigrationPlan,
+    findJournalEntryFile,
+    formatJournalNoteBaseName,
+    formatJournalNoteFileName,
+    JournalNoteMigrationItem,
+    parseJournalDateFromFile,
+} from "./journalNaming";
+import {
     CoreTemplatesSettings,
     JournalTemplateEngineStrategy,
     ObsidianInternalPlugins,
@@ -16,6 +24,8 @@ import { JournalystSettingsTab } from "./views/Settings";
 
 export interface JournalystPluginSettings {
     rootDirectory: string;
+    noteDateFormat: string;
+    noteDateFormatHistory: string[];
     templateEngine: TemplateEngine;
     templateFailureBehavior: TemplateFailureBehavior;
     templaterJournalTemplates: Record<string, string>;
@@ -25,6 +35,8 @@ export interface JournalystPluginSettings {
 
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
 	rootDirectory: '/',
+    noteDateFormat: 'YYYY-MM-DD',
+    noteDateFormatHistory: [],
     templateEngine: 'templater',
     templateFailureBehavior: 'fallback-default',
     templaterJournalTemplates: {},
@@ -160,9 +172,9 @@ export default class JournalystPlugin extends Plugin {
     }
 
     async createJournalEntry(journalFolder: TFolder, date = moment().format('YYYY-MM-DD')) {
-        const newFileName = date + '.md';
+        const newFileName = this.formatJournalNoteFileName(date);
         const fullPath = normalizePath(journalFolder.path + '/' + newFileName);
-        const existingFile = this.app.vault.getAbstractFileByPath(fullPath);
+        const existingFile = this.findJournalEntryFile(journalFolder, date);
 
         if (existingFile instanceof TFile) {
             await this.app.workspace.openLinkText(existingFile.path, '/', false);
@@ -317,6 +329,77 @@ export default class JournalystPlugin extends Plugin {
         return null;
     }
 
+    formatJournalNoteBaseName(date: string) {
+        return formatJournalNoteBaseName(date, this.settings);
+    }
+
+    formatJournalNoteFileName(date: string) {
+        return formatJournalNoteFileName(date, this.settings);
+    }
+
+    parseJournalDateFromFile(file: TAbstractFile) {
+        return parseJournalDateFromFile(file, this.settings);
+    }
+
+    findJournalEntryFile(journal: TFolder, date: string) {
+        return findJournalEntryFile(journal, date, this.settings);
+    }
+
+    getJournalMigrationPlan() {
+        return buildJournalMigrationPlan(this.journals, this.settings);
+    }
+
+    getJournalMigrationPlanForFormat(noteDateFormat: string) {
+        return buildJournalMigrationPlan(this.journals, {
+            ...this.settings,
+            noteDateFormat,
+        });
+    }
+
+    formatJournalNoteFileNameForFormat(date: string, noteDateFormat: string) {
+        return formatJournalNoteFileName(date, {
+            ...this.settings,
+            noteDateFormat,
+        });
+    }
+
+    async applyJournalMigrationPlan(migrationItems: JournalNoteMigrationItem[]) {
+        const safeItems = migrationItems.filter(item => !item.hasConflict);
+        let renamedCount = 0;
+
+        for (const item of safeItems) {
+            const file = this.app.vault.getAbstractFileByPath(item.currentPath);
+
+            if (!(file instanceof TFile)) {
+                continue;
+            }
+
+            await this.app.fileManager.renameFile(file, item.targetPath);
+            renamedCount += 1;
+        }
+
+        if (renamedCount > 0) {
+            new Notice(`Journalyst renamed ${renamedCount} journal note${renamedCount === 1 ? '' : 's'}.`);
+        }
+
+        this.refreshJournals();
+    }
+
+    async updateNoteDateFormat(noteDateFormat: string) {
+        const nextFormat = noteDateFormat.trim();
+
+        if (!nextFormat || nextFormat === this.settings.noteDateFormat) {
+            return;
+        }
+
+        this.settings.noteDateFormatHistory = Array.from(new Set([
+            this.settings.noteDateFormat,
+            ...this.settings.noteDateFormatHistory,
+        ].filter(Boolean)));
+        this.settings.noteDateFormat = nextFormat;
+        await this.saveSettings();
+    }
+
     getReviewState() {
         return this.reviewState;
     }
@@ -383,6 +466,8 @@ export default class JournalystPlugin extends Plugin {
             isCoreTemplatesPluginEnabled: () => this.isCoreTemplatesPluginEnabled(),
             readTemplateFile: (templateFile) => this.app.vault.read(templateFile),
             renderCoreTemplate: (templateContents, date) => this.renderCoreTemplate(templateContents, date),
+            formatJournalNoteBaseName: (date) => this.formatJournalNoteBaseName(date),
+            formatJournalNoteFileName: (date) => this.formatJournalNoteFileName(date),
             vaultCreate: (path, contents) => this.app.vault.create(path, contents),
             vaultGetAbstractFileByPath: (path) => this.app.vault.getAbstractFileByPath(path),
         });
@@ -578,6 +663,8 @@ export default class JournalystPlugin extends Plugin {
         // templater map on load.
         this.settings.templaterJournalTemplates = this.settings.templaterJournalTemplates ?? this.settings.journalTemplates ?? {};
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
+        this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
+        this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
         this.settings.templateFailureBehavior = this.settings.templateFailureBehavior ?? 'fallback-default';
 	}

@@ -102,11 +102,11 @@ export class SideBarView extends ItemView {
         const daysInMonth = moment().daysInMonth();
         for (let i = 1; i <= daysInMonth; i++) {
             const day = heatMapWrapper.createEl("div", { cls: "heat-map-day", text: String(i) });
-            const dayString = `${moment().format("YYYY-MM")}-${String(i).padStart(2, '0')}.md`
+            const dayDate = `${moment().format("YYYY-MM")}-${String(i).padStart(2, '0')}`;
             day.addEventListener("click", () => {
-                this.plugin.createJournalEntry(journal, dayString.replace('.md', ''));
+                this.plugin.createJournalEntry(journal, dayDate);
             });
-            const dayFile = this.plugin.app.vault.getAbstractFileByPath(journal.path + "/" + dayString);
+            const dayFile = this.plugin.findJournalEntryFile(journal, dayDate);
             if (dayFile) {
                 day.addClass("heat-map-day-exists");
             }

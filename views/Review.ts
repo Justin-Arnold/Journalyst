@@ -65,7 +65,7 @@ export class ReviewView extends ItemView {
             return;
         }
 
-        const snapshot = buildJournalReviewSnapshot(selectedJournal, this.anchorDate);
+        const snapshot = buildJournalReviewSnapshot(selectedJournal, this.anchorDate, this.plugin.settings);
         this.renderOverview(snapshot);
         this.renderVisualizations(snapshot);
         this.renderLookbacks(snapshot);

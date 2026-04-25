@@ -7,6 +7,8 @@ import {
 
 interface TemplateStrategyContext {
     getCoreTemplatesSettings: () => Promise<CoreTemplatesSettings | null>;
+    formatJournalNoteBaseName: (date: string) => string;
+    formatJournalNoteFileName: (date: string) => string;
     getMarkdownFilesInFolder: (templateFolder: string) => TFile[];
     getObsidianPlugins: () => ObsidianPlugins | undefined;
     getRawCoreTemplateFolder: () => Promise<string | null>;
@@ -69,10 +71,15 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
                     return null;
                 }
 
-                try {
-                    const file = await templater.templater.create_new_note_from_template(templateFile, journalFolder, date, false);
-                    return file ?? null;
-                } catch (error) {
+                    try {
+                        const file = await templater.templater.create_new_note_from_template(
+                            templateFile,
+                            journalFolder,
+                            context.formatJournalNoteBaseName(date),
+                            false,
+                        );
+                        return file ?? null;
+                    } catch (error) {
                     console.error('Journalyst failed to create a journal entry from Templater.', error);
                     new Notice('Journalyst could not apply the configured template. Created a default journal entry instead.');
                     return null;
@@ -119,7 +126,7 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
                 try {
                     const templateContents = await context.readTemplateFile(templateFile);
                     const renderedContents = await context.renderCoreTemplate(templateContents, date);
-                    const fullPath = normalizePath(journalFolder.path + '/' + date + '.md');
+                    const fullPath = normalizePath(journalFolder.path + '/' + context.formatJournalNoteFileName(date));
                     return await context.vaultCreate(fullPath, renderedContents);
                 } catch (error) {
                     console.error('Journalyst failed to create a journal entry from the core Templates plugin.', error);

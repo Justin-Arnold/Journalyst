@@ -4,6 +4,9 @@ import JournalystPlugin from "../main";
 
 export class JournalystSettingsTab extends PluginSettingTab {
 	plugin: JournalystPlugin;
+	private noteDateFormatDraft: string | null = null;
+	private migrationPreviewFormat: string | null = null;
+	private readonly migrationPreviewLimit = 24;
 
 	constructor(app: App, plugin: JournalystPlugin) {
 		super(app, plugin);
@@ -16,6 +19,11 @@ export class JournalystSettingsTab extends PluginSettingTab {
 
 	private async displayAsync() {
 		const {containerEl} = this;
+		if (this.noteDateFormatDraft === null) {
+			this.noteDateFormatDraft = this.plugin.settings.noteDateFormat;
+		}
+
+		const noteDateFormatDraft = this.noteDateFormatDraft;
 
 		// The settings view depends on live vault/plugin state, so redraw it from
 		// scratch whenever an option change affects the available controls.
@@ -39,6 +47,105 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						this.display();
 					});
 			});
+
+		const noteNameExample = noteDateFormatDraft.trim()
+			? this.plugin.formatJournalNoteFileNameForFormat('2026-04-25', noteDateFormatDraft.trim())
+			: 'YYYY-MM-DD.md';
+		new Setting(containerEl)
+			.setName('Journal note date format')
+			.setDesc(`Use Moment-style date tokens for note filenames. Example output: ${noteNameExample}`)
+			.addText(text => {
+				text.setPlaceholder('YYYY-MM-DD')
+					.setValue(noteDateFormatDraft)
+					.onChange((value) => {
+						this.noteDateFormatDraft = value;
+					});
+			})
+			.addButton(button => {
+				button.setButtonText('Preview renames')
+					.setDisabled(!noteDateFormatDraft.trim())
+					.onClick(() => {
+						this.migrationPreviewFormat = this.noteDateFormatDraft?.trim() || null;
+						this.display();
+					});
+			})
+			.addButton(button => {
+				button.setButtonText('Save format')
+					.setCta()
+					.setDisabled(!noteDateFormatDraft.trim() || noteDateFormatDraft.trim() === this.plugin.settings.noteDateFormat)
+					.onClick(async () => {
+						const nextFormat = this.noteDateFormatDraft?.trim() || '';
+						if (!nextFormat) {
+							return;
+						}
+
+						await this.plugin.updateNoteDateFormat(nextFormat);
+						this.noteDateFormatDraft = this.plugin.settings.noteDateFormat;
+						if (this.migrationPreviewFormat) {
+							this.migrationPreviewFormat = nextFormat;
+						}
+						this.display();
+					});
+			});
+
+		if (this.migrationPreviewFormat) {
+			const migrationPlan = this.plugin.getJournalMigrationPlanForFormat(this.migrationPreviewFormat);
+			const conflictingMigrationItems = migrationPlan.filter(item => item.hasConflict);
+			const safeMigrationItems = migrationPlan.filter(item => !item.hasConflict);
+			const visibleMigrationItems = migrationPlan.slice(0, this.migrationPreviewLimit);
+			const hiddenCount = Math.max(0, migrationPlan.length - visibleMigrationItems.length);
+
+			containerEl.createEl('h3', { text: 'Rename journal notes' });
+			new Setting(containerEl)
+				.setName('Migration preview')
+				.setDesc(
+					migrationPlan.length === 0
+						? `No journal notes need renaming for ${this.migrationPreviewFormat}.`
+						: conflictingMigrationItems.length > 0
+							? `Found ${migrationPlan.length} rename candidates with ${conflictingMigrationItems.length} conflicts to resolve first.`
+							: `Found ${migrationPlan.length} journal notes that can be renamed to match ${this.migrationPreviewFormat}.`
+				)
+				.addButton(button => {
+					button.setButtonText(`Rename ${safeMigrationItems.length} notes`)
+						.setDisabled(migrationPlan.length === 0 || safeMigrationItems.length === 0 || conflictingMigrationItems.length > 0)
+						.onClick(async () => {
+							await this.plugin.applyJournalMigrationPlan(safeMigrationItems);
+							this.display();
+						});
+				})
+				.addExtraButton(button => {
+					button.setIcon('cross')
+						.setTooltip('Hide migration preview')
+						.onClick(() => {
+							this.migrationPreviewFormat = null;
+							this.display();
+						});
+				});
+
+			if (migrationPlan.length > 0) {
+				const migrationList = containerEl.createDiv({ cls: 'journalyst-migration-list' });
+				visibleMigrationItems.forEach(item => {
+					const row = migrationList.createDiv({ cls: 'journalyst-migration-row' });
+					row.createEl('code', { text: item.currentPath });
+					row.createEl('span', { text: '->', cls: 'journalyst-migration-arrow' });
+					row.createEl('code', { text: item.targetPath });
+
+					if (item.hasConflict) {
+						row.createEl('span', {
+							text: `Conflict with ${item.conflictPath}`,
+							cls: 'journalyst-migration-conflict',
+						});
+					}
+				});
+
+				if (hiddenCount > 0) {
+					containerEl.createEl('p', {
+						text: `Showing ${visibleMigrationItems.length} examples out of ${migrationPlan.length} rename candidates.`,
+						cls: 'journalyst-migration-summary',
+					});
+				}
+			}
+		}
 
 		new Setting(containerEl)
 			.setName('Template engine')

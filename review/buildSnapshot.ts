@@ -1,4 +1,5 @@
-import { TFile, TFolder, moment } from 'obsidian';
+import { TFolder, moment } from 'obsidian';
+import { JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
     ActivityCell,
     DistributionDatum,
@@ -9,11 +10,10 @@ import {
     ReviewInsights,
 } from './types';
 
-const DATE_FILE_PATTERN = /^\d{4}-\d{2}-\d{2}\.md$/;
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-export function buildJournalReviewSnapshot(journal: TFolder, anchorDate: string): JournalReviewSnapshot {
-    const entries = getJournalEntries(journal);
+export function buildJournalReviewSnapshot(journal: TFolder, anchorDate: string, journalDateSettings: JournalDateSettings): JournalReviewSnapshot {
+    const entries = getJournalEntries(journal, journalDateSettings);
     const entryByDate = new Map(entries.map(entry => [entry.date, entry]));
     const anchor = moment(anchorDate, 'YYYY-MM-DD', true);
     const normalizedAnchor = anchor.isValid() ? anchor : moment();
@@ -34,12 +34,15 @@ export function buildJournalReviewSnapshot(journal: TFolder, anchorDate: string)
     };
 }
 
-function getJournalEntries(journal: TFolder): JournalEntryRecord[] {
+function getJournalEntries(journal: TFolder, journalDateSettings: JournalDateSettings): JournalEntryRecord[] {
     return journal.children
-        .filter((child): child is TFile => child instanceof TFile)
-        .filter(file => DATE_FILE_PATTERN.test(file.name))
         .map(file => {
-            const date = file.basename;
+            const date = parseJournalDateFromFile(file, journalDateSettings);
+
+            if (!date) {
+                return null;
+            }
+
             return {
                 journalPath: journal.path,
                 filePath: file.path,
@@ -47,6 +50,7 @@ function getJournalEntries(journal: TFolder): JournalEntryRecord[] {
                 displayLabel: date,
             };
         })
+        .filter((entry): entry is JournalEntryRecord => entry !== null)
         .sort((left, right) => left.date.localeCompare(right.date));
 }
 
