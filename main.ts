@@ -10,6 +10,7 @@ import {
     TemplateFailureBehavior,
     TemplaterPlugin,
 } from "./templates/types";
+import { ReviewView, VIEW_TYPE_REVIEW } from "./views/Review";
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
 import { JournalystSettingsTab } from "./views/Settings";
 
@@ -37,6 +38,10 @@ export default class JournalystPlugin extends Plugin {
     private journalCommandIds: string[] = [];
     // Strategy instances keep engine-specific behavior out of the main plugin flow.
     private templateStrategies: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
+    private reviewState: { journalPath: string | null; anchorDate: string } = {
+        journalPath: null,
+        anchorDate: moment().format('YYYY-MM-DD'),
+    };
 
 	async onload() {
 		await this.loadSettings();
@@ -46,6 +51,9 @@ export default class JournalystPlugin extends Plugin {
 		this.addRibbonIcon('book-copy', 'Go to Journalyst view', () => {
             this.activateView();
         });
+        this.addRibbonIcon('history', 'Go to Journalyst review', () => {
+            this.activateReviewView();
+        });
 
         this.app.workspace.onLayoutReady(() => {
             this.refreshJournals();
@@ -54,7 +62,34 @@ export default class JournalystPlugin extends Plugin {
                 VIEW_TYPE_SIDE_BAR,
                 (leaf) => new SideBarView(leaf, this)
             );
+            this.registerView(
+                VIEW_TYPE_REVIEW,
+                (leaf) => new ReviewView(leaf, this)
+            );
         })
+
+        this.addCommand({
+            id: 'open-journalyst-review',
+            name: 'Open Journalyst review',
+            callback: () => {
+                this.activateReviewView();
+            }
+        });
+
+        this.addCommand({
+            id: 'open-journalyst-review-current-journal',
+            name: 'Open review for current journal',
+            callback: () => {
+                const journal = this.inferCurrentJournal();
+
+                if (!journal) {
+                    new Notice('Journalyst could not infer a journal from the current note.');
+                    return;
+                }
+
+                this.activateReviewView(journal.path);
+            }
+        });
 
         this.registerEvent(
             this.app.vault.on('create', (item) => this.onItemChange())
@@ -105,6 +140,10 @@ export default class JournalystPlugin extends Plugin {
             this.journals.push(child);
             this.addJournalCommand(child, index);
         })
+
+        if (!this.reviewState.journalPath || !this.getJournalByPath(this.reviewState.journalPath)) {
+            this.reviewState.journalPath = this.getDefaultReviewJournalPath();
+        }
     }
 
     private addJournalCommand(journal: TFolder, index: number) {
@@ -276,6 +315,35 @@ export default class JournalystPlugin extends Plugin {
         }
 
         return null;
+    }
+
+    getReviewState() {
+        return this.reviewState;
+    }
+
+    async setReviewState(journalPath: string | null, anchorDate: string) {
+        this.reviewState = {
+            journalPath,
+            anchorDate,
+        };
+    }
+
+    getDefaultReviewJournalPath() {
+        return this.journals[0]?.path ?? null;
+    }
+
+    getJournalByPath(journalPath: string) {
+        return this.journals.find(journal => journal.path === journalPath) ?? null;
+    }
+
+    inferCurrentJournal() {
+        const activeFile = this.app.workspace.getActiveFile();
+
+        if (!activeFile) {
+            return null;
+        }
+
+        return this.journals.find(journal => activeFile.path.startsWith(journal.path + '/')) ?? null;
     }
 
     private getTemplaterPlugin(): TemplaterPlugin | undefined {
@@ -473,6 +541,32 @@ export default class JournalystPlugin extends Plugin {
         }
 
         // "Reveal" the leaf in case it is in a collapsed sidebar
+        workspace.revealLeaf(leaf);
+    }
+
+    async activateReviewView(journalPath?: string | null, anchorDate = moment().format('YYYY-MM-DD')) {
+        const { workspace } = this.app;
+        const targetJournalPath = journalPath ?? this.inferCurrentJournal()?.path ?? this.getDefaultReviewJournalPath();
+        await this.setReviewState(targetJournalPath, anchorDate);
+
+        let leaf: WorkspaceLeaf | null = null;
+        const leaves = workspace.getLeavesOfType(VIEW_TYPE_REVIEW);
+
+        if (leaves.length > 0) {
+            leaf = leaves[0];
+        } else {
+            leaf = workspace.getLeaf(true);
+            if (!leaf) {
+                return;
+            }
+            await leaf.setViewState({ type: VIEW_TYPE_REVIEW, active: true });
+        }
+
+        const reviewView = leaf.view;
+        if (reviewView instanceof ReviewView) {
+            reviewView.updateReviewState(targetJournalPath, anchorDate);
+        }
+
         workspace.revealLeaf(leaf);
     }
 
