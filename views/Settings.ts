@@ -27,18 +27,52 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private async displayAsync() {
-		const {containerEl} = this;
+		const { containerEl } = this;
 		if (this.noteDateFormatDraft === null) {
 			this.noteDateFormatDraft = this.plugin.settings.noteDateFormat;
 		}
 
 		const noteDateFormatDraft = this.noteDateFormatDraft;
 
-		// The settings view depends on live vault/plugin state, so redraw it from
-		// scratch whenever an option change affects the available controls.
 		containerEl.empty();
 		this.plugin.refreshJournals();
 
+		this.renderSectionHeading(containerEl, 'Workspace', 'Choose where Journalyst lives in your vault and how its optional sidebar companion behaves.');
+		this.renderWorkspaceSettings(containerEl);
+
+		this.renderSectionHeading(containerEl, 'Notes and files', 'Control how Journalyst names entry files and handles filename migrations.');
+		this.renderNoteSettings(containerEl, noteDateFormatDraft);
+
+		this.renderSectionHeading(containerEl, 'Journal cadence', 'Define how often each journal is expected so status, review, and reminders stay honest.');
+		this.renderCadenceSettings(containerEl);
+
+		this.renderSectionHeading(containerEl, 'Prompts', 'Manage prompt libraries first, then configure how each journal should rotate and deliver prompts.');
+		await this.renderCustomPromptLists(containerEl);
+		await this.renderJournalPromptSettings(containerEl);
+
+		this.renderSectionHeading(containerEl, 'Templates', 'Pick the journal template engine, choose fallback behavior, and assign per-journal templates.');
+		await this.renderTemplateSettings(containerEl);
+
+		this.renderSectionHeading(containerEl, 'Reminders', 'Set up entry and review nudges for each journal while Obsidian is open.');
+		await this.renderReminderSettings(containerEl);
+
+		this.renderSectionHeading(containerEl, 'Bases', 'Opt into Journalyst properties and managed starter Bases files for your journals.');
+		await this.renderBasesSettings(containerEl);
+	}
+
+	private renderSectionHeading(containerEl: HTMLElement, title: string, description?: string) {
+		const section = containerEl.createDiv({ cls: 'journalyst-settings-section' });
+		section.createEl('h3', { text: title });
+
+		if (description) {
+			section.createEl('p', {
+				text: description,
+				cls: 'journalyst-settings-section-description',
+			});
+		}
+	}
+
+	private renderWorkspaceSettings(containerEl: HTMLElement) {
 		new Setting(containerEl)
 			.setName('Journalyst home directory')
 			.setDesc('The directory where Journalyst will look for your journals.')
@@ -69,7 +103,9 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						this.display();
 					});
 			});
+	}
 
+	private renderNoteSettings(containerEl: HTMLElement, noteDateFormatDraft: string) {
 		const noteNameExample = noteDateFormatDraft.trim()
 			? this.plugin.formatJournalNoteFileNameForFormat('2026-04-25', noteDateFormatDraft.trim())
 			: 'YYYY-MM-DD.md';
@@ -110,66 +146,68 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			});
 
-		if (this.migrationPreviewFormat) {
-			const migrationPlan = this.plugin.getJournalMigrationPlanForFormat(this.migrationPreviewFormat);
-			const conflictingMigrationItems = migrationPlan.filter(item => item.hasConflict);
-			const safeMigrationItems = migrationPlan.filter(item => !item.hasConflict);
-			const visibleMigrationItems = migrationPlan.slice(0, this.migrationPreviewLimit);
-			const hiddenCount = Math.max(0, migrationPlan.length - visibleMigrationItems.length);
-
-			containerEl.createEl('h3', { text: 'Rename journal notes' });
-			new Setting(containerEl)
-				.setName('Migration preview')
-				.setDesc(
-					migrationPlan.length === 0
-						? `No journal notes need renaming for ${this.migrationPreviewFormat}.`
-						: conflictingMigrationItems.length > 0
-							? `Found ${migrationPlan.length} rename candidates with ${conflictingMigrationItems.length} conflicts to resolve first.`
-							: `Found ${migrationPlan.length} journal notes that can be renamed to match ${this.migrationPreviewFormat}.`
-				)
-				.addButton(button => {
-					button.setButtonText(`Rename ${safeMigrationItems.length} notes`)
-						.setDisabled(migrationPlan.length === 0 || safeMigrationItems.length === 0 || conflictingMigrationItems.length > 0)
-						.onClick(async () => {
-							await this.plugin.applyJournalMigrationPlan(safeMigrationItems);
-							this.display();
-						});
-				})
-				.addExtraButton(button => {
-					button.setIcon('cross')
-						.setTooltip('Hide migration preview')
-						.onClick(() => {
-							this.migrationPreviewFormat = null;
-							this.display();
-						});
-				});
-
-			if (migrationPlan.length > 0) {
-				const migrationList = containerEl.createDiv({ cls: 'journalyst-migration-list' });
-				visibleMigrationItems.forEach(item => {
-					const row = migrationList.createDiv({ cls: 'journalyst-migration-row' });
-					row.createEl('code', { text: item.currentPath });
-					row.createEl('span', { text: '->', cls: 'journalyst-migration-arrow' });
-					row.createEl('code', { text: item.targetPath });
-
-					if (item.hasConflict) {
-						row.createEl('span', {
-							text: `Conflict with ${item.conflictPath}`,
-							cls: 'journalyst-migration-conflict',
-						});
-					}
-				});
-
-				if (hiddenCount > 0) {
-					containerEl.createEl('p', {
-						text: `Showing ${visibleMigrationItems.length} examples out of ${migrationPlan.length} rename candidates.`,
-						cls: 'journalyst-migration-summary',
-					});
-				}
-			}
+		if (!this.migrationPreviewFormat) {
+			return;
 		}
 
-		containerEl.createEl('h3', { text: 'Journal cadence' });
+		const migrationPlan = this.plugin.getJournalMigrationPlanForFormat(this.migrationPreviewFormat);
+		const conflictingMigrationItems = migrationPlan.filter(item => item.hasConflict);
+		const safeMigrationItems = migrationPlan.filter(item => !item.hasConflict);
+		const visibleMigrationItems = migrationPlan.slice(0, this.migrationPreviewLimit);
+		const hiddenCount = Math.max(0, migrationPlan.length - visibleMigrationItems.length);
+
+		new Setting(containerEl)
+			.setName('Migration preview')
+			.setDesc(
+				migrationPlan.length === 0
+					? `No journal notes need renaming for ${this.migrationPreviewFormat}.`
+					: conflictingMigrationItems.length > 0
+						? `Found ${migrationPlan.length} rename candidates with ${conflictingMigrationItems.length} conflicts to resolve first.`
+						: `Found ${migrationPlan.length} journal notes that can be renamed to match ${this.migrationPreviewFormat}.`
+			)
+			.addButton(button => {
+				button.setButtonText(`Rename ${safeMigrationItems.length} notes`)
+					.setDisabled(migrationPlan.length === 0 || safeMigrationItems.length === 0 || conflictingMigrationItems.length > 0)
+					.onClick(async () => {
+						await this.plugin.applyJournalMigrationPlan(safeMigrationItems);
+						this.display();
+					});
+			})
+			.addExtraButton(button => {
+				button.setIcon('cross')
+					.setTooltip('Hide migration preview')
+					.onClick(() => {
+						this.migrationPreviewFormat = null;
+						this.display();
+					});
+			});
+
+		if (migrationPlan.length > 0) {
+			const migrationList = containerEl.createDiv({ cls: 'journalyst-migration-list' });
+			visibleMigrationItems.forEach(item => {
+				const row = migrationList.createDiv({ cls: 'journalyst-migration-row' });
+				row.createEl('code', { text: item.currentPath });
+				row.createEl('span', { text: '->', cls: 'journalyst-migration-arrow' });
+				row.createEl('code', { text: item.targetPath });
+
+				if (item.hasConflict) {
+					row.createEl('span', {
+						text: `Conflict with ${item.conflictPath}`,
+						cls: 'journalyst-migration-conflict',
+					});
+				}
+			});
+
+			if (hiddenCount > 0) {
+				containerEl.createEl('p', {
+					text: `Showing ${visibleMigrationItems.length} examples out of ${migrationPlan.length} rename candidates.`,
+					cls: 'journalyst-migration-summary',
+				});
+			}
+		}
+	}
+
+	private renderCadenceSettings(containerEl: HTMLElement) {
 		for (const journal of this.plugin.journals) {
 			const cadence = this.plugin.getJournalCadence(journal.path);
 			new Setting(containerEl)
@@ -250,13 +288,9 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			}
 		}
+	}
 
-		await this.renderReminderSettings(containerEl);
-
-		await this.renderCustomPromptLists(containerEl);
-		await this.renderJournalPromptSettings(containerEl);
-		await this.renderBasesSettings(containerEl);
-
+	private async renderTemplateSettings(containerEl: HTMLElement) {
 		new Setting(containerEl)
 			.setName('Template engine')
 			.setDesc('Choose which template system Journalyst should use when creating journal entries.')
@@ -285,13 +319,20 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			});
 
-		containerEl.createEl('h3', { text: 'Journal templates' });
-
 		if (this.plugin.settings.templateEngine === 'none') {
 			this.addTemplateNotice('Journalyst will create entries with its default note content.');
 			return;
 		}
 
+		await this.renderJournalTemplateSettings(containerEl);
+	}
+
+	private addTemplateNotice(message: string) {
+		new Setting(this.containerEl)
+			.setDesc(message);
+	}
+
+	private async renderJournalTemplateSettings(containerEl: HTMLElement) {
 		const templateEngine = this.plugin.settings.templateEngine;
 		const templateAvailability = await this.plugin.getTemplateAvailability(templateEngine);
 		const templateFiles = await this.plugin.getTemplateFiles(templateEngine);
@@ -370,11 +411,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		}
 	}
 
-	private addTemplateNotice(message: string) {
-		new Setting(this.containerEl)
-			.setDesc(message);
-	}
-
 	private getTemplateWarningMessage(templateStatus: string, templatePath?: string) {
 		if (templateStatus === 'missing') {
 			return `saved template is missing: ${templatePath}`;
@@ -388,7 +424,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private async renderBasesSettings(containerEl: HTMLElement) {
-		containerEl.createEl('h3', { text: 'Bases integration' });
 		new Setting(containerEl)
 			.setName('Enable Bases integration')
 			.setDesc('Write Journalyst properties into notes and generate plugin-managed .base files for each journal.')
@@ -497,7 +532,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private async renderReminderSettings(containerEl: HTMLElement) {
-		containerEl.createEl('h3', { text: 'Journal reminders' });
 		const permissionStatus = this.plugin.getNotificationPermissionStatus();
 		const permissionText = permissionStatus === 'granted'
 			? 'OS notifications are available.'
@@ -604,7 +638,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private async renderCustomPromptLists(containerEl: HTMLElement) {
-		containerEl.createEl('h3', { text: 'Custom prompt lists' });
 		new Setting(containerEl)
 			.setName('Manage prompt libraries')
 			.setDesc('Create settings-managed prompt lists using one prompt per line.')
@@ -666,8 +699,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private async renderJournalPromptSettings(containerEl: HTMLElement) {
-		containerEl.createEl('h3', { text: 'Journal prompts' });
-
 		for (const journal of this.plugin.journals) {
 			const promptSettings = this.plugin.getJournalPromptSettings(journal.path);
 			const promptStatus = await this.plugin.getPromptSettingsStatus(journal.path);

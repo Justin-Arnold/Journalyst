@@ -494,6 +494,19 @@
     color: var(--text-faint);
 }
 
+.journalyst-settings-section {
+    margin: 0 0 0.9rem;
+}
+
+.journalyst-settings-section h3 {
+    margin: 1.5rem 0 0.3rem;
+}
+
+.journalyst-settings-section-description {
+    margin: 0 0 0.9rem;
+    color: var(--text-muted);
+}
+
 .journalyst-review-empty {
     padding: 1rem 0;
 }
