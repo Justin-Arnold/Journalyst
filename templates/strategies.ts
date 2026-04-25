@@ -53,6 +53,8 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
                 return context.getMarkdownFilesInFolder(templateFolder);
             },
             createJournalEntry: async (journalFolder, templatePath, date) => {
+                // Templater creates the target note itself, so Journalyst delegates
+                // creation once it has resolved the chosen template file.
                 const templateFile = context.vaultGetAbstractFileByPath(templatePath);
 
                 if (!(templateFile instanceof TFile)) {
@@ -100,6 +102,8 @@ export function createTemplateStrategies(context: TemplateStrategyContext): {
                 return context.getMarkdownFilesInFolder(templateFolder);
             },
             createJournalEntry: async (journalFolder, templatePath, date) => {
+                // The core Templates plugin inserts text into an existing note, so
+                // Journalyst renders the supported placeholders and creates the file.
                 const templateFile = context.vaultGetAbstractFileByPath(templatePath);
 
                 if (!(templateFile instanceof TFile)) {

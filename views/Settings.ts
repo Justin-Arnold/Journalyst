@@ -17,6 +17,8 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	private async displayAsync() {
 		const {containerEl} = this;
 
+		// The settings view depends on live vault/plugin state, so redraw it from
+		// scratch whenever an option change affects the available controls.
 		containerEl.empty();
 		this.plugin.refreshJournals();
 

@@ -32,6 +32,7 @@ export default class JournalystPlugin extends Plugin {
 	settings: JournalystPluginSettings;
     journals: TFolder[] = [];
     private journalCommandIds: string[] = [];
+    // Strategy instances keep engine-specific behavior out of the main plugin flow.
     private templateStrategies: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
 
 	async onload() {
@@ -72,6 +73,8 @@ export default class JournalystPlugin extends Plugin {
     refreshJournals() {
         const rootFolder = this.app.vault.getAbstractFileByPath(this.settings.rootDirectory);
 
+        // Journal commands are derived from folders under the configured root, so
+        // rebuild them whenever the root changes or the vault structure changes.
         this.journalCommandIds.forEach(commandId => this.removeCommand(commandId));
         this.journalCommandIds = [];
         this.journals = [];
@@ -115,6 +118,8 @@ export default class JournalystPlugin extends Plugin {
 
         const templatePath = this.getJournalTemplatePath(this.settings.templateEngine, journalFolder.path);
         if (templatePath) {
+            // Each engine owns its own application logic; the plugin only selects
+            // the active engine and handles the fallback to default note content.
             const fileFromTemplate = await this.createJournalEntryFromTemplate(this.settings.templateEngine, journalFolder, templatePath, date);
 
             if (fileFromTemplate) {
@@ -387,8 +392,11 @@ export default class JournalystPlugin extends Plugin {
     }
 
 
-	async loadSettings() {
+    async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        // Older installs stored a single journalTemplates map before engine-specific
+        // settings existed. Preserve those choices by migrating them into the
+        // templater map on load.
         this.settings.templaterJournalTemplates = this.settings.templaterJournalTemplates ?? this.settings.journalTemplates ?? {};
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
