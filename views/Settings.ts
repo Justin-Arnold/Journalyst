@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { JournalNotePropertyBackfillItem } from "../bases";
 import { JournalCadenceType } from "../cadence";
 import { JournalPromptSettings, PromptDeliveryMode, PromptSelectionMode, PromptSourceType } from "../prompts";
 import { TemplateEngine } from "../templates/types";
@@ -11,6 +12,8 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	private readonly migrationPreviewLimit = 24;
 	private customPromptListDrafts: Record<string, { name: string; body: string }> = {};
 	private promptPreviewJournalPath: string | null = null;
+	private basesBackfillPreview: JournalNotePropertyBackfillItem[] | null = null;
+	private readonly basesPreviewLimit = 24;
 
 	constructor(app: App, plugin: JournalystPlugin) {
 		super(app, plugin);
@@ -235,6 +238,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 
 		await this.renderCustomPromptLists(containerEl);
 		await this.renderJournalPromptSettings(containerEl);
+		await this.renderBasesSettings(containerEl);
 
 		new Setting(containerEl)
 			.setName('Template engine')
@@ -364,6 +368,115 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		}
 
 		return null;
+	}
+
+	private async renderBasesSettings(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'Bases integration' });
+		new Setting(containerEl)
+			.setName('Enable Bases integration')
+			.setDesc('Write Journalyst properties into notes and generate plugin-managed .base files for each journal.')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.isBasesIntegrationEnabled())
+					.onChange(async value => {
+						await this.plugin.updateBasesIntegrationEnabled(value);
+						if (!value) {
+							this.basesBackfillPreview = null;
+						}
+						this.display();
+					});
+			});
+
+		if (!this.plugin.isBasesIntegrationEnabled()) {
+			new Setting(containerEl)
+				.setDesc('Bases stays completely out of the way until you opt in here.');
+			return;
+		}
+
+		new Setting(containerEl)
+			.setName('Managed Bases files')
+			.setDesc('Generate Journalyst-owned starter Bases for your journals. Existing managed files are updated in place.')
+			.addButton(button => {
+				button.setButtonText('Generate all')
+					.setCta()
+					.onClick(async () => {
+						await this.plugin.generateBasesForAllJournals();
+					});
+			})
+			.addButton(button => {
+				button.setButtonText('Preview backfill')
+					.onClick(async () => {
+						this.basesBackfillPreview = await this.plugin.getJournalNotePropertyBackfillPreview();
+						this.display();
+					});
+			});
+
+		for (const journal of this.plugin.journals) {
+			new Setting(containerEl)
+				.setName(`${journal.name} Bases`)
+				.setDesc(`Generate or regenerate Journalyst starter Bases in ${journal.path}.`)
+				.addButton(button => {
+					button.setButtonText('Generate')
+						.onClick(async () => {
+							await this.plugin.generateBasesForJournal(journal);
+						});
+				});
+		}
+
+		if (!this.basesBackfillPreview) {
+			return;
+		}
+
+		const backfillPreview = this.basesBackfillPreview;
+		const visibleItems = backfillPreview.slice(0, this.basesPreviewLimit);
+		const hiddenCount = Math.max(0, backfillPreview.length - visibleItems.length);
+
+		new Setting(containerEl)
+				.setName('Property backfill preview')
+				.setDesc(
+					backfillPreview.length === 0
+						? 'All recognized journal notes already have the current Journalyst Bases properties.'
+						: `Journalyst found ${backfillPreview.length} notes that need missing or updated properties.`
+				)
+				.addButton(button => {
+					button.setButtonText(`Apply to ${backfillPreview.length} notes`)
+						.setDisabled(backfillPreview.length === 0)
+						.onClick(async () => {
+							await this.plugin.applyJournalNotePropertyBackfill(backfillPreview);
+							this.basesBackfillPreview = await this.plugin.getJournalNotePropertyBackfillPreview();
+							this.display();
+						});
+			})
+			.addExtraButton(button => {
+				button.setIcon('cross')
+					.setTooltip('Hide backfill preview')
+					.onClick(() => {
+						this.basesBackfillPreview = null;
+						this.display();
+					});
+			});
+
+		if (backfillPreview.length === 0) {
+			return;
+		}
+
+		const previewList = containerEl.createDiv({ cls: 'journalyst-migration-list' });
+		visibleItems.forEach(item => {
+			const row = previewList.createDiv({ cls: 'journalyst-migration-row' });
+			row.createEl('code', { text: item.filePath });
+			const details = [
+				item.entryType,
+				item.missingKeys.length > 0 ? `missing: ${item.missingKeys.join(', ')}` : null,
+				item.changedKeys.length > 0 ? `update: ${item.changedKeys.join(', ')}` : null,
+			].filter(Boolean).join(' | ');
+			row.createEl('span', { text: details, cls: 'journalyst-migration-summary' });
+		});
+
+		if (hiddenCount > 0) {
+			containerEl.createEl('p', {
+				text: `Showing ${visibleItems.length} examples out of ${backfillPreview.length} notes needing backfill.`,
+				cls: 'journalyst-migration-summary',
+			});
+		}
 	}
 
 	private async renderCustomPromptLists(containerEl: HTMLElement) {

@@ -1,4 +1,16 @@
-import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
+import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment, parseYaml } from 'obsidian';
+import {
+    BasesGenerationTarget,
+    buildEntryBaseContents,
+    buildJournalystNoteProperties,
+    buildReflectionBaseContents,
+    getFrontmatterPropertyDiff,
+    getJournalystBaseFileName,
+    JournalNotePropertyBackfillItem,
+    JournalystEntryType,
+    parseJournalystNoteKind,
+    upsertFrontmatterProperties,
+} from "./bases";
 import { JournalCadenceConfig, normalizeJournalCadence } from "./cadence";
 import { BUILT_IN_PROMPT_LISTS } from "./promptLibrary";
 import {
@@ -41,6 +53,7 @@ import { JournalystSettingsTab } from "./views/Settings";
 
 export interface JournalystPluginSettings {
     rootDirectory: string;
+    basesIntegrationEnabled: boolean;
     noteDateFormat: string;
     noteDateFormatHistory: string[];
     journalCadences: Record<string, JournalCadenceConfig>;
@@ -56,6 +69,7 @@ export interface JournalystPluginSettings {
 
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
 	rootDirectory: '/',
+    basesIntegrationEnabled: false,
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
     journalCadences: {},
@@ -142,6 +156,29 @@ export default class JournalystPlugin extends Plugin {
                 }
 
                 this.activateReviewView(journal.path);
+            }
+        });
+
+        this.addCommand({
+            id: 'generate-bases-for-current-journal',
+            name: 'Generate Bases for current journal',
+            callback: async () => {
+                const journal = this.inferCurrentJournal() ?? this.getJournalByPath(this.getDefaultReviewJournalPath() ?? '');
+
+                if (!journal) {
+                    new Notice('Journalyst could not find a journal to generate Bases for.');
+                    return;
+                }
+
+                await this.generateBasesForJournal(journal);
+            }
+        });
+
+        this.addCommand({
+            id: 'generate-bases-for-all-journals',
+            name: 'Generate Bases for all journals',
+            callback: async () => {
+                await this.generateBasesForAllJournals();
             }
         });
 
@@ -263,6 +300,16 @@ export default class JournalystPlugin extends Plugin {
         } else if (promptBlock) {
             await this.appendPromptBlockToFile(file, promptBlock);
         }
+
+        await this.applyJournalystEntryProperties(file, {
+            cadence: this.getJournalCadence(journalFolder.path),
+            date,
+            entryType: 'entry',
+            journalName: journalFolder.name,
+            journalPath: journalFolder.path,
+            promptSettings: this.getJournalPromptSettings(journalFolder.path),
+            promptTitle: resolvedPrompt?.prompt.title ?? null,
+        });
 
         if (resolvedPrompt?.history) {
             this.settings.journalPromptHistory[journalFolder.path] = resolvedPrompt.history;
@@ -577,6 +624,15 @@ export default class JournalystPlugin extends Plugin {
         return this.reviewState;
     }
 
+    isBasesIntegrationEnabled() {
+        return this.settings.basesIntegrationEnabled;
+    }
+
+    async updateBasesIntegrationEnabled(enabled: boolean) {
+        this.settings.basesIntegrationEnabled = enabled;
+        await this.saveSettings();
+    }
+
     async setReviewState(journalPath: string | null, anchorDate: string, activeTab?: ReviewWorkspaceTab) {
         this.reviewState = {
             journalPath,
@@ -603,6 +659,69 @@ export default class JournalystPlugin extends Plugin {
         return this.journals.find(journal => activeFile.path.startsWith(journal.path + '/')) ?? null;
     }
 
+    async generateBasesForJournal(journal: TFolder | string) {
+        if (!this.settings.basesIntegrationEnabled) {
+            new Notice('Enable Bases integration in Journalyst settings first.');
+            return;
+        }
+
+        const resolvedJournal = typeof journal === 'string' ? this.getJournalByPath(journal) : journal;
+
+        if (!resolvedJournal) {
+            new Notice('Journalyst could not find that journal for Bases generation.');
+            return;
+        }
+
+        await this.upsertManagedBaseFile(resolvedJournal, 'entries');
+        await this.upsertManagedBaseFile(resolvedJournal, 'reflections');
+        new Notice(`Journalyst generated Bases for ${resolvedJournal.name}.`);
+    }
+
+    async generateBasesForAllJournals() {
+        if (!this.settings.basesIntegrationEnabled) {
+            new Notice('Enable Bases integration in Journalyst settings first.');
+            return;
+        }
+
+        for (const journal of this.journals) {
+            await this.upsertManagedBaseFile(journal, 'entries');
+            await this.upsertManagedBaseFile(journal, 'reflections');
+        }
+
+        new Notice(`Journalyst generated Bases for ${this.journals.length} journal${this.journals.length === 1 ? '' : 's'}.`);
+    }
+
+    async getJournalNotePropertyBackfillPreview(journalPath?: string | null) {
+        const journals = journalPath ? this.journals.filter(journal => journal.path === journalPath) : this.journals;
+        const items: JournalNotePropertyBackfillItem[] = [];
+
+        for (const journal of journals) {
+            const journalItems = await this.getJournalBackfillItems(journal);
+            items.push(...journalItems);
+        }
+
+        return items;
+    }
+
+    async applyJournalNotePropertyBackfill(items: JournalNotePropertyBackfillItem[]) {
+        let updatedCount = 0;
+
+        for (const item of items) {
+            const file = this.app.vault.getAbstractFileByPath(item.filePath);
+
+            if (!(file instanceof TFile)) {
+                continue;
+            }
+
+            await this.applyJournalystPropertiesToFile(file, item.properties);
+            updatedCount += 1;
+        }
+
+        if (updatedCount > 0) {
+            new Notice(`Journalyst backfilled properties for ${updatedCount} note${updatedCount === 1 ? '' : 's'}.`);
+        }
+    }
+
     async createSynthesisNote(journalPath: string, anchorDate: string, periodType: SynthesisPeriodType) {
         const journal = this.getJournalByPath(journalPath);
         if (!journal) {
@@ -620,6 +739,15 @@ export default class JournalystPlugin extends Plugin {
         }
 
         const file = await this.app.vault.create(filePath, preview.payload.body);
+        await this.applyJournalystEntryProperties(file, {
+            cadence: this.getJournalCadence(journal.path),
+            entryType: this.getSynthesisEntryType(periodType),
+            journalName: journal.name,
+            journalPath: journal.path,
+            periodEnd: preview.payload.endDate,
+            periodStart: preview.payload.startDate,
+            periodType,
+        });
         await this.app.workspace.openLinkText(file.path, '/', false);
         return file;
     }
@@ -648,6 +776,36 @@ export default class JournalystPlugin extends Plugin {
 
     private getDefaultJournalEntryContents(date: string) {
         return '---\ntitle: ' + date + '\n---\n';
+    }
+
+    private getSynthesisEntryType(periodType: SynthesisPeriodType): JournalystEntryType {
+        if (periodType === 'weekly') {
+            return 'weekly-review';
+        }
+
+        if (periodType === 'monthly') {
+            return 'monthly-reflection';
+        }
+
+        return 'quarter-summary';
+    }
+
+    private async applyJournalystEntryProperties(file: TFile, context: Parameters<typeof buildJournalystNoteProperties>[0]) {
+        if (!this.settings.basesIntegrationEnabled) {
+            return;
+        }
+
+        const properties = buildJournalystNoteProperties(context);
+        await this.applyJournalystPropertiesToFile(file, properties);
+    }
+
+    private async applyJournalystPropertiesToFile(file: TFile, properties: ReturnType<typeof buildJournalystNoteProperties>) {
+        const contents = await this.app.vault.read(file);
+        const nextContents = upsertFrontmatterProperties(contents, properties);
+
+        if (nextContents !== contents) {
+            await this.app.vault.modify(file, nextContents);
+        }
     }
 
     private appendPromptBlock(baseContents: string, promptBlock: string) {
@@ -708,6 +866,86 @@ export default class JournalystPlugin extends Plugin {
         this.settings.journalCadences = this.remapCadenceMapPaths(this.settings.journalCadences, oldPath, newPath);
         this.settings.journalPromptSettings = this.remapPromptSettingsPaths(this.settings.journalPromptSettings, oldPath, newPath);
         this.settings.journalPromptHistory = this.remapPromptHistoryPaths(this.settings.journalPromptHistory, oldPath, newPath);
+    }
+
+    private async getJournalBackfillItems(journal: TFolder) {
+        const items: JournalNotePropertyBackfillItem[] = [];
+
+        for (const child of journal.children) {
+            if (!(child instanceof TFile) || child.extension !== 'md') {
+                continue;
+            }
+
+            const parsedEntryDate = this.parseJournalDateFromFile(child);
+            const noteKind = parsedEntryDate
+                ? { date: parsedEntryDate, entryType: 'entry' as JournalystEntryType }
+                : parseJournalystNoteKind(child);
+
+            if (!noteKind) {
+                continue;
+            }
+
+            const desiredProperties = buildJournalystNoteProperties({
+                cadence: this.getJournalCadence(journal.path),
+                date: noteKind.date,
+                entryType: noteKind.entryType,
+                journalName: journal.name,
+                journalPath: journal.path,
+                periodEnd: noteKind.periodEnd,
+                periodStart: noteKind.periodStart,
+                periodType: noteKind.periodType,
+            });
+            const currentFrontmatter = await this.getFrontmatterFromFile(child);
+            const diff = getFrontmatterPropertyDiff(currentFrontmatter, desiredProperties);
+
+            if (diff.missingKeys.length === 0 && diff.changedKeys.length === 0) {
+                continue;
+            }
+
+            items.push({
+                filePath: child.path,
+                journalPath: journal.path,
+                journalName: journal.name,
+                entryType: noteKind.entryType,
+                missingKeys: diff.missingKeys,
+                changedKeys: diff.changedKeys,
+                properties: desiredProperties,
+            });
+        }
+
+        return items;
+    }
+
+    private async getFrontmatterFromFile(file: TFile) {
+        const contents = await this.app.vault.read(file);
+        const frontmatterMatch = contents.match(/^---\n([\s\S]*?)\n---\n?/);
+
+        if (!frontmatterMatch) {
+            return {};
+        }
+
+        try {
+            const parsed = parseYaml(frontmatterMatch[1]);
+            return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+        } catch (_error) {
+            return {};
+        }
+    }
+
+    private async upsertManagedBaseFile(journal: TFolder, target: BasesGenerationTarget) {
+        const fileName = getJournalystBaseFileName(target);
+        const filePath = normalizePath(`${journal.path}/${fileName}`);
+        const contents = target === 'entries'
+            ? buildEntryBaseContents(journal)
+            : buildReflectionBaseContents(journal);
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+
+        if (existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, contents);
+            return existingFile;
+        }
+
+        return this.app.vault.create(filePath, contents);
     }
 
     private remapTemplateMapPaths(templateMap: Record<string, string>, oldPath: string, newPath: string) {
@@ -957,6 +1195,7 @@ export default class JournalystPlugin extends Plugin {
         // settings existed. Preserve those choices by migrating them into the
         // templater map on load.
         this.settings.templaterJournalTemplates = this.settings.templaterJournalTemplates ?? this.settings.journalTemplates ?? {};
+        this.settings.basesIntegrationEnabled = this.settings.basesIntegrationEnabled ?? false;
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
         this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];
