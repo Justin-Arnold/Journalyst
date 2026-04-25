@@ -1,8 +1,16 @@
-import { Notice, Plugin, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
+import { Plugin, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
+import { createTemplateStrategies } from "./templates/strategies";
+import {
+    CoreTemplatesSettings,
+    JournalTemplateEngineStrategy,
+    ObsidianInternalPlugins,
+    ObsidianPlugins,
+    TemplateAvailability,
+    TemplateEngine,
+    TemplaterPlugin,
+} from "./templates/types";
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
 import { JournalystSettingsTab } from "./views/Settings";
-
-export type TemplateEngine = 'none' | 'templater' | 'core';
 
 export interface JournalystPluginSettings {
     rootDirectory: string;
@@ -19,61 +27,6 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
     coreJournalTemplates: {},
 }
 
-interface TemplaterPlugin {
-    settings?: {
-        templates_folder?: string;
-    };
-    templater?: {
-        create_new_note_from_template: (
-            template: TFile,
-            folder?: TFolder | string,
-            filename?: string,
-            openNewNote?: boolean,
-        ) => Promise<TFile | undefined>;
-    };
-}
-
-interface ObsidianPlugins {
-    enabledPlugins?: Set<string>;
-    manifests?: Record<string, unknown>;
-    plugins?: Record<string, unknown>;
-}
-
-interface ObsidianInternalPlugins {
-    getPluginById?: (pluginId: string) => {
-        enabled?: boolean;
-        _loaded?: boolean;
-        instance?: unknown;
-    } | null;
-    plugins?: Record<string, {
-        enabled?: boolean;
-        _loaded?: boolean;
-        instance?: unknown;
-    }>;
-}
-
-export type TemplaterAvailability =
-    | 'not-installed'
-    | 'disabled'
-    | 'no-template-folder'
-    | 'ready';
-
-export type TemplateAvailability = TemplaterAvailability;
-
-interface CoreTemplatesSettings {
-    folder?: string;
-    templateFolder?: string;
-    templates_folder?: string;
-    dateFormat?: string;
-    timeFormat?: string;
-}
-
-interface JournalTemplateEngineStrategy {
-    getAvailability(): Promise<TemplateAvailability> | TemplateAvailability;
-    getTemplateFolder(): Promise<string | null> | string | null;
-    getTemplateFiles(): Promise<TFile[]> | TFile[];
-    createJournalEntry(journalFolder: TFolder, templatePath: string, date: string): Promise<TFile | null>;
-}
 
 export default class JournalystPlugin extends Plugin {
 	settings: JournalystPluginSettings;
@@ -291,109 +244,19 @@ export default class JournalystPlugin extends Plugin {
     }
 
     private initializeTemplateStrategies() {
-        this.templateStrategies = {
-            templater: {
-                getAvailability: () => {
-                    const plugins = this.getObsidianPlugins();
-
-                    if (!plugins?.manifests?.['templater-obsidian']) {
-                        return 'not-installed';
-                    }
-
-                    if (!plugins.enabledPlugins?.has('templater-obsidian') || !plugins.plugins?.['templater-obsidian']) {
-                        return 'disabled';
-                    }
-
-                    if (!this.getRawTemplaterTemplateFolder()) {
-                        return 'no-template-folder';
-                    }
-
-                    return 'ready';
-                },
-                getTemplateFolder: () => this.getRawTemplaterTemplateFolder(),
-                getTemplateFiles: () => {
-                    const templateFolder = this.getRawTemplaterTemplateFolder();
-
-                    if (!templateFolder) {
-                        return [];
-                    }
-
-                    return this.getMarkdownFilesInFolder(templateFolder);
-                },
-                createJournalEntry: async (journalFolder, templatePath, date) => {
-                    const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
-
-                    if (!(templateFile instanceof TFile)) {
-                        new Notice(`Journalyst could not find template "${templatePath}". Created a default journal entry instead.`);
-                        return null;
-                    }
-
-                    const templater = this.getTemplaterPlugin();
-
-                    if (!templater?.templater?.create_new_note_from_template) {
-                        new Notice('Journalyst could not find Templater. Created a default journal entry instead.');
-                        return null;
-                    }
-
-                    try {
-                        const file = await templater.templater.create_new_note_from_template(templateFile, journalFolder, date, false);
-                        return file ?? null;
-                    } catch (error) {
-                        console.error('Journalyst failed to create a journal entry from Templater.', error);
-                        new Notice('Journalyst could not apply the configured template. Created a default journal entry instead.');
-                        return null;
-                    }
-                }
-            },
-            core: {
-                getAvailability: async () => {
-                    if (!this.isCoreTemplatesPluginEnabled()) {
-                        return 'disabled';
-                    }
-
-                    if (!await this.getRawCoreTemplateFolder()) {
-                        return 'no-template-folder';
-                    }
-
-                    return 'ready';
-                },
-                getTemplateFolder: () => this.getRawCoreTemplateFolder(),
-                getTemplateFiles: async () => {
-                    const templateFolder = await this.getRawCoreTemplateFolder();
-
-                    if (!templateFolder) {
-                        return [];
-                    }
-
-                    return this.getMarkdownFilesInFolder(templateFolder);
-                },
-                createJournalEntry: async (journalFolder, templatePath, date) => {
-                    const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
-
-                    if (!(templateFile instanceof TFile)) {
-                        new Notice(`Journalyst could not find template "${templatePath}". Created a default journal entry instead.`);
-                        return null;
-                    }
-
-                    const availability = await this.getTemplateStrategy('core')?.getAvailability();
-                    if (availability !== 'ready') {
-                        new Notice('Journalyst could not use the core Templates plugin. Created a default journal entry instead.');
-                        return null;
-                    }
-
-                    try {
-                        const templateContents = await this.app.vault.read(templateFile);
-                        const renderedContents = await this.renderCoreTemplate(templateContents, date);
-                        const fullPath = normalizePath(journalFolder.path + '/' + date + '.md');
-                        return await this.app.vault.create(fullPath, renderedContents);
-                    } catch (error) {
-                        console.error('Journalyst failed to create a journal entry from the core Templates plugin.', error);
-                        new Notice('Journalyst could not apply the configured core template. Created a default journal entry instead.');
-                        return null;
-                    }
-                }
-            }
-        };
+        this.templateStrategies = createTemplateStrategies({
+            getCoreTemplatesSettings: () => this.getCoreTemplatesSettings(),
+            getMarkdownFilesInFolder: (templateFolder) => this.getMarkdownFilesInFolder(templateFolder),
+            getObsidianPlugins: () => this.getObsidianPlugins(),
+            getRawCoreTemplateFolder: () => this.getRawCoreTemplateFolder(),
+            getRawTemplaterTemplateFolder: () => this.getRawTemplaterTemplateFolder(),
+            getTemplaterPlugin: () => this.getTemplaterPlugin(),
+            isCoreTemplatesPluginEnabled: () => this.isCoreTemplatesPluginEnabled(),
+            readTemplateFile: (templateFile) => this.app.vault.read(templateFile),
+            renderCoreTemplate: (templateContents, date) => this.renderCoreTemplate(templateContents, date),
+            vaultCreate: (path, contents) => this.app.vault.create(path, contents),
+            vaultGetAbstractFileByPath: (path) => this.app.vault.getAbstractFileByPath(path),
+        });
     }
 
     private getTemplateStrategy(templateEngine: TemplateEngine) {

@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
-import JournalystPlugin, { TemplateEngine } from "../main";
+import { TemplateEngine } from "../templates/types";
+import JournalystPlugin from "../main";
 
 export class JournalystSettingsTab extends PluginSettingTab {
 	plugin: JournalystPlugin;
