@@ -36,29 +36,39 @@
 }
 
 .journalyst-review-view {
-    padding: 1rem;
+    padding: 1.25rem;
+    max-width: 1120px;
+    margin: 0 auto;
 }
 
 .journalyst-review-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
-    gap: 1rem;
+    align-items: flex-start;
+    gap: 1.25rem;
     flex-wrap: wrap;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.journalyst-review-header h3 {
+    font-size: clamp(1.8rem, 3vw, 2.4rem);
+    line-height: 1.05;
+    margin: 0;
 }
 
 .journalyst-review-controls {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
+    margin-left: auto;
 }
 
 .journalyst-review-control {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    min-width: 180px;
+    min-width: 220px;
+    flex: 1 1 220px;
 }
 
 .journalyst-review-control span {
@@ -71,36 +81,109 @@
     width: 100%;
 }
 
-.journalyst-review-section {
+.journalyst-review-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+    gap: 1rem;
+    align-items: start;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: calc(var(--radius-s) + 4px);
+    background:
+        linear-gradient(135deg, rgba(var(--interactive-accent-rgb), 0.09), transparent 55%),
+        var(--background-secondary);
     margin-bottom: 1.5rem;
+}
+
+.journalyst-review-overview-copy h3 {
+    margin: 0 0 0.35rem 0;
+    font-size: 1.4rem;
+}
+
+.journalyst-review-overview-copy p {
+    margin: 0;
+}
+
+.journalyst-review-overview-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.journalyst-review-stat-pill {
+    border: 1px solid var(--background-modifier-border);
+    background: rgba(var(--background-primary-rgb), 0.55);
+    border-radius: var(--radius-s);
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.journalyst-review-section {
+    margin-bottom: 1.75rem;
+}
+
+.journalyst-review-section h4 {
+    margin: 0 0 0.3rem 0;
+    font-size: 1.55rem;
 }
 
 .journalyst-review-section-description,
 .journalyst-review-empty-text {
     color: var(--text-muted);
+    margin-top: 0;
 }
 
 .journalyst-review-grid,
 .journalyst-review-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.9rem;
+}
+
+.journalyst-review-visual-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.journalyst-review-visual-card {
+    grid-column: span 4;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: calc(var(--radius-s) + 2px);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-height: 210px;
+}
+
+.journalyst-review-visual-card h5 {
+    margin: 0;
+    font-size: 1rem;
 }
 
 .journalyst-review-card,
 .journalyst-review-lookback {
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    padding: 0.9rem;
+    border-radius: calc(var(--radius-s) + 2px);
+    padding: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.45rem;
     text-align: left;
 }
 
 .journalyst-review-lookback {
     cursor: pointer;
+    appearance: none;
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+    min-height: 134px;
 }
 
 .journalyst-review-lookback:disabled {
@@ -111,6 +194,99 @@
 .journalyst-review-label {
     font-size: 0.8rem;
     color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.journalyst-review-card strong,
+.journalyst-review-lookback strong,
+.journalyst-review-stat-pill strong {
+    font-size: 1.6rem;
+    line-height: 1.05;
+}
+
+.journalyst-review-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+}
+
+.journalyst-review-emphasis {
+    color: var(--text-accent, var(--text-normal));
+    font-weight: 600;
+}
+
+.journalyst-review-meter {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(var(--background-modifier-border-rgb), 0.35);
+    overflow: hidden;
+}
+
+.journalyst-review-meter-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(var(--interactive-accent-rgb), 0.55), rgba(var(--interactive-accent-rgb), 0.95));
+}
+
+.journalyst-review-activity-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-top: auto;
+}
+
+.journalyst-review-activity-cell {
+    aspect-ratio: 1;
+    border-radius: 4px;
+    background: rgba(var(--background-modifier-border-rgb), 0.45);
+    border: 1px solid transparent;
+}
+
+.journalyst-review-activity-cell.is-active {
+    background: rgba(var(--interactive-accent-rgb), 0.72);
+    border-color: rgba(var(--interactive-accent-rgb), 1);
+}
+
+.journalyst-review-bar-chart,
+.journalyst-review-month-chart {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: end;
+    min-height: 140px;
+    margin-top: auto;
+}
+
+.journalyst-review-month-chart {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 0.35rem;
+}
+
+.journalyst-review-bar-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: end;
+    gap: 0.35rem;
+    min-height: 140px;
+}
+
+.journalyst-review-bar {
+    width: 100%;
+    min-height: 8px;
+    border-radius: 999px 999px 4px 4px;
+    background: linear-gradient(180deg, rgba(var(--interactive-accent-rgb), 0.95), rgba(var(--interactive-accent-rgb), 0.35));
+}
+
+.journalyst-review-bar.is-empty {
+    background: rgba(var(--background-modifier-border-rgb), 0.45);
+}
+
+.journalyst-review-bar-label {
+    font-size: 0.72rem;
+    color: var(--text-faint);
 }
 
 .journalyst-review-meta {
@@ -120,4 +296,44 @@
 
 .journalyst-review-empty {
     padding: 1rem 0;
+}
+
+@media (max-width: 900px) {
+    .journalyst-review-overview {
+        grid-template-columns: 1fr;
+    }
+
+    .journalyst-review-visual-card {
+        grid-column: span 12;
+        min-height: 0;
+    }
+}
+
+@media (max-width: 700px) {
+    .journalyst-review-view {
+        padding: 0.9rem;
+    }
+
+    .journalyst-review-controls {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .journalyst-review-control {
+        min-width: 0;
+        flex: 1 1 100%;
+    }
+
+    .journalyst-review-overview-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .journalyst-review-grid,
+    .journalyst-review-list {
+        grid-template-columns: 1fr;
+    }
+
+    .journalyst-review-lookback {
+        min-height: 0;
+    }
 }

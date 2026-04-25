@@ -1,5 +1,7 @@
 import { TFile, TFolder, moment } from 'obsidian';
 import {
+    ActivityCell,
+    DistributionDatum,
     JournalEntryRecord,
     JournalReviewSnapshot,
     LookbackResult,
@@ -26,6 +28,9 @@ export function buildJournalReviewSnapshot(journal: TFolder, anchorDate: string)
         rollingSummaries: buildRollingSummaries(normalizedAnchor, entryByDate),
         insights: buildInsights(entries, normalizedAnchorDate),
         entryCount: entries.length,
+        recentActivity: buildRecentActivity(normalizedAnchor, entryByDate),
+        weekdayDistribution: buildWeekdayDistribution(entries),
+        monthlyActivity: buildMonthlyActivity(entries, normalizedAnchor),
     };
 }
 
@@ -145,6 +150,58 @@ function buildInsights(entries: JournalEntryRecord[], anchorDate: string): Revie
         busiestWeekday,
         busiestMonth,
     };
+}
+
+function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>): ActivityCell[] {
+    const cells: ActivityCell[] = [];
+    const start = anchor.clone().subtract(34, 'days');
+    let cursor = start.clone();
+
+    while (cursor.isSameOrBefore(anchor, 'day')) {
+        const date = cursor.format('YYYY-MM-DD');
+        cells.push({
+            date,
+            hasEntry: entryByDate.has(date),
+        });
+        cursor.add(1, 'day');
+    }
+
+    return cells;
+}
+
+function buildWeekdayDistribution(entries: JournalEntryRecord[]): DistributionDatum[] {
+    const counts = new Map<number, number>();
+
+    entries.forEach(entry => {
+        const weekday = moment(entry.date, 'YYYY-MM-DD', true).day();
+        counts.set(weekday, (counts.get(weekday) ?? 0) + 1);
+    });
+
+    return WEEKDAY_LABELS.map((label, index) => ({
+        label: label.slice(0, 3),
+        value: counts.get(index) ?? 0,
+    }));
+}
+
+function buildMonthlyActivity(entries: JournalEntryRecord[], anchor: moment.Moment): DistributionDatum[] {
+    const counts = new Map<string, number>();
+
+    entries.forEach(entry => {
+        const month = moment(entry.date, 'YYYY-MM-DD', true).format('YYYY-MM');
+        counts.set(month, (counts.get(month) ?? 0) + 1);
+    });
+
+    const data: DistributionDatum[] = [];
+
+    for (let index = 11; index >= 0; index -= 1) {
+        const month = anchor.clone().subtract(index, 'months').format('YYYY-MM');
+        data.push({
+            label: anchor.clone().subtract(index, 'months').format('MMM'),
+            value: counts.get(month) ?? 0,
+        });
+    }
+
+    return data;
 }
 
 function getCurrentStreak(dateSet: Set<string>, anchorDate: string): number {

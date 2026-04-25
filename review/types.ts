@@ -33,6 +33,16 @@ export interface ReviewInsights {
     busiestMonth: string | null;
 }
 
+export interface ActivityCell {
+    date: string;
+    hasEntry: boolean;
+}
+
+export interface DistributionDatum {
+    label: string;
+    value: number;
+}
+
 export interface JournalReviewSnapshot {
     journalPath: string;
     journalName: string;
@@ -42,4 +52,7 @@ export interface JournalReviewSnapshot {
     rollingSummaries: PeriodSummary[];
     insights: ReviewInsights;
     entryCount: number;
+    recentActivity: ActivityCell[];
+    weekdayDistribution: DistributionDatum[];
+    monthlyActivity: DistributionDatum[];
 }
