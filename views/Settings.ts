@@ -55,6 +55,19 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			});
 
+		new Setting(containerEl)
+			.setName('Template failure behavior')
+			.setDesc('Choose whether Journalyst should create its default note when a configured template cannot be applied.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('fallback-default', 'Create default note');
+				dropdown.addOption('abort', 'Abort with notice');
+				dropdown.setValue(this.plugin.settings.templateFailureBehavior)
+					.onChange(async (value) => {
+						this.plugin.settings.templateFailureBehavior = value as typeof this.plugin.settings.templateFailureBehavior;
+						await this.plugin.saveSettings();
+					});
+			});
+
 		containerEl.createEl('h3', { text: 'Journal templates' });
 
 		if (this.plugin.settings.templateEngine === 'none') {
@@ -65,6 +78,12 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		const templateEngine = this.plugin.settings.templateEngine;
 		const templateAvailability = await this.plugin.getTemplateAvailability(templateEngine);
 		const templateFiles = await this.plugin.getTemplateFiles(templateEngine);
+
+		if (templateEngine === 'core') {
+			this.addTemplateNotice('Core Templates supports plain placeholder substitution such as {{title}}, {{date}}, and {{time}}.');
+		} else {
+			this.addTemplateNotice('Templater templates are executed by the Templater plugin, so Journalyst defers rendering to Templater.');
+		}
 
 		if (templateAvailability === 'not-installed') {
 			this.addTemplateNotice('Templater is not installed. Install and enable Templater to choose templates for Journalyst journals.');
@@ -95,10 +114,17 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			return;
 		}
 
-		this.plugin.journals.forEach(journal => {
+		for (const journal of this.plugin.journals) {
+			const templatePath = this.plugin.getJournalTemplatePath(templateEngine, journal.path);
+			const templateStatus = await this.plugin.getJournalTemplateStatus(templateEngine, journal.path);
+			const warningMessage = this.getTemplateWarningMessage(templateStatus, templatePath);
+			const description = warningMessage
+				? `Template for journal entries in ${journal.path}. Warning: ${warningMessage}.`
+				: `Template for journal entries in ${journal.path}.`;
+
 			new Setting(containerEl)
 				.setName(journal.name)
-				.setDesc(`Template for journal entries in ${journal.path}.`)
+				.setDesc(description)
 				.addDropdown(dropdown => {
 					dropdown.addOption('', 'None');
 
@@ -115,13 +141,32 @@ export class JournalystSettingsTab extends PluginSettingTab {
 							}
 
 							await this.plugin.saveSettings();
+							this.display();
+						});
+				})
+				.addButton(button => {
+					button.setButtonText('Test today')
+						.onClick(async () => {
+							await this.plugin.createJournalEntry(journal);
 						});
 				});
-		});
+		}
 	}
 
 	private addTemplateNotice(message: string) {
 		new Setting(this.containerEl)
 			.setDesc(message);
+	}
+
+	private getTemplateWarningMessage(templateStatus: string, templatePath?: string) {
+		if (templateStatus === 'missing') {
+			return `saved template is missing: ${templatePath}`;
+		}
+
+		if (templateStatus === 'outside-folder') {
+			return `saved template is outside the configured template folder: ${templatePath}`;
+		}
+
+		return null;
 	}
 }

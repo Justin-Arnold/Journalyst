@@ -1,6 +1,7 @@
 import type { TFile, TFolder } from 'obsidian';
 
 export type TemplateEngine = 'none' | 'templater' | 'core';
+export type TemplateFailureBehavior = 'fallback-default' | 'abort';
 
 export type TemplaterAvailability =
     | 'not-installed'

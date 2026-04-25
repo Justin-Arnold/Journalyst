@@ -1,4 +1,4 @@
-import { Plugin, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
+import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment } from 'obsidian';
 import { createTemplateStrategies } from "./templates/strategies";
 import {
     CoreTemplatesSettings,
@@ -7,6 +7,7 @@ import {
     ObsidianPlugins,
     TemplateAvailability,
     TemplateEngine,
+    TemplateFailureBehavior,
     TemplaterPlugin,
 } from "./templates/types";
 import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
@@ -15,6 +16,7 @@ import { JournalystSettingsTab } from "./views/Settings";
 export interface JournalystPluginSettings {
     rootDirectory: string;
     templateEngine: TemplateEngine;
+    templateFailureBehavior: TemplateFailureBehavior;
     templaterJournalTemplates: Record<string, string>;
     coreJournalTemplates: Record<string, string>;
     journalTemplates?: Record<string, string>;
@@ -23,6 +25,7 @@ export interface JournalystPluginSettings {
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
 	rootDirectory: '/',
     templateEngine: 'templater',
+    templateFailureBehavior: 'fallback-default',
     templaterJournalTemplates: {},
     coreJournalTemplates: {},
 }
@@ -60,13 +63,24 @@ export default class JournalystPlugin extends Plugin {
             this.app.vault.on('delete', (item) => this.onItemChange())
         );
         this.registerEvent(
-            this.app.vault.on('rename', (item) => this.onItemChange())
+            this.app.vault.on('rename', (item, oldPath) => {
+                void this.onItemRename(item, oldPath);
+            })
         );
     };
 
 	onunload() {}
 
     private onItemChange() {
+        this.refreshJournals();
+    }
+
+    private async onItemRename(item: TAbstractFile, oldPath: string) {
+        if (item instanceof TFolder) {
+            this.remapJournalPaths(oldPath, item.path);
+            await this.saveSettings();
+        }
+
         this.refreshJournals();
     }
 
@@ -126,6 +140,11 @@ export default class JournalystPlugin extends Plugin {
                 await this.app.workspace.openLinkText(fileFromTemplate.path, '/', false);
                 return fileFromTemplate;
             }
+
+            if (this.settings.templateFailureBehavior === 'abort') {
+                new Notice('Journalyst did not create a note because the configured template could not be applied.');
+                return null;
+            }
         }
 
         const file = await this.app.vault.create(fullPath, this.getDefaultJournalEntryContents(date));
@@ -153,6 +172,31 @@ export default class JournalystPlugin extends Plugin {
         }
 
         return undefined;
+    }
+
+    async getJournalTemplateStatus(templateEngine: TemplateEngine, journalPath: string) {
+        const templatePath = this.getJournalTemplatePath(templateEngine, journalPath);
+
+        if (!templatePath) {
+            return 'none';
+        }
+
+        const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
+
+        if (!(templateFile instanceof TFile)) {
+            return 'missing';
+        }
+
+        const templateFolder = await this.getConfiguredTemplateFolder(templateEngine);
+        if (!templateFolder) {
+            return 'valid';
+        }
+
+        const normalizedFolder = normalizePath(templateFolder);
+        const normalizedPath = normalizePath(templateFile.path);
+        const folderPrefix = normalizedFolder === '/' ? '' : normalizedFolder + '/';
+
+        return normalizedPath.startsWith(folderPrefix) ? 'valid' : 'outside-folder';
     }
 
     setJournalTemplatePath(templateEngine: TemplateEngine, journalPath: string, templatePath: string) {
@@ -222,6 +266,18 @@ export default class JournalystPlugin extends Plugin {
         return templateStrategy ? templateStrategy.getTemplateFolder() : null;
     }
 
+    async getConfiguredTemplateFolder(templateEngine: TemplateEngine) {
+        if (templateEngine === 'templater') {
+            return this.getRawTemplaterTemplateFolder();
+        }
+
+        if (templateEngine === 'core') {
+            return this.getRawCoreTemplateFolder();
+        }
+
+        return null;
+    }
+
     private getTemplaterPlugin(): TemplaterPlugin | undefined {
         const plugins = this.getObsidianPlugins();
 
@@ -282,6 +338,35 @@ export default class JournalystPlugin extends Plugin {
         }
 
         return null;
+    }
+
+    private remapJournalPaths(oldPath: string, newPath: string) {
+        if (this.settings.rootDirectory === oldPath) {
+            this.settings.rootDirectory = newPath;
+        }
+
+        this.settings.templaterJournalTemplates = this.remapTemplateMapPaths(this.settings.templaterJournalTemplates, oldPath, newPath);
+        this.settings.coreJournalTemplates = this.remapTemplateMapPaths(this.settings.coreJournalTemplates, oldPath, newPath);
+    }
+
+    private remapTemplateMapPaths(templateMap: Record<string, string>, oldPath: string, newPath: string) {
+        const remappedTemplateMap: Record<string, string> = {};
+
+        Object.entries(templateMap).forEach(([journalPath, templatePath]) => {
+            if (journalPath === oldPath) {
+                remappedTemplateMap[newPath] = templatePath;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedTemplateMap[newPath + journalPath.slice(oldPath.length)] = templatePath;
+                return;
+            }
+
+            remappedTemplateMap[journalPath] = templatePath;
+        });
+
+        return remappedTemplateMap;
     }
 
     private async getCoreTemplatesSettings() {
@@ -400,6 +485,7 @@ export default class JournalystPlugin extends Plugin {
         this.settings.templaterJournalTemplates = this.settings.templaterJournalTemplates ?? this.settings.journalTemplates ?? {};
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
+        this.settings.templateFailureBehavior = this.settings.templateFailureBehavior ?? 'fallback-default';
 	}
 
 	async saveSettings() {
