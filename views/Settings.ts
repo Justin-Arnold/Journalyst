@@ -2,6 +2,7 @@ import { App, DropdownComponent, PluginSettingTab, Setting, TFolder } from 'obsi
 import { JournalNotePropertyBackfillItem } from "../bases";
 import { JournalCadenceType } from "../cadence";
 import { JournalPromptSettings, PromptDeliveryMode, PromptSelectionMode, PromptSourceType } from "../prompts";
+import { SidebarMode } from "../review/types";
 import { JournalReminderSettings, ReminderDeliveryMode, ReviewReminderPeriod } from "../reminders";
 import { TemplateEngine } from "../templates/types";
 import JournalystPlugin from "../main";
@@ -52,6 +53,19 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						this.plugin.settings.rootDirectory = value;
 						await this.plugin.saveSettings();
 						this.plugin.refreshJournals();
+						this.display();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Sidebar mode')
+			.setDesc('Choose whether the optional Journalyst sidebar shows a quick home summary or the journal heatmap launcher.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('home-mini', 'Home mini view');
+				dropdown.addOption('journals-mini', 'Journals mini view');
+				dropdown.setValue(this.plugin.getSidebarMode())
+					.onChange(async value => {
+						await this.plugin.updateSidebarMode(value as SidebarMode);
 						this.display();
 					});
 			});

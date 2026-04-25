@@ -37,7 +37,7 @@ import {
     ReviewReminderPeriod,
 } from "./reminders";
 import { buildSynthesisNotePreview } from "./review/buildSnapshot";
-import { ReviewWorkspaceTab, SynthesisPeriodType } from "./review/types";
+import { ReviewWorkspaceTab, SidebarMode, SynthesisPeriodType } from "./review/types";
 import { createTemplateStrategies } from "./templates/strategies";
 import {
     buildJournalMigrationPlan,
@@ -67,6 +67,7 @@ export interface JournalystPluginSettings {
     basesIntegrationEnabled: boolean;
     remindersEnabled: boolean;
     osNotificationsEnabled: boolean;
+    sidebarMode: SidebarMode;
     noteDateFormat: string;
     noteDateFormatHistory: string[];
     journalCadences: Record<string, JournalCadenceConfig>;
@@ -87,6 +88,7 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
     basesIntegrationEnabled: false,
     remindersEnabled: false,
     osNotificationsEnabled: false,
+    sidebarMode: 'journals-mini',
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
     journalCadences: {},
@@ -112,7 +114,7 @@ export default class JournalystPlugin extends Plugin {
     private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
         journalPath: null,
         anchorDate: moment().format('YYYY-MM-DD'),
-        activeTab: 'review',
+        activeTab: 'home',
     };
 
 	async onload() {
@@ -123,8 +125,8 @@ export default class JournalystPlugin extends Plugin {
 		this.addRibbonIcon('book-copy', 'Go to Journalyst view', () => {
             this.activateView();
         });
-        this.addRibbonIcon('history', 'Go to Journalyst review', () => {
-            this.activateReviewView();
+        this.addRibbonIcon('history', 'Open Journalyst sidebar', () => {
+            this.activateSidebarView();
         });
 
         this.app.workspace.onLayoutReady(() => {
@@ -152,7 +154,15 @@ export default class JournalystPlugin extends Plugin {
             id: 'open-journalyst-review',
             name: 'Open Journalyst review',
             callback: () => {
-                this.activateReviewView();
+                this.activateReviewView(undefined, undefined, 'review');
+            }
+        });
+
+        this.addCommand({
+            id: 'open-journalyst-sidebar',
+            name: 'Open Journalyst sidebar',
+            callback: () => {
+                this.activateSidebarView();
             }
         });
 
@@ -680,6 +690,16 @@ export default class JournalystPlugin extends Plugin {
     async updateOsNotificationsEnabled(enabled: boolean) {
         this.settings.osNotificationsEnabled = enabled;
         await this.saveSettings();
+    }
+
+    getSidebarMode() {
+        return this.settings.sidebarMode;
+    }
+
+    async updateSidebarMode(sidebarMode: SidebarMode) {
+        this.settings.sidebarMode = sidebarMode;
+        await this.saveSettings();
+        this.refreshSidebarView();
     }
 
     getNotificationPermissionStatus() {
@@ -1370,7 +1390,16 @@ export default class JournalystPlugin extends Plugin {
     }
 
     async activateView() {
+        await this.activateReviewView(undefined, undefined, 'home');
+    }
+
+    async activateSidebarView(sidebarMode?: SidebarMode) {
         const { workspace } = this.app;
+
+        if (sidebarMode && this.settings.sidebarMode !== sidebarMode) {
+            this.settings.sidebarMode = sidebarMode;
+            await this.saveSettings();
+        }
 
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_SIDE_BAR);
@@ -1392,10 +1421,11 @@ export default class JournalystPlugin extends Plugin {
         workspace.revealLeaf(leaf);
     }
 
-    async activateReviewView(journalPath?: string | null, anchorDate = moment().format('YYYY-MM-DD'), activeTab?: ReviewWorkspaceTab) {
+    async activateReviewView(journalPath?: string | null, anchorDate?: string, activeTab?: ReviewWorkspaceTab) {
         const { workspace } = this.app;
+        const resolvedAnchorDate = anchorDate ?? moment().format('YYYY-MM-DD');
         const targetJournalPath = journalPath ?? this.inferCurrentJournal()?.path ?? this.getDefaultReviewJournalPath();
-        await this.setReviewState(targetJournalPath, anchorDate, activeTab);
+        await this.setReviewState(targetJournalPath, resolvedAnchorDate, activeTab);
 
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_REVIEW);
@@ -1412,10 +1442,20 @@ export default class JournalystPlugin extends Plugin {
 
         const reviewView = leaf.view;
         if (reviewView instanceof ReviewView) {
-            reviewView.updateReviewState(targetJournalPath, anchorDate, activeTab);
+            reviewView.updateReviewState(targetJournalPath, resolvedAnchorDate, activeTab);
         }
 
         workspace.revealLeaf(leaf);
+    }
+
+    private refreshSidebarView() {
+        const sideBarLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SIDE_BAR);
+
+        sideBarLeaves.forEach(leaf => {
+            if (leaf.view instanceof SideBarView) {
+                leaf.view.renderView();
+            }
+        });
     }
 
 
@@ -1428,6 +1468,7 @@ export default class JournalystPlugin extends Plugin {
         this.settings.basesIntegrationEnabled = this.settings.basesIntegrationEnabled ?? false;
         this.settings.remindersEnabled = this.settings.remindersEnabled ?? false;
         this.settings.osNotificationsEnabled = this.settings.osNotificationsEnabled ?? false;
+        this.settings.sidebarMode = this.settings.sidebarMode ?? 'journals-mini';
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
         this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];

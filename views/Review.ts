@@ -16,6 +16,7 @@ import {
     SynthesisPeriodType,
     YearActivityCell,
 } from "../review/types";
+import { buildJournalHomeSummary, buildJournalOverviewData, renderJournalActionButtons, renderJournalHeatmap } from "./journalUi";
 import JournalystPlugin from "../main";
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
@@ -37,7 +38,7 @@ export class ReviewView extends ItemView {
     }
 
     getDisplayText() {
-        return "Journalyst Review";
+        return "Journalyst";
     }
 
     async onOpen() {
@@ -89,6 +90,11 @@ export class ReviewView extends ItemView {
             buildSynthesisNotePreview(selectedJournal, this.anchorDate, this.plugin.settings, periodType)
         );
 
+        if (this.activeTab === 'home') {
+            this.renderHomeTab();
+            return;
+        }
+
         if (this.activeTab === 'analytics') {
             this.renderAnalyticsTab(analyticsSnapshot);
             return;
@@ -104,40 +110,43 @@ export class ReviewView extends ItemView {
 
     private renderHeader() {
         const header = this.rootContainer.createEl('div', { cls: 'journalyst-review-header' });
-        header.createEl('h3', { text: 'Review' });
+        header.createEl('h3', { text: 'Journalyst' });
 
-        const controls = header.createEl('div', { cls: 'journalyst-review-controls' });
+        if (this.activeTab !== 'home') {
+            const controls = header.createEl('div', { cls: 'journalyst-review-controls' });
 
-        const journalSelectWrapper = controls.createEl('label', { cls: 'journalyst-review-control' });
-        journalSelectWrapper.createEl('span', { text: 'Journal' });
-        const journalSelect = journalSelectWrapper.createEl('select');
+            const journalSelectWrapper = controls.createEl('label', { cls: 'journalyst-review-control' });
+            journalSelectWrapper.createEl('span', { text: 'Journal' });
+            const journalSelect = journalSelectWrapper.createEl('select');
 
-        this.plugin.journals.forEach(journal => {
-            journalSelect.add(new Option(journal.name, journal.path, false, journal.path === this.selectedJournalPath));
-        });
+            this.plugin.journals.forEach(journal => {
+                journalSelect.add(new Option(journal.name, journal.path, false, journal.path === this.selectedJournalPath));
+            });
 
-        journalSelect.addEventListener('change', async () => {
-            this.selectedJournalPath = journalSelect.value || null;
-            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, this.activeTab);
-            this.render();
-        });
+            journalSelect.addEventListener('change', async () => {
+                this.selectedJournalPath = journalSelect.value || null;
+                await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, this.activeTab);
+                this.render();
+            });
 
-        const dateInputWrapper = controls.createEl('label', { cls: 'journalyst-review-control' });
-        dateInputWrapper.createEl('span', { text: 'Anchor date' });
-        const dateInput = dateInputWrapper.createEl('input', {
-            attr: {
-                type: 'date',
-                value: this.anchorDate,
-            },
-        });
+            const dateInputWrapper = controls.createEl('label', { cls: 'journalyst-review-control' });
+            dateInputWrapper.createEl('span', { text: 'Anchor date' });
+            const dateInput = dateInputWrapper.createEl('input', {
+                attr: {
+                    type: 'date',
+                    value: this.anchorDate,
+                },
+            });
 
-        dateInput.addEventListener('change', async () => {
-            this.anchorDate = dateInput.value || moment().format('YYYY-MM-DD');
-            await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, this.activeTab);
-            this.render();
-        });
+            dateInput.addEventListener('change', async () => {
+                this.anchorDate = dateInput.value || moment().format('YYYY-MM-DD');
+                await this.plugin.setReviewState(this.selectedJournalPath, this.anchorDate, this.activeTab);
+                this.render();
+            });
+        }
 
         const tabs = this.rootContainer.createEl('div', { cls: 'journalyst-review-tabs' });
+        this.renderTabButton(tabs, 'home', 'Home');
         this.renderTabButton(tabs, 'review', 'Review');
         this.renderTabButton(tabs, 'analytics', 'Analytics');
         this.renderTabButton(tabs, 'synthesis', 'Synthesis');
@@ -173,6 +182,84 @@ export class ReviewView extends ItemView {
         this.renderSummaryGrid('Calendar summary', snapshot.calendarSummaries);
         this.renderSummaryGrid('Rolling summary', snapshot.rollingSummaries);
         this.renderInsights(snapshot);
+    }
+
+    private renderHomeTab() {
+        const summary = buildJournalHomeSummary(this.plugin);
+        this.renderOverview('Home', moment().format('YYYY-MM-DD'), [
+            { label: 'Journals', value: `${summary.totalJournals}` },
+            { label: 'Due now', value: `${summary.dueTodayCount}` },
+            { label: 'Missed', value: `${summary.missedCount}` },
+            { label: 'Reminders active', value: `${summary.remindersActiveCount}` },
+        ], [
+            {
+                label: 'Open sidebar',
+                onClick: () => {
+                    void this.plugin.activateSidebarView();
+                },
+            },
+            {
+                label: 'Sidebar: Home',
+                onClick: () => {
+                    void this.plugin.activateSidebarView('home-mini');
+                },
+            },
+            {
+                label: 'Sidebar: Journals',
+                onClick: () => {
+                    void this.plugin.activateSidebarView('journals-mini');
+                },
+            },
+        ]);
+
+        const urgentCallouts: AnalyticsCallout[] = [];
+        if (summary.dueTodayCount > 0) {
+            urgentCallouts.push({
+                title: 'Due today',
+                body: `${summary.dueTodayCount} journal${summary.dueTodayCount === 1 ? '' : 's'} need attention today.`,
+            });
+        }
+        if (summary.missedCount > 0) {
+            urgentCallouts.push({
+                title: 'Misses to revisit',
+                body: `${summary.missedCount} missed expected entries are still outstanding.`,
+            });
+        }
+        if (summary.remindersActiveCount > 0) {
+            urgentCallouts.push({
+                title: 'Reminders running',
+                body: `${summary.remindersActiveCount} journal${summary.remindersActiveCount === 1 ? '' : 's'} have active reminder rules.`,
+            });
+        }
+
+        if (urgentCallouts.length > 0) {
+            this.renderCallouts('Right now', urgentCallouts);
+        }
+
+        const section = this.createSection('Journals', 'Quick-create, glance at this month, and jump into deeper review when you need it.');
+        const grid = section.createEl('div', { cls: 'journalyst-home-grid' });
+
+        this.plugin.journals.forEach(journal => {
+            const overview = buildJournalOverviewData(this.plugin, journal);
+            const card = grid.createEl('div', { cls: 'journalyst-home-card' });
+            const topRow = card.createEl('div', { cls: 'journalyst-home-card-header' });
+            topRow.createEl('h4', { text: journal.name });
+            const badge = topRow.createEl('span', { cls: 'journalyst-home-status-badge', text: overview.cadenceStatusText });
+            if (overview.dueToday) {
+                badge.addClass('is-due');
+            } else if (overview.outstandingMisses > 0) {
+                badge.addClass('is-missed');
+            }
+
+            const meta = card.createEl('div', { cls: 'journalyst-home-card-meta' });
+            meta.createEl('span', { text: overview.cadenceLabel, cls: 'journalyst-review-meta' });
+            meta.createEl('span', { text: overview.reminderStatusText, cls: 'journalyst-review-meta' });
+
+            renderJournalHeatmap(card, overview, (date) => {
+                void this.plugin.createJournalEntry(journal, date);
+            });
+            renderJournalActionButtons(card, this.plugin, overview, { includeSynthesis: true });
+        });
     }
 
     private renderAnalyticsTab(snapshot: JournalAnalyticsSnapshot) {
@@ -256,7 +343,12 @@ export class ReviewView extends ItemView {
         });
     }
 
-    private renderOverview(journalName: string, anchorDate: string, stats: Array<{ label: string; value: string }>) {
+    private renderOverview(
+        journalName: string,
+        anchorDate: string,
+        stats: Array<{ label: string; value: string }>,
+        actions?: Array<{ label: string; onClick: () => void }>,
+    ) {
         const section = this.rootContainer.createEl('section', { cls: 'journalyst-review-overview' });
         const summary = section.createEl('div', { cls: 'journalyst-review-overview-copy' });
         summary.createEl('h3', { text: journalName });
@@ -264,6 +356,15 @@ export class ReviewView extends ItemView {
             text: `Review anchored to ${anchorDate}. Track consistency, revisit old notes, and turn patterns into reflection.`,
             cls: 'journalyst-review-section-description',
         });
+
+        if (actions && actions.length > 0) {
+            const actionRow = summary.createEl('div', { cls: 'journalyst-review-overview-actions' });
+            actions.forEach(action => {
+                const button = actionRow.createEl('button', { text: action.label, cls: 'journal-section-button' });
+                button.type = 'button';
+                button.addEventListener('click', action.onClick);
+            });
+        }
 
         const keyStats = section.createEl('div', { cls: 'journalyst-review-overview-stats' });
         stats.forEach(stat => {
