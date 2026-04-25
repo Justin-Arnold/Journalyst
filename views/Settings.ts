@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
-import JournalystPlugin from "../main";
+import JournalystPlugin, { TemplateEngine } from "../main";
 
 export class JournalystSettingsTab extends PluginSettingTab {
 	plugin: JournalystPlugin;
@@ -10,6 +10,10 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		void this.displayAsync();
+	}
+
+	private async displayAsync() {
 		const {containerEl} = this;
 
 		containerEl.empty();
@@ -33,29 +37,58 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					});
 			});
 
-		containerEl.createEl('h3', { text: 'Templater templates' });
+		new Setting(containerEl)
+			.setName('Template engine')
+			.setDesc('Choose which template system Journalyst should use when creating journal entries.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('none', 'None');
+				dropdown.addOption('core', 'Obsidian Templates');
+				dropdown.addOption('templater', 'Templater');
+				dropdown.setValue(this.plugin.settings.templateEngine)
+					.onChange(async (value: TemplateEngine) => {
+						this.plugin.settings.templateEngine = value;
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			});
 
-		const templaterAvailability = this.plugin.getTemplaterAvailability();
-		const templaterTemplateFiles = this.plugin.getTemplaterTemplateFiles();
+		containerEl.createEl('h3', { text: 'Journal templates' });
 
-		if (templaterAvailability === 'not-installed') {
-			this.addTemplaterNotice('Templater is not installed. Install and enable Templater to choose templates for Journalyst journals.');
+		if (this.plugin.settings.templateEngine === 'none') {
+			this.addTemplateNotice('Journalyst will create entries with its default note content.');
 			return;
 		}
 
-		if (templaterAvailability === 'disabled') {
-			this.addTemplaterNotice('Templater is installed but not enabled. Enable Templater to choose templates for Journalyst journals.');
+		const templateEngine = this.plugin.settings.templateEngine;
+		const templateAvailability = await this.plugin.getTemplateAvailability(templateEngine);
+		const templateFiles = await this.plugin.getTemplateFiles(templateEngine);
+
+		if (templateAvailability === 'not-installed') {
+			this.addTemplateNotice('Templater is not installed. Install and enable Templater to choose templates for Journalyst journals.');
 			return;
 		}
 
-		if (templaterAvailability === 'no-template-folder') {
-			this.addTemplaterNotice('Templater does not have a template folder configured. Set "Template folder location" in Templater settings first.');
+		if (templateAvailability === 'disabled') {
+			if (templateEngine === 'core') {
+				this.addTemplateNotice('The core Templates plugin is not enabled. Enable it in Core plugins to choose templates for Journalyst journals.');
+			} else {
+				this.addTemplateNotice('Templater is installed but not enabled. Enable Templater to choose templates for Journalyst journals.');
+			}
 			return;
 		}
 
-		if (templaterTemplateFiles.length === 0) {
-			const templateFolder = this.plugin.getTemplaterTemplateFolder();
-			this.addTemplaterNotice(`No markdown templates were found in ${templateFolder}. Add templates there to assign them to Journalyst journals.`);
+		if (templateAvailability === 'no-template-folder') {
+			if (templateEngine === 'core') {
+				this.addTemplateNotice('The core Templates plugin does not have a template folder configured. Set "Template folder location" in Templates settings first.');
+			} else {
+				this.addTemplateNotice('Templater does not have a template folder configured. Set "Template folder location" in Templater settings first.');
+			}
+			return;
+		}
+
+		if (templateFiles.length === 0) {
+			const templateFolder = await this.plugin.getTemplateFolder(templateEngine);
+			this.addTemplateNotice(`No markdown templates were found in ${templateFolder}. Add templates there to assign them to Journalyst journals.`);
 			return;
 		}
 
@@ -66,16 +99,16 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				.addDropdown(dropdown => {
 					dropdown.addOption('', 'None');
 
-					templaterTemplateFiles.forEach(file => {
+					templateFiles.forEach(file => {
 						dropdown.addOption(file.path, file.path);
 					});
 
-					dropdown.setValue(this.plugin.settings.journalTemplates[journal.path] ?? '')
+					dropdown.setValue(this.plugin.getJournalTemplatePath(templateEngine, journal.path) ?? '')
 						.onChange(async (value) => {
 							if (value) {
-								this.plugin.settings.journalTemplates[journal.path] = value;
+								this.plugin.setJournalTemplatePath(templateEngine, journal.path, value);
 							} else {
-								delete this.plugin.settings.journalTemplates[journal.path];
+								this.plugin.clearJournalTemplatePath(templateEngine, journal.path);
 							}
 
 							await this.plugin.saveSettings();
@@ -84,7 +117,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		});
 	}
 
-	private addTemplaterNotice(message: string) {
+	private addTemplateNotice(message: string) {
 		new Setting(this.containerEl)
 			.setDesc(message);
 	}
