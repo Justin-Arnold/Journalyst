@@ -183,6 +183,14 @@ export default class JournalystPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: 'open-journalyst-reminders',
+            name: 'Open Journalyst reminders',
+            callback: () => {
+                this.activateReviewView(undefined, undefined, 'reminders');
+            }
+        });
+
+        this.addCommand({
             id: 'open-journalyst-review-current-journal',
             name: 'Open review for current journal',
             callback: () => {

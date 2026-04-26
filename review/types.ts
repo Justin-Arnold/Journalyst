@@ -9,7 +9,7 @@ export interface ReviewAnchor {
     date: string;
 }
 
-export type ReviewWorkspaceTab = 'home' | 'review' | 'analytics' | 'synthesis';
+export type ReviewWorkspaceTab = 'home' | 'review' | 'analytics' | 'synthesis' | 'reminders';
 export type SynthesisPeriodType = 'weekly' | 'monthly' | 'quarterly';
 export type SidebarMode = 'home-mini' | 'journals-mini';
 

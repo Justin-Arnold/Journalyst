@@ -1,4 +1,5 @@
 import { ItemView, moment, normalizePath, setIcon, WorkspaceLeaf } from "obsidian";
+import { ReviewReminderPeriod } from "../reminders";
 import {
     buildJournalAnalyticsSnapshot,
     buildJournalReviewSnapshot,
@@ -109,6 +110,11 @@ export class ReviewView extends ItemView {
             return;
         }
 
+        if (this.activeTab === 'reminders') {
+            this.renderRemindersTab();
+            return;
+        }
+
         this.renderReviewTab(reviewSnapshot);
     }
 
@@ -154,6 +160,7 @@ export class ReviewView extends ItemView {
         this.renderTabButton(tabs, 'review', 'Review', 'history');
         this.renderTabButton(tabs, 'analytics', 'Analytics', 'chart-column');
         this.renderTabButton(tabs, 'synthesis', 'Synthesis', 'file-pen-line');
+        this.renderTabButton(tabs, 'reminders', 'Reminders', 'bell');
     }
 
     private renderTabButton(container: HTMLElement, tab: ReviewWorkspaceTab, label: string, icon: string) {
@@ -260,6 +267,323 @@ export class ReviewView extends ItemView {
             });
             renderJournalActionButtons(card, this.plugin, overview, { includeSynthesis: true });
         });
+    }
+
+    private renderRemindersTab() {
+        const permissionStatus = this.plugin.getNotificationPermissionStatus();
+        const permissionText = permissionStatus === 'granted'
+            ? 'OS notifications are available.'
+            : permissionStatus === 'denied'
+                ? 'OS notifications are denied, so Journalyst will fall back to in-app notices.'
+                : permissionStatus === 'default'
+                    ? 'OS notifications are not granted yet. You can request permission below.'
+                    : 'OS notifications are not available in this environment. Journalyst will use in-app notices.';
+        const activeCount = this.plugin.journals.filter(journal =>
+            this.plugin.getJournalReminderSummary(journal.path) === 'Reminders active'
+        ).length;
+
+        this.renderOverview('Reminders', moment().format('YYYY-MM-DD'), [
+            { label: 'Global', value: this.plugin.areRemindersEnabled() ? 'On' : 'Off' },
+            { label: 'Permission', value: this.getPermissionLabel(permissionStatus) },
+            { label: 'Journals active', value: `${activeCount}` },
+            { label: 'Delivery', value: this.plugin.areOsNotificationsEnabled() ? 'OS preferred' : 'In-app' },
+        ]);
+
+        const globalSection = this.createSection('Global reminder settings', 'Reminders run only while Obsidian is open. Use OS delivery when it is available, otherwise Journalyst falls back to in-app notices.');
+        const globalGrid = globalSection.createEl('div', { cls: 'journalyst-reminder-global-grid' });
+
+        this.renderReminderToggleCard(globalGrid, 'Enable reminders', permissionText, this.plugin.areRemindersEnabled(), async (enabled) => {
+            await this.plugin.updateRemindersEnabled(enabled);
+            this.render();
+        });
+
+        this.renderReminderToggleCard(globalGrid, 'Prefer OS notifications', 'When enabled and permitted, Journalyst will also use operating-system notifications.', this.plugin.areOsNotificationsEnabled(), async (enabled) => {
+            await this.plugin.updateOsNotificationsEnabled(enabled);
+            this.render();
+        }, !this.plugin.areRemindersEnabled());
+
+        const actionsCard = globalGrid.createEl('div', { cls: 'journalyst-reminder-global-card' });
+        actionsCard.createEl('h5', { text: 'Permission and testing' });
+        actionsCard.createEl('p', { text: permissionText, cls: 'journalyst-review-empty-text' });
+        const actionRow = actionsCard.createEl('div', { cls: 'journalyst-review-overview-actions' });
+        const requestButton = actionRow.createEl('button', { text: 'Request permission' });
+        requestButton.type = 'button';
+        requestButton.disabled = permissionStatus === 'granted' || permissionStatus === 'unsupported';
+        requestButton.addEventListener('click', async () => {
+            await this.plugin.requestNotificationPermission();
+            this.render();
+        });
+        const testButton = actionRow.createEl('button', { text: 'Test notification' });
+        testButton.type = 'button';
+        testButton.disabled = !this.plugin.areRemindersEnabled();
+        testButton.addEventListener('click', async () => {
+            await this.plugin.sendTestReminderNotification();
+        });
+
+        const section = this.createSection('Journal reminder rules', 'Configure due-entry and review nudges per journal. This scales much better than the old settings panel once you have several journals.');
+        const grid = section.createEl('div', { cls: 'journalyst-reminder-journal-grid' });
+
+        this.plugin.journals.forEach(journal => {
+            const cadence = this.plugin.getJournalCadence(journal.path);
+            const reminderSettings = this.plugin.getJournalReminderSettings(journal.path);
+            const card = grid.createEl('div', { cls: 'journalyst-reminder-journal-card' });
+            const header = card.createEl('div', { cls: 'journalyst-reminder-journal-header' });
+            header.createEl('h4', { text: journal.name });
+            header.createEl('span', {
+                cls: 'journalyst-home-status-badge',
+                text: this.plugin.getJournalReminderSummary(journal.path),
+            });
+
+            const meta = card.createEl('div', { cls: 'journalyst-home-card-meta' });
+            meta.createEl('span', { text: this.describeCadence(cadence.type), cls: 'journalyst-review-meta' });
+            meta.createEl('span', { text: cadence.type === 'adhoc' ? 'Entry reminders unavailable' : 'Entry reminders supported', cls: 'journalyst-review-meta' });
+
+            if (cadence.type !== 'adhoc') {
+                this.renderEntryReminderRule(card, journal.path, reminderSettings);
+            } else {
+                const note = card.createEl('div', { cls: 'journalyst-reminder-rule-card is-muted' });
+                note.createEl('h5', { text: 'Entry reminder' });
+                note.createEl('p', { text: 'Ad hoc journals do not use due-entry reminders because they are intentionally not tracked on a schedule.', cls: 'journalyst-review-empty-text' });
+            }
+
+            const reviewGrid = card.createEl('div', { cls: 'journalyst-reminder-rule-grid' });
+            this.renderReviewReminderRule(reviewGrid, journal.path, reminderSettings, 'weekly');
+            this.renderReviewReminderRule(reviewGrid, journal.path, reminderSettings, 'monthly');
+            this.renderReviewReminderRule(reviewGrid, journal.path, reminderSettings, 'quarterly');
+        });
+    }
+
+    private renderReminderToggleCard(container: HTMLElement, title: string, description: string, enabled: boolean, onToggle: (enabled: boolean) => Promise<void>, disabled = false) {
+        const card = container.createEl('div', { cls: 'journalyst-reminder-global-card' });
+        const topRow = card.createEl('div', { cls: 'journalyst-reminder-inline-row' });
+        topRow.createEl('h5', { text: title });
+        const toggle = topRow.createEl('input', { attr: { type: 'checkbox' } }) as HTMLInputElement;
+        toggle.checked = enabled;
+        toggle.disabled = disabled;
+        toggle.addEventListener('change', () => {
+            void onToggle(toggle.checked);
+        });
+        card.createEl('p', { text: description, cls: 'journalyst-review-empty-text' });
+    }
+
+    private renderEntryReminderRule(container: HTMLElement, journalPath: string, reminderSettings: ReturnType<JournalystPlugin['getJournalReminderSettings']>) {
+        const card = container.createEl('div', { cls: 'journalyst-reminder-rule-card' });
+        const reminder = reminderSettings.entryReminder;
+        this.renderRuleHeader(card, 'Entry reminder', 'Nudge once when a scheduled entry is due and still missing.', reminder.enabled, async (enabled) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                entryReminder: {
+                    ...reminder,
+                    enabled,
+                },
+            });
+            this.render();
+        });
+
+        const fields = card.createEl('div', { cls: 'journalyst-reminder-rule-fields' });
+        this.renderTimeField(fields, 'Time', reminder.time, async (value) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                entryReminder: {
+                    ...reminder,
+                    time: value,
+                },
+            });
+        }, !reminder.enabled);
+        this.renderDeliveryField(fields, reminder.deliveryMode, async (value) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                entryReminder: {
+                    ...reminder,
+                    deliveryMode: value,
+                },
+            });
+        }, !reminder.enabled);
+    }
+
+    private renderReviewReminderRule(container: HTMLElement, journalPath: string, reminderSettings: ReturnType<JournalystPlugin['getJournalReminderSettings']>, period: ReviewReminderPeriod) {
+        const reminder = reminderSettings.reviewReminders[period];
+        const card = container.createEl('div', { cls: 'journalyst-reminder-rule-card' });
+        const title = period === 'weekly' ? 'Weekly review' : period === 'monthly' ? 'Monthly reflection' : 'Quarter summary';
+        const description = period === 'weekly'
+            ? 'Prompt a weekly synthesis pass for this journal.'
+            : period === 'monthly'
+                ? 'Prompt a monthly reflection for this journal.'
+                : 'Prompt a summary after each quarter ends.';
+        this.renderRuleHeader(card, title, description, reminder.enabled, async (enabled) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                reviewReminders: {
+                    ...reminderSettings.reviewReminders,
+                    [period]: {
+                        ...reminder,
+                        enabled,
+                    },
+                },
+            });
+            this.render();
+        });
+
+        const fields = card.createEl('div', { cls: 'journalyst-reminder-rule-fields' });
+        this.renderTimeField(fields, 'Time', reminder.time, async (value) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                reviewReminders: {
+                    ...reminderSettings.reviewReminders,
+                    [period]: {
+                        ...reminder,
+                        time: value,
+                    },
+                },
+            });
+        }, !reminder.enabled);
+        this.renderDeliveryField(fields, reminder.deliveryMode, async (value) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                reviewReminders: {
+                    ...reminderSettings.reviewReminders,
+                    [period]: {
+                        ...reminder,
+                        deliveryMode: value,
+                    },
+                },
+            });
+        }, !reminder.enabled);
+
+        if (period === 'weekly') {
+            this.renderSelectField(fields, 'Weekday', this.buildWeekdayOptions(), reminderSettings.reviewReminders.weekly.weekday.toString(), async (value) => {
+                await this.plugin.updateJournalReminderSettings(journalPath, {
+                    ...reminderSettings,
+                    reviewReminders: {
+                        ...reminderSettings.reviewReminders,
+                        weekly: {
+                            ...reminderSettings.reviewReminders.weekly,
+                            weekday: Number.parseInt(value, 10),
+                        },
+                    },
+                });
+            }, !reminder.enabled);
+            return;
+        }
+
+        if (period === 'monthly') {
+            this.renderSelectField(fields, 'Day', Array.from({ length: 28 }, (_, index) => ({
+                value: String(index + 1),
+                label: `Day ${index + 1}`,
+            })), reminderSettings.reviewReminders.monthly.dayOfMonth.toString(), async (value) => {
+                await this.plugin.updateJournalReminderSettings(journalPath, {
+                    ...reminderSettings,
+                    reviewReminders: {
+                        ...reminderSettings.reviewReminders,
+                        monthly: {
+                            ...reminderSettings.reviewReminders.monthly,
+                            dayOfMonth: Number.parseInt(value, 10),
+                        },
+                    },
+                });
+            }, !reminder.enabled);
+            return;
+        }
+
+        this.renderSelectField(fields, 'Offset', Array.from({ length: 15 }, (_, index) => ({
+            value: String(index),
+            label: index === 0 ? 'Quarter end' : `${index} day${index === 1 ? '' : 's'} after`,
+        })), reminderSettings.reviewReminders.quarterly.daysAfterQuarterEnd.toString(), async (value) => {
+            await this.plugin.updateJournalReminderSettings(journalPath, {
+                ...reminderSettings,
+                reviewReminders: {
+                    ...reminderSettings.reviewReminders,
+                    quarterly: {
+                        ...reminderSettings.reviewReminders.quarterly,
+                        daysAfterQuarterEnd: Number.parseInt(value, 10),
+                    },
+                },
+            });
+        }, !reminder.enabled);
+    }
+
+    private renderRuleHeader(container: HTMLElement, title: string, description: string, enabled: boolean, onToggle: (enabled: boolean) => Promise<void>) {
+        const topRow = container.createEl('div', { cls: 'journalyst-reminder-inline-row' });
+        const copy = topRow.createEl('div');
+        copy.createEl('h5', { text: title });
+        copy.createEl('p', { text: description, cls: 'journalyst-review-empty-text' });
+        const toggle = topRow.createEl('input', { attr: { type: 'checkbox' } }) as HTMLInputElement;
+        toggle.checked = enabled;
+        toggle.addEventListener('change', () => {
+            void onToggle(toggle.checked);
+        });
+    }
+
+    private renderTimeField(container: HTMLElement, label: string, value: string, onChange: (value: string) => Promise<void>, disabled: boolean) {
+        const field = container.createEl('label', { cls: 'journalyst-reminder-field' });
+        field.createEl('span', { text: label });
+        const input = field.createEl('input', { attr: { type: 'time', value } }) as HTMLInputElement;
+        input.disabled = disabled;
+        input.addEventListener('change', () => {
+            void onChange(input.value);
+        });
+    }
+
+    private renderDeliveryField(container: HTMLElement, value: string, onChange: (value: 'in-app' | 'os-preferred') => Promise<void>, disabled: boolean) {
+        this.renderSelectField(container, 'Delivery', [
+            { value: 'in-app', label: 'In-app' },
+            { value: 'os-preferred', label: 'OS preferred' },
+        ], value, async (nextValue) => {
+            await onChange(nextValue as 'in-app' | 'os-preferred');
+        }, disabled);
+    }
+
+    private renderSelectField(container: HTMLElement, label: string, options: Array<{ value: string; label: string }>, value: string, onChange: (value: string) => Promise<void>, disabled: boolean) {
+        const field = container.createEl('label', { cls: 'journalyst-reminder-field' });
+        field.createEl('span', { text: label });
+        const select = field.createEl('select') as HTMLSelectElement;
+        select.disabled = disabled;
+        options.forEach(option => {
+            select.add(new Option(option.label, option.value, false, option.value === value));
+        });
+        select.value = value;
+        select.addEventListener('change', () => {
+            void onChange(select.value);
+        });
+    }
+
+    private buildWeekdayOptions() {
+        return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((label, index) => ({
+            value: index.toString(),
+            label,
+        }));
+    }
+
+    private getPermissionLabel(permissionStatus: NotificationPermission | 'unsupported') {
+        if (permissionStatus === 'granted') {
+            return 'Granted';
+        }
+
+        if (permissionStatus === 'denied') {
+            return 'Denied';
+        }
+
+        if (permissionStatus === 'default') {
+            return 'Not asked';
+        }
+
+        return 'Unavailable';
+    }
+
+    private describeCadence(type: string) {
+        if (type === 'daily') {
+            return 'Daily cadence';
+        }
+        if (type === 'weekdays') {
+            return 'Weekdays only';
+        }
+        if (type === 'weekly-days') {
+            return 'Specific weekdays';
+        }
+        if (type === 'interval') {
+            return 'Custom interval';
+        }
+        return 'Ad hoc';
     }
 
     private renderAnalyticsTab(snapshot: JournalAnalyticsSnapshot) {

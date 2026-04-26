@@ -311,6 +311,84 @@
     gap: 0.9rem;
 }
 
+.journalyst-reminder-global-grid,
+.journalyst-reminder-journal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.journalyst-reminder-global-card,
+.journalyst-reminder-journal-card,
+.journalyst-reminder-rule-card {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: calc(var(--radius-s) + 2px);
+}
+
+.journalyst-reminder-global-card,
+.journalyst-reminder-rule-card {
+    padding: 1rem;
+}
+
+.journalyst-reminder-journal-card {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.journalyst-reminder-journal-header,
+.journalyst-reminder-inline-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.journalyst-reminder-journal-header h4,
+.journalyst-reminder-global-card h5,
+.journalyst-reminder-rule-card h5 {
+    margin: 0;
+}
+
+.journalyst-reminder-inline-row p {
+    margin-bottom: 0;
+}
+
+.journalyst-reminder-rule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.8rem;
+}
+
+.journalyst-reminder-rule-card.is-muted {
+    background: rgba(var(--background-primary-rgb), 0.28);
+}
+
+.journalyst-reminder-rule-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+}
+
+.journalyst-reminder-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.journalyst-reminder-field span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.journalyst-reminder-field select,
+.journalyst-reminder-field input {
+    width: 100%;
+}
+
 .journalyst-review-visual-card {
     grid-column: span 4;
     background: var(--background-secondary);
@@ -697,6 +775,12 @@
 
     .journalyst-review-grid,
     .journalyst-review-list {
+        grid-template-columns: 1fr;
+    }
+
+    .journalyst-reminder-global-grid,
+    .journalyst-reminder-journal-grid,
+    .journalyst-reminder-rule-grid {
         grid-template-columns: 1fr;
     }
 
