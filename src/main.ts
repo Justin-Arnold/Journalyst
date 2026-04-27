@@ -1,66 +1,68 @@
-import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, moment, parseYaml } from 'obsidian';
+import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, parseYaml } from 'obsidian';
+import moment from 'moment';
 import {
-    BasesGenerationTarget,
+    type BasesGenerationTarget,
     buildEntryBaseContents,
     buildJournalystNoteProperties,
     buildReflectionBaseContents,
     getFrontmatterPropertyDiff,
     getJournalystBaseFileName,
-    JournalNotePropertyBackfillItem,
-    JournalystEntryType,
+    type JournalNotePropertyBackfillItem,
+    type ParsedJournalystNoteKind,
+    type JournalystEntryType,
     parseJournalystNoteKind,
     upsertFrontmatterProperties,
-} from "./bases";
-import { JournalCadenceConfig, normalizeJournalCadence } from "./cadence";
-import { BUILT_IN_PROMPT_LISTS } from "./promptLibrary";
+} from "../bases";
+import { type JournalCadenceConfig, normalizeJournalCadence } from "../cadence";
+import { BUILT_IN_PROMPT_LISTS } from "../promptLibrary";
 import {
     createCustomPromptListDefinition,
     createPromptBlock,
     getPromptTemplateContext,
-    JournalPromptHistory,
-    JournalPromptSettings,
+    type JournalPromptHistory,
+    type JournalPromptSettings,
     normalizeJournalPromptSettings,
-    PromptListDefinition,
-    ResolvedPrompt,
+    type PromptListDefinition,
+    type ResolvedPrompt,
     resolvePromptForJournal,
     resolvePromptList,
-} from "./prompts";
+} from "../prompts";
 import {
     buildReminderHistoryKey,
     buildSynthesisReminderFileName,
     getReminderEventsForJournal,
     hasAnyEnabledReminder,
-    JournalReminderSettings,
+    type JournalReminderSettings,
     normalizeJournalReminderSettings,
-    ReminderOccurrenceRecord,
-    ResolvedReminderEvent,
-    ReviewReminderPeriod,
-} from "./reminders";
-import { buildSynthesisNotePreview } from "./review/buildSnapshot";
-import { ReviewWorkspaceTab, SidebarMode, SynthesisPeriodType } from "./review/types";
-import { createTemplateStrategies } from "./templates/strategies";
+    type ReminderOccurrenceRecord,
+    type ResolvedReminderEvent,
+    type ReviewReminderPeriod,
+} from "../reminders";
+import { buildSynthesisNotePreview } from "../review/buildSnapshot";
+import { type ReviewWorkspaceTab, type SidebarMode, type SynthesisPeriodType } from "../review/types";
+import { createTemplateStrategies } from "../templates/strategies";
 import {
     buildJournalMigrationPlan,
     findJournalEntryFile,
     formatJournalNoteBaseName,
     formatJournalNoteFileName,
-    JournalNoteMigrationItem,
+    type JournalNoteMigrationItem,
     parseJournalDateFromFile,
-} from "./journalNaming";
+} from "../journalNaming";
 import {
-    CoreTemplatesSettings,
-    JournalTemplateEngineStrategy,
-    ObsidianInternalPlugins,
-    ObsidianPlugins,
-    TemplateAvailability,
-    TemplateEngine,
-    TemplateFailureBehavior,
-    TemplaterPlugin,
-    TemplatePromptContext,
-} from "./templates/types";
-import { ReviewView, VIEW_TYPE_REVIEW } from "./views/Review";
-import { SideBarView, VIEW_TYPE_SIDE_BAR } from "./views/SideBar";
-import { JournalystSettingsTab } from "./views/Settings";
+    type CoreTemplatesSettings,
+    type JournalTemplateEngineStrategy,
+    type ObsidianInternalPlugins,
+    type ObsidianPlugins,
+    type TemplateAvailability,
+    type TemplateEngine,
+    type TemplateFailureBehavior,
+    type TemplaterPlugin,
+    type TemplatePromptContext,
+} from "../templates/types";
+import { ReviewView, VIEW_TYPE_REVIEW } from "../views/Review";
+import { SideBarView, VIEW_TYPE_SIDE_BAR } from "../views/SideBar";
+import { JournalystSettingsTab } from "../views/Settings";
 
 export interface JournalystPluginSettings {
     rootDirectory: string;
@@ -105,11 +107,11 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
 
 
 export default class JournalystPlugin extends Plugin {
-	settings: JournalystPluginSettings;
+	settings!: JournalystPluginSettings;
     journals: TFolder[] = [];
     private journalCommandIds: string[] = [];
     // Strategy instances keep engine-specific behavior out of the main plugin flow.
-    private templateStrategies: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
+    private templateStrategies!: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
     private lastReminderCheckMinute: string | null = null;
     private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
         journalPath: null,
@@ -1096,7 +1098,7 @@ export default class JournalystPlugin extends Plugin {
             }
 
             const parsedEntryDate = this.parseJournalDateFromFile(child);
-            const noteKind = parsedEntryDate
+            const noteKind: ParsedJournalystNoteKind | null = parsedEntryDate
                 ? { date: parsedEntryDate, entryType: 'entry' as JournalystEntryType }
                 : parseJournalystNoteKind(child);
 

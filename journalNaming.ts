@@ -1,4 +1,5 @@
-import { TAbstractFile, TFile, TFolder, moment, normalizePath } from 'obsidian';
+import { TAbstractFile, TFile, TFolder, normalizePath } from 'obsidian';
+import moment from 'moment';
 
 export interface JournalDateSettings {
     noteDateFormat: string;

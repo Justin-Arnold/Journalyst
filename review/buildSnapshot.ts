@@ -1,4 +1,5 @@
-import { TFolder, moment } from 'obsidian';
+import { TFolder } from 'obsidian';
+import moment from 'moment';
 import {
     getCadenceLabel,
     getCadenceStatus,
@@ -10,22 +11,22 @@ import {
     isExpectedOnDate,
     normalizeJournalCadence,
 } from '../cadence';
-import { JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
+import { type JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
-    ActivityCell,
-    AnalyticsCallout,
-    DistributionDatum,
-    JournalAnalyticsSnapshot,
-    JournalEntryRecord,
-    JournalReviewSnapshot,
-    LookbackResult,
-    PeriodSummary,
-    RankedPeriod,
-    ReviewInsights,
-    RollingComparison,
-    SynthesisNotePreview,
-    SynthesisPeriodType,
-    YearActivityCell,
+    type ActivityCell,
+    type AnalyticsCallout,
+    type DistributionDatum,
+    type JournalAnalyticsSnapshot,
+    type JournalEntryRecord,
+    type JournalReviewSnapshot,
+    type LookbackResult,
+    type PeriodSummary,
+    type RankedPeriod,
+    type ReviewInsights,
+    type RollingComparison,
+    type SynthesisNotePreview,
+    type SynthesisPeriodType,
+    type YearActivityCell,
 } from './types';
 
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

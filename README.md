@@ -14,3 +14,7 @@ Please feel free to provide feedback and feature requests! I'm happy to help and
 - [ ] Add commands to create a new journal entry for the current day for a given Journal
 - [ ] Allow the use of Templates for journal entries.
 - [ ] Allow changing the format of the journal entry filenames
+
+## Attributions
+- https://github.com/guopenghui/obsidian-vue-starter/
+    - Used this as a template to convert this plugin to vue

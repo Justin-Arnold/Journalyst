@@ -1,10 +1,10 @@
 import { App, DropdownComponent, PluginSettingTab, Setting, TFolder } from 'obsidian';
-import { JournalNotePropertyBackfillItem } from "../bases";
-import { JournalCadenceType } from "../cadence";
-import { JournalPromptSettings, PromptDeliveryMode, PromptSelectionMode, PromptSourceType } from "../prompts";
-import { SidebarMode } from "../review/types";
-import { TemplateEngine } from "../templates/types";
-import JournalystPlugin from "../main";
+import { type JournalNotePropertyBackfillItem } from "../bases";
+import { type JournalCadenceType } from "../cadence";
+import { type JournalPromptSettings, type PromptDeliveryMode, type PromptSelectionMode, type PromptSourceType } from "../prompts";
+import { type SidebarMode } from "../review/types";
+import { type TemplateEngine } from "../templates/types";
+import JournalystPlugin from "../src/main";
 
 export class JournalystSettingsTab extends PluginSettingTab {
 	plugin: JournalystPlugin;
@@ -237,12 +237,13 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					dropdown.addOption('interval', 'Custom interval');
 					dropdown.addOption('adhoc', 'Ad hoc / no tracking');
 					dropdown.setValue(cadence.type)
-						.onChange(async (value: JournalCadenceType) => {
-							const nextCadence = value === 'weekly-days'
-								? { type: value, weekdays: cadence.weekdays ?? [1] }
-								: value === 'interval'
-									? { type: value, intervalDays: cadence.intervalDays ?? 3, startDate: cadence.startDate }
-									: { type: value };
+						.onChange(async (value: string) => {
+							const castValue = value as JournalCadenceType;
+							const nextCadence = castValue === 'weekly-days'
+								? { type: castValue, weekdays: cadence.weekdays ?? [1] }
+								: castValue === 'interval'
+									? { type: castValue, intervalDays: cadence.intervalDays ?? 3, startDate: cadence.startDate }
+									: { type: castValue };
 							await this.plugin.updateJournalCadence(journal.path, nextCadence);
 							this.display();
 						});
@@ -322,8 +323,9 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				dropdown.addOption('core', 'Obsidian Templates');
 				dropdown.addOption('templater', 'Templater');
 				dropdown.setValue(this.plugin.settings.templateEngine)
-					.onChange(async (value: TemplateEngine) => {
-						this.plugin.settings.templateEngine = value;
+					.onChange(async (value: string) => {
+						const castValue = value as TemplateEngine;
+						this.plugin.settings.templateEngine = castValue;
 						await this.plugin.saveSettings();
 						this.display();
 					});
@@ -665,16 +667,17 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					dropdown.addOption('custom', 'Custom prompt list');
 					dropdown.addOption('file', 'Markdown note');
 					dropdown.setValue(promptSettings.sourceType)
-						.onChange(async (value: PromptSourceType) => {
+						.onChange(async (value: string) => {
+							const castValue = value as PromptSourceType;
 							const nextSettings: JournalPromptSettings = {
 								...promptSettings,
-								sourceType: value,
-								selectedListId: value === 'built-in'
+								sourceType: castValue,
+								selectedListId: castValue === 'built-in'
 									? promptSettings.selectedListId ?? Object.keys(this.plugin.getBuiltInPromptLists())[0]
-									: value === 'custom'
+									: castValue === 'custom'
 										? promptSettings.selectedListId ?? Object.keys(this.plugin.getCustomPromptLists())[0]
 										: undefined,
-								selectedFilePath: value === 'file' ? promptSettings.selectedFilePath : undefined,
+								selectedFilePath: castValue === 'file' ? promptSettings.selectedFilePath : undefined,
 								staticPromptId: undefined,
 								weekdayOverrides: {},
 							};
@@ -738,11 +741,12 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					dropdown.addOption('random', 'Random');
 					dropdown.addOption('random-no-repeat', 'Random, no repeats until exhausted');
 					dropdown.setValue(promptSettings.selectionMode)
-						.onChange(async (value: PromptSelectionMode) => {
+						.onChange(async (value: string) => {
+							const castValue = value as PromptSelectionMode;
 							await this.plugin.updateJournalPromptSettings(journal.path, {
 								...promptSettings,
-								selectionMode: value,
-								staticPromptId: value === 'static' ? promptSettings.staticPromptId : undefined,
+								selectionMode: castValue,
+								staticPromptId: castValue === 'static' ? promptSettings.staticPromptId : undefined,
 							});
 							this.display();
 						});
@@ -751,10 +755,11 @@ export class JournalystSettingsTab extends PluginSettingTab {
 					dropdown.addOption('append-body', 'Append into note');
 					dropdown.addOption('template-variables', 'Use template variables');
 					dropdown.setValue(promptSettings.deliveryMode)
-						.onChange(async (value: PromptDeliveryMode) => {
+						.onChange(async (value: string) => {
+							const castValue = value as PromptDeliveryMode;
 							await this.plugin.updateJournalPromptSettings(journal.path, {
 								...promptSettings,
-								deliveryMode: value,
+								deliveryMode: castValue,
 							});
 							this.display();
 						});

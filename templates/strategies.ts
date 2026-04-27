@@ -1,9 +1,9 @@
 import { Notice, TAbstractFile, TFile, TFolder, normalizePath } from 'obsidian';
 import {
-    CoreTemplatesSettings,
-    JournalTemplateEngineStrategy,
-    ObsidianPlugins,
-    TemplatePromptContext,
+    type CoreTemplatesSettings,
+    type JournalTemplateEngineStrategy,
+    type ObsidianPlugins,
+    type TemplatePromptContext,
 } from './types';
 
 interface TemplateStrategyContext {

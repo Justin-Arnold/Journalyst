@@ -1,6 +1,6 @@
-import { moment } from 'obsidian';
-import { isCadenceTracked, JournalCadenceConfig, getExpectedDatesInRange, getNextExpectedDate } from './cadence';
-import { SynthesisPeriodType } from './review/types';
+import moment from 'moment';
+import { isCadenceTracked, type JournalCadenceConfig, getExpectedDatesInRange, getNextExpectedDate } from './cadence';
+import { type SynthesisPeriodType } from './review/types';
 
 export type ReminderDeliveryMode = 'in-app' | 'os-preferred';
 export type ReviewReminderPeriod = 'weekly' | 'monthly' | 'quarterly';

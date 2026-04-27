@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { buildJournalHomeSummary, buildJournalOverviewData, renderJournalActionButtons, renderJournalHeatmap } from "./journalUi";
-import JournalystPlugin from "../main";
+import JournalystPlugin from "../src/main";
 
 export const VIEW_TYPE_SIDE_BAR = "journalyst-side-bar-view";
 
@@ -11,6 +11,8 @@ export class SideBarView extends ItemView {
     constructor(leaf: WorkspaceLeaf, plugin: JournalystPlugin) {
         super(leaf);
         this.plugin = plugin;
+        // TODO - could do a or null for the type of this is quick 
+        this.rootContainer = this.containerEl.children[1];
     }
 
     getViewType() {

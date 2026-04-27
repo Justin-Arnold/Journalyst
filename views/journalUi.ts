@@ -1,6 +1,7 @@
-import { TFolder, TFile, moment } from "obsidian";
+import { TFolder, TFile } from "obsidian";
+import moment from "moment";
 import { getCadenceStatus } from "../cadence";
-import JournalystPlugin from "../main";
+import JournalystPlugin from "../src/main";
 
 export interface JournalHeatmapDay {
     date: string;

@@ -5,11 +5,11 @@
 	"main": "main.js",
 	"scripts": {
 		"build": "npm run check && npm run lint && vite build --mode production",
-        "check": "vue-tsc -p tsconfig.app.json --noEmit --skipLibCheck",
-        "dev": "vite build --mode development",
-        "lint": "oxlint",
-        "lint:fix": "oxlint --fix",
-        "version": "node version-bump.mjs && git add manifest.json versions.json"
+		"check": "vue-tsc -p tsconfig.app.json --noEmit --skipLibCheck",
+		"dev": "vite build --mode development",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
 	"author": "Justin Arnold",
@@ -18,14 +18,15 @@
 		"vue": "3.5.32"
 	},
 	"devDependencies": {
-		"obsidian": "latest",
-		"vue-tsc": "3.2.7",
 		"@types/node": "24.12.2",
 		"@vitejs/plugin-vue": "6.0.6",
 		"@vue/tsconfig": "0.9.1",
+		"moment": "2.30.1",
+		"obsidian": "latest",
 		"oxlint": "1.61.0",
 		"tslib": "2.8.1",
 		"typescript": "6.0.3",
-		"vite": "8.0.10"
+		"vite": "8.0.10",
+		"vue-tsc": "3.2.7"
 	}
 }

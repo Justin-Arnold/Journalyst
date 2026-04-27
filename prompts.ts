@@ -1,4 +1,5 @@
-import { TFile, moment } from 'obsidian';
+import { TFile } from 'obsidian';
+import moment from 'moment';
 import { BUILT_IN_PROMPT_LISTS } from './promptLibrary';
 
 export type PromptSourceType = 'built-in' | 'custom' | 'file';

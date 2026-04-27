@@ -1,30 +1,35 @@
-import { ItemView, moment, normalizePath, setIcon, WorkspaceLeaf } from "obsidian";
-import { ReviewReminderPeriod } from "../reminders";
+import { ItemView, normalizePath, setIcon, WorkspaceLeaf } from "obsidian";
+import moment from "moment";
+import { type ReviewReminderPeriod } from "../reminders";
 import {
     buildJournalAnalyticsSnapshot,
     buildJournalReviewSnapshot,
     buildSynthesisNotePreview,
 } from "../review/buildSnapshot";
 import {
-    AnalyticsCallout,
-    DistributionDatum,
-    JournalAnalyticsSnapshot,
-    JournalReviewSnapshot,
-    PeriodSummary,
-    RankedPeriod,
-    ReviewWorkspaceTab,
-    SynthesisNotePreview,
-    SynthesisPeriodType,
-    YearActivityCell,
+    type AnalyticsCallout,
+    type DistributionDatum,
+    type JournalAnalyticsSnapshot,
+    type JournalReviewSnapshot,
+    type PeriodSummary,
+    type RankedPeriod,
+    type ReviewWorkspaceTab,
+    type SynthesisNotePreview,
+    type SynthesisPeriodType,
+    type YearActivityCell,
 } from "../review/types";
 import { buildJournalHomeSummary, buildJournalOverviewData, renderJournalActionButtons, renderJournalHeatmap } from "./journalUi";
-import JournalystPlugin from "../main";
+import JournalystPlugin from "../src/main";
+
+import { createApp, type App as VueApp } from 'vue';
+import App from '../src/components/App.vue';
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
 
 export class ReviewView extends ItemView {
+    vueApp!: VueApp;
     plugin: JournalystPlugin;
-    rootContainer: Element;
+    rootContainer!: Element;
     selectedJournalPath: string | null = null;
     anchorDate: string = moment().format('YYYY-MM-DD');
     activeTab: ReviewWorkspaceTab = 'review';
@@ -47,14 +52,26 @@ export class ReviewView extends ItemView {
     }
 
     async onOpen() {
-        this.rootContainer = this.containerEl.children[1];
-        this.syncStateFromPlugin();
-        this.render();
+        // this.rootContainer = this.containerEl.children[1];
+        // this.syncStateFromPlugin();
+        // this.render();
 
-        this.registerEvent(this.app.vault.on('create', () => this.onReviewDataChanged()));
-        this.registerEvent(this.app.vault.on('delete', () => this.onReviewDataChanged()));
-        this.registerEvent(this.app.vault.on('rename', () => this.onReviewDataChanged()));
-        this.registerEvent(this.app.vault.on('modify', () => this.onReviewDataChanged()));
+        // this.registerEvent(this.app.vault.on('create', () => this.onReviewDataChanged()));
+        // this.registerEvent(this.app.vault.on('delete', () => this.onReviewDataChanged()));
+        // this.registerEvent(this.app.vault.on('rename', () => this.onReviewDataChanged()));
+        // this.registerEvent(this.app.vault.on('modify', () => this.onReviewDataChanged()));
+
+        const container = this.containerEl.children[1];
+        container.empty();
+        let content = container.createEl("div", {
+            cls: "my-plugin-view"
+        });
+
+        this.vueApp = createApp(App);
+        // this.vueApp.provide("name", this.plugin.settings.myName);
+        this.vueApp.mount(content);
+        console.log('Mounted Vue app in review view');
+
     }
 
     updateReviewState(journalPath: string | null, anchorDate?: string, activeTab?: ReviewWorkspaceTab) {

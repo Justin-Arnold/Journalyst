@@ -1,7 +1,8 @@
-import { TFile, TFolder, moment, parseYaml, stringifyYaml } from 'obsidian';
-import { JournalCadenceConfig } from './cadence';
-import { JournalPromptSettings } from './prompts';
-import { SynthesisPeriodType } from './review/types';
+import { TFile, TFolder, parseYaml, stringifyYaml } from 'obsidian';
+import moment from 'moment';
+import { type JournalCadenceConfig } from './cadence';
+import { type JournalPromptSettings } from './prompts';
+import { type SynthesisPeriodType } from './review/types';
 
 export type JournalystEntryType = 'entry' | 'weekly-review' | 'monthly-reflection' | 'quarter-summary';
 export type BasesGenerationTarget = 'entries' | 'reflections';

@@ -1,4 +1,4 @@
-import { moment } from 'obsidian';
+import moment from "moment";
 
 export type JournalCadenceType = 'daily' | 'weekdays' | 'weekly-days' | 'interval' | 'adhoc';
 
