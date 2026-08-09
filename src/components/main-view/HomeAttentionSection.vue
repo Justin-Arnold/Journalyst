@@ -1,81 +1,101 @@
 <script setup lang="ts">
 import { computed, useId } from "vue";
-import type { JournalHomeSummary } from "../../../review/buildHomeSnapshot";
+import type {
+    JournalHomeAttentionItem,
+    JournalHomeAttentionTarget,
+} from "../../../review/buildHomeSnapshot";
 import ObsidianIcon from "../ObsidianIcon.vue";
 
 const props = defineProps<{
-    summary: JournalHomeSummary;
-    canOpenFirstDue: boolean;
+    items: JournalHomeAttentionItem[];
 }>();
 
 defineEmits<{
-    openFirstDue: [];
+    activate: [target: JournalHomeAttentionTarget];
 }>();
 
 const headingId = useId();
 
-const attentionJournalText = computed(() => {
-    const total = props.summary.totalJournals;
-    return `${props.summary.attentionJournalCount} of ${total} journal${total === 1 ? '' : 's'}`;
-});
+const presentedItems = computed(() => props.items.map(item => {
+    if (item.kind === 'due-today') {
+        return {
+            ...item,
+            icon: 'triangle-alert',
+            title: item.count === 1 ? "1 journal still needs today's entry" : `${item.count} journals still need today's entries`,
+            description: "Start today's entry for the next scheduled journal.",
+            actionLabel: 'Start first',
+        };
+    }
 
-const dueTodayTitle = computed(() => {
-    const count = props.summary.dueTodayCount;
-    return count === 1 ? '1 journal is due today' : `${count} journals are due today`;
-});
+    if (item.kind === 'streak-at-risk') {
+        return {
+            ...item,
+            icon: 'flame',
+            title: `Your ${item.streakLength}-day streak is at risk`,
+            description: item.count === 1
+                ? "One scheduled journal still needs today's entry."
+                : `${item.count} scheduled journals still need today's entries.`,
+            actionLabel: 'Keep it going',
+        };
+    }
 
-const catchUpTitle = computed(() => {
-    const count = props.summary.catchUpEntryCount;
-    return count === 1 ? '1 earlier entry is still open' : `${count} earlier entries are still open`;
-});
+    if (item.kind === 'unfinished-today') {
+        return {
+            ...item,
+            icon: 'file-pen-line',
+            title: item.count === 1 ? "1 entry is unfinished today" : `${item.count} entries are unfinished today`,
+            description: "Continue writing in today's note to complete the entry.",
+            actionLabel: 'Continue first',
+        };
+    }
 
-const hasAttention = computed(() => props.summary.attentionJournalCount > 0);
+    return {
+        ...item,
+        icon: 'notebook-pen',
+        title: item.count === 1 ? '1 synthesis review is due today' : `${item.count} synthesis reviews are due today`,
+        description: "Open Synthesis for today's scheduled reflection.",
+        actionLabel: 'Open review',
+    };
+}));
 </script>
 
 <template>
     <section class="journalyst-home-attention" :aria-labelledby="headingId">
         <header class="journalyst-home-attention-header">
             <h2 :id="headingId">Needs attention today</h2>
-            <span>{{ attentionJournalText }}</span>
         </header>
 
         <div class="journalyst-home-attention-list">
-            <article v-if="summary.dueTodayCount > 0" class="journalyst-home-attention-row is-due">
+            <article
+                v-for="item in presentedItems"
+                :key="item.kind"
+                class="journalyst-home-attention-row"
+                :class="`is-${item.kind}`"
+            >
                 <span class="journalyst-home-attention-icon">
-                    <ObsidianIcon name="triangle-alert" />
+                    <ObsidianIcon :name="item.icon" />
                 </span>
                 <div class="journalyst-home-attention-copy">
-                    <strong>{{ dueTodayTitle }}</strong>
-                    <p>Open today's note or create a new entry to keep your streak going.</p>
+                    <strong>{{ item.title }}</strong>
+                    <p>{{ item.description }}</p>
                 </div>
                 <button
                     type="button"
                     class="journalyst-home-attention-action"
-                    :disabled="!canOpenFirstDue"
-                    @click="$emit('openFirstDue')"
+                    @click="$emit('activate', item.target)"
                 >
                     <ObsidianIcon name="arrow-right" />
-                    <span>Open first</span>
+                    <span>{{ item.actionLabel }}</span>
                 </button>
             </article>
 
-            <article v-if="summary.catchUpEntryCount > 0" class="journalyst-home-attention-row is-catch-up">
-                <span class="journalyst-home-attention-icon">
-                    <ObsidianIcon name="history" />
-                </span>
-                <div class="journalyst-home-attention-copy">
-                    <strong>{{ catchUpTitle }}</strong>
-                    <p>Catch up when it is useful, or adjust a journal's cadence if its rhythm has changed.</p>
-                </div>
-            </article>
-
-            <div v-if="!hasAttention" class="journalyst-home-attention-row is-clear" role="status">
+            <div v-if="items.length === 0" class="journalyst-home-attention-row is-clear" role="status">
                 <span class="journalyst-home-attention-icon">
                     <ObsidianIcon name="circle-check" />
                 </span>
                 <div class="journalyst-home-attention-copy">
-                    <strong>Nothing needs attention today</strong>
-                    <p>Your scheduled journals are up to date.</p>
+                    <strong>You're all caught up for today.</strong>
+                    <p>No entries or reviews need attention.</p>
                 </div>
             </div>
         </div>
@@ -88,9 +108,6 @@ const hasAttention = computed(() => props.summary.attentionJournalCount > 0);
 }
 
 .journalyst-home-attention-header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--size-4-3);
     margin-bottom: var(--size-4-2);
     padding-bottom: var(--size-4-2);
     border-bottom: var(--border-width) solid var(--background-modifier-border);
@@ -102,11 +119,6 @@ const hasAttention = computed(() => props.summary.attentionJournalCount > 0);
     font-size: var(--font-ui-small);
     text-transform: uppercase;
     letter-spacing: 0;
-}
-
-.journalyst-home-attention-header span {
-    color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-home-attention-list {
@@ -127,15 +139,31 @@ const hasAttention = computed(() => props.summary.attentionJournalCount > 0);
     background: var(--background-secondary);
 }
 
-.journalyst-home-attention-row.is-due {
+.journalyst-home-attention-row.is-due-today,
+.journalyst-home-attention-row.is-unfinished-today {
     border-left-color: var(--text-warning);
 }
 
-.journalyst-home-attention-row.is-catch-up {
-    border-left-color: var(--text-muted);
+.journalyst-home-attention-row.is-due-today .journalyst-home-attention-icon,
+.journalyst-home-attention-row.is-unfinished-today .journalyst-home-attention-icon {
+    color: var(--text-warning);
+}
+
+.journalyst-home-attention-row.is-streak-at-risk {
+    border-left-color: var(--text-error);
+}
+
+.journalyst-home-attention-row.is-streak-at-risk .journalyst-home-attention-icon {
+    color: var(--text-error);
+}
+
+.journalyst-home-attention-row.is-reviews-due {
+    border-left-color: var(--interactive-accent);
 }
 
 .journalyst-home-attention-row.is-clear {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--size-4-3) var(--size-4-4);
     border-left-color: var(--text-success);
 }
 
@@ -150,8 +178,8 @@ const hasAttention = computed(() => props.summary.attentionJournalCount > 0);
     color: var(--text-muted);
 }
 
-.journalyst-home-attention-row.is-due .journalyst-home-attention-icon {
-    color: var(--text-warning);
+.journalyst-home-attention-row.is-reviews-due .journalyst-home-attention-icon {
+    color: var(--text-accent);
 }
 
 .journalyst-home-attention-row.is-clear .journalyst-home-attention-icon {
@@ -200,12 +228,6 @@ const hasAttention = computed(() => props.summary.attentionJournalCount > 0);
 }
 
 @media (max-width: 600px) {
-    .journalyst-home-attention-header {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: var(--size-4-1);
-    }
-
     .journalyst-home-attention-row {
         grid-template-columns: auto minmax(0, 1fr);
         align-items: start;

@@ -1,22 +1,56 @@
 <script setup lang="ts">
+import { nextTick, watch, type ComponentPublicInstance } from "vue";
 import type { SynthesisPeriodType } from "../../../review/types";
 import type { SynthesisPreviewModel } from "./types";
 import WorkspaceSection from "./WorkspaceSection.vue";
 
-defineProps<{
+const props = defineProps<{
     previews: SynthesisPreviewModel[];
+    focusedPeriod?: SynthesisPeriodType | null;
 }>();
 
 defineEmits<{
     openNote: [filePath: string];
     createNote: [periodType: SynthesisPeriodType];
 }>();
+
+const periodCards = new Map<SynthesisPeriodType, HTMLElement>();
+
+function registerPeriodCard(
+    periodType: SynthesisPeriodType,
+    element: Element | ComponentPublicInstance | null,
+) {
+    if (element instanceof HTMLElement) {
+        periodCards.set(periodType, element);
+        return;
+    }
+
+    periodCards.delete(periodType);
+}
+
+watch(() => props.focusedPeriod, async periodType => {
+    if (!periodType) {
+        return;
+    }
+
+    await nextTick();
+    const card = periodCards.get(periodType);
+    card?.focus({ preventScroll: true });
+    card?.scrollIntoView({ block: 'nearest' });
+}, { immediate: true });
 </script>
 
 <template>
     <WorkspaceSection title="Synthesis" description="Turn the current review period into a structured reflection note.">
         <div class="journalyst-review-grid journalyst-synthesis-grid">
-            <article v-for="item in previews" :key="item.preview.periodType" class="journalyst-review-card journalyst-synthesis-card">
+            <article
+                v-for="item in previews"
+                :key="item.preview.periodType"
+                :ref="element => registerPeriodCard(item.preview.periodType, element)"
+                class="journalyst-review-card journalyst-synthesis-card"
+                :class="{ 'is-attention-target': item.preview.periodType === focusedPeriod }"
+                tabindex="-1"
+            >
                 <div class="journalyst-synthesis-heading">
                     <span class="journalyst-review-label">{{ item.preview.periodType }}</span>
                     <span class="journalyst-home-status-badge">{{ item.exists ? 'Note exists' : 'Ready to create' }}</span>
@@ -63,3 +97,11 @@ defineEmits<{
         </div>
     </WorkspaceSection>
 </template>
+
+<style scoped>
+.journalyst-synthesis-card.is-attention-target,
+.journalyst-synthesis-card:focus {
+    outline: var(--border-width) solid var(--color-accent);
+    outline-offset: var(--size-2-1);
+}
+</style>

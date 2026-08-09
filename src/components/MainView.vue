@@ -5,8 +5,10 @@ import moment from "moment";
 import { getCadenceLabel } from "../../cadence";
 import type { CompleteOnboardingRequest } from "../../onboarding";
 import {
+    buildJournalHomeAttentionItems,
     buildJournalHomeSummary,
     buildJournalOverviewData,
+    type JournalHomeAttentionTarget,
 } from "../../review/buildHomeSnapshot";
 import {
     buildJournalAnalyticsSnapshot,
@@ -42,6 +44,7 @@ const props = defineProps<{
 
 const onboardingBusy = ref(false);
 const onboardingError = ref('');
+const synthesisAttentionPeriod = ref<SynthesisPeriodType | null>(null);
 const snapshotBuildOptions: SnapshotBuildOptions = {
     isEntryComplete: file => props.plugin.isJournalEntryComplete(file),
 };
@@ -75,6 +78,7 @@ const onboardingModel = computed(() => {
 const activeTab = computed<ReviewWorkspaceTab>({
     get: () => props.state.activeTab,
     set: (value) => {
+        synthesisAttentionPeriod.value = null;
         void props.actions.setReviewState(props.state.journalPath, props.state.anchorDate, value);
     },
 });
@@ -82,6 +86,7 @@ const activeTab = computed<ReviewWorkspaceTab>({
 const journalPath = computed<string>({
     get: () => props.state.journalPath ?? '',
     set: (value) => {
+        synthesisAttentionPeriod.value = null;
         void props.actions.setReviewState(value || null, props.state.anchorDate, props.state.activeTab);
     },
 });
@@ -89,6 +94,7 @@ const journalPath = computed<string>({
 const anchorDate = computed<string>({
     get: () => props.state.anchorDate,
     set: (value) => {
+        synthesisAttentionPeriod.value = null;
         void props.actions.setReviewState(
             props.state.journalPath,
             value || moment().format('YYYY-MM-DD'),
@@ -97,15 +103,32 @@ const anchorDate = computed<string>({
     },
 });
 
-const homeWorkspace = computed(() => ({
-    revision: workspaceContext.value.revision,
-    summary: buildJournalHomeSummary(props.plugin),
-    journals: workspaceContext.value.journalFolders
-        .map(journal => buildJournalOverviewData(props.plugin, journal)),
-}));
+const homeWorkspace = computed(() => {
+    const journalOverviews = workspaceContext.value.journalFolders
+        .map(journal => buildJournalOverviewData(props.plugin, journal));
+    const summary = buildJournalHomeSummary(props.plugin, journalOverviews);
+
+    return {
+        revision: workspaceContext.value.revision,
+        summary,
+        attentionItems: buildJournalHomeAttentionItems(props.plugin, journalOverviews, { summary }),
+        journals: journalOverviews,
+    };
+});
 
 const homeSummary = computed(() => homeWorkspace.value.summary);
+const homeAttentionItems = computed(() => homeWorkspace.value.attentionItems);
 const homeJournals = computed(() => homeWorkspace.value.journals);
+
+function activateHomeAttention(target: JournalHomeAttentionTarget) {
+    if (target.type === 'entry') {
+        void props.actions.createJournalEntry(target.journalPath, target.date);
+        return;
+    }
+
+    synthesisAttentionPeriod.value = target.type === 'synthesis' ? target.periodType : null;
+    void props.actions.setReviewState(target.journalPath, target.anchorDate, target.type);
+}
 
 const reviewSnapshot = computed(() => {
     const journal = workspaceContext.value.selectedJournal;
@@ -264,9 +287,11 @@ async function resumeOnboarding() {
                 <HomeTab
                     v-if="state.activeTab === 'home'"
                     :summary="homeSummary"
+                    :attention-items="homeAttentionItems"
                     :journals="homeJournals"
                     @create-entry="actions.createJournalEntry"
                     @activate-tab="actions.activateJournalTab"
+                    @attention-action="activateHomeAttention"
                 />
                 <ReviewTab
                     v-else-if="state.activeTab === 'review' && reviewSnapshot"
@@ -280,6 +305,7 @@ async function resumeOnboarding() {
                 <SynthesisTab
                     v-else-if="state.activeTab === 'synthesis'"
                     :previews="synthesisPreviews"
+                    :focused-period="synthesisAttentionPeriod"
                     @open-note="actions.openNote"
                     @create-note="actions.createSynthesisNote(state.journalPath!, state.anchorDate, $event)"
                 />

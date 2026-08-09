@@ -1,6 +1,5 @@
 import moment from 'moment';
 import { isCadenceTracked, type JournalCadenceConfig, getExpectedDatesInRange, getNextExpectedDate } from './cadence';
-import { type SynthesisPeriodType } from './review/types';
 
 export type ReminderDeliveryMode = 'in-app' | 'os-preferred';
 export type ReviewReminderPeriod = 'weekly' | 'monthly' | 'quarterly';
@@ -50,11 +49,14 @@ export interface ReminderOccurrenceRecord {
     sentAt: string;
 }
 
-export interface ReminderTarget {
-    type: 'entry' | 'review';
+export type ReminderTarget = {
+    type: 'entry';
     anchorDate: string;
-    reviewPeriod?: ReviewReminderPeriod;
-}
+} | {
+    type: 'review';
+    anchorDate: string;
+    reviewPeriod: ReviewReminderPeriod;
+};
 
 export interface ResolvedReminderEvent {
     historyKey: string;
@@ -66,14 +68,22 @@ export interface ResolvedReminderEvent {
     target: ReminderTarget;
 }
 
-export interface JournalReminderContext {
-    cadence: JournalCadenceConfig;
-    dateSet: Set<string>;
-    existingDateSet?: Set<string>;
+export interface ResolvedReviewReminderEvent extends Omit<ResolvedReminderEvent, 'target'> {
+    dueDate: string;
+    target: Extract<ReminderTarget, { type: 'review' }>;
+}
+
+export interface JournalReviewReminderContext {
     journalName: string;
     journalPath: string;
     reminderSettings: JournalReminderSettings;
     synthesisNoteExists: (period: ReviewReminderPeriod, anchorDate: string) => boolean;
+}
+
+export interface JournalReminderContext extends JournalReviewReminderContext {
+    cadence: JournalCadenceConfig;
+    dateSet: Set<string>;
+    existingDateSet?: Set<string>;
 }
 
 const DEFAULT_TIME = '20:00';
@@ -163,22 +173,28 @@ export function getReminderEventsForJournal(
         events.push(entryEvent);
     }
 
-    const weeklyEvent = resolveWeeklyReviewReminder(context, now, reminderHistory);
-    if (weeklyEvent) {
-        events.push(weeklyEvent);
-    }
-
-    const monthlyEvent = resolveMonthlyReviewReminder(context, now, reminderHistory);
-    if (monthlyEvent) {
-        events.push(monthlyEvent);
-    }
-
-    const quarterlyEvent = resolveQuarterlyReviewReminder(context, now, reminderHistory);
-    if (quarterlyEvent) {
-        events.push(quarterlyEvent);
-    }
+    events.push(...resolveReviewReminderEvents(context, now, reminderHistory));
 
     return events;
+}
+
+export function getPendingReviewReminderEventsForJournal(
+    context: JournalReviewReminderContext,
+    now: moment.Moment,
+): ResolvedReviewReminderEvent[] {
+    return resolveReviewReminderEvents(context, now, {});
+}
+
+function resolveReviewReminderEvents(
+    context: JournalReviewReminderContext,
+    now: moment.Moment,
+    reminderHistory: Record<string, ReminderOccurrenceRecord>,
+) {
+    return [
+        resolveWeeklyReviewReminder(context, now, reminderHistory),
+        resolveMonthlyReviewReminder(context, now, reminderHistory),
+        resolveQuarterlyReviewReminder(context, now, reminderHistory),
+    ].filter((event): event is ResolvedReviewReminderEvent => !!event);
 }
 
 export function buildReminderHistoryKey(journalPath: string, ruleKey: string, occurrenceKey: string) {
@@ -249,10 +265,10 @@ function resolveEntryReminder(
 }
 
 function resolveWeeklyReviewReminder(
-    context: JournalReminderContext,
+    context: JournalReviewReminderContext,
     now: moment.Moment,
     reminderHistory: Record<string, ReminderOccurrenceRecord>,
-): ResolvedReminderEvent | null {
+): ResolvedReviewReminderEvent | null {
     const reminder = context.reminderSettings.reviewReminders.weekly;
     if (!reminder.enabled) {
         return null;
@@ -276,6 +292,7 @@ function resolveWeeklyReviewReminder(
 
     return {
         historyKey,
+        dueDate: activeDueAt.format('YYYY-MM-DD'),
         journalPath: context.journalPath,
         journalName: context.journalName,
         deliveryMode: reminder.deliveryMode,
@@ -290,10 +307,10 @@ function resolveWeeklyReviewReminder(
 }
 
 function resolveMonthlyReviewReminder(
-    context: JournalReminderContext,
+    context: JournalReviewReminderContext,
     now: moment.Moment,
     reminderHistory: Record<string, ReminderOccurrenceRecord>,
-): ResolvedReminderEvent | null {
+): ResolvedReviewReminderEvent | null {
     const reminder = context.reminderSettings.reviewReminders.monthly;
     if (!reminder.enabled) {
         return null;
@@ -317,6 +334,7 @@ function resolveMonthlyReviewReminder(
 
     return {
         historyKey,
+        dueDate: activeDueAt.format('YYYY-MM-DD'),
         journalPath: context.journalPath,
         journalName: context.journalName,
         deliveryMode: reminder.deliveryMode,
@@ -331,10 +349,10 @@ function resolveMonthlyReviewReminder(
 }
 
 function resolveQuarterlyReviewReminder(
-    context: JournalReminderContext,
+    context: JournalReviewReminderContext,
     now: moment.Moment,
     reminderHistory: Record<string, ReminderOccurrenceRecord>,
-): ResolvedReminderEvent | null {
+): ResolvedReviewReminderEvent | null {
     const reminder = context.reminderSettings.reviewReminders.quarterly;
     if (!reminder.enabled) {
         return null;
@@ -359,6 +377,7 @@ function resolveQuarterlyReviewReminder(
 
     return {
         historyKey,
+        dueDate: activeDueAt.format('YYYY-MM-DD'),
         journalPath: context.journalPath,
         journalName: context.journalName,
         deliveryMode: reminder.deliveryMode,

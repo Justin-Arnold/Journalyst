@@ -1478,6 +1478,8 @@ export default class JournalystPlugin extends Plugin {
                 await this.deliverReminderEvent(event);
             }
         }
+
+        this.refreshReviewViews();
     }
 
     async generateBasesForJournal(journal: TFolder | string) {

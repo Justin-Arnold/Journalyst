@@ -1,7 +1,12 @@
-import { TFile, type TFolder } from "obsidian";
+import { TFile, type TFolder, normalizePath } from "obsidian";
 import moment from "moment";
 import { getCadenceStatus } from "../cadence";
+import {
+    buildSynthesisReminderFileName,
+    getPendingReviewReminderEventsForJournal,
+} from "../reminders";
 import type JournalystPlugin from "../src/main";
+import type { SynthesisPeriodType } from "./types";
 
 export interface JournalHeatmapDay {
     date: string;
@@ -27,7 +32,6 @@ export interface JournalOverviewData {
 export interface JournalHomeSummary {
     dueTodayCount: number;
     catchUpEntryCount: number;
-    attentionJournalCount: number;
     missedCount: number;
     missedJournalCount: number;
     remindersActiveCount: number;
@@ -36,6 +40,40 @@ export interface JournalHomeSummary {
     totalJournals: number;
     currentStreak: number;
     longestStreak: number;
+}
+
+export type JournalHomeAttentionTarget = {
+    type: 'entry';
+    journalPath: string;
+    date: string;
+} | {
+    type: 'synthesis';
+    journalPath: string;
+    anchorDate: string;
+    periodType: SynthesisPeriodType;
+};
+
+type JournalHomeEntryAttentionTarget = Extract<JournalHomeAttentionTarget, { type: 'entry' }>;
+type JournalHomeSynthesisAttentionTarget = Extract<JournalHomeAttentionTarget, { type: 'synthesis' }>;
+
+export type JournalHomeAttentionItem = {
+    kind: 'due-today' | 'unfinished-today';
+    count: number;
+    target: JournalHomeEntryAttentionTarget;
+} | {
+    kind: 'streak-at-risk';
+    count: number;
+    streakLength: number;
+    target: JournalHomeEntryAttentionTarget;
+} | {
+    kind: 'reviews-due';
+    count: number;
+    target: JournalHomeSynthesisAttentionTarget;
+};
+
+interface JournalHomeAttentionBuildOptions {
+    now?: moment.Moment;
+    summary?: JournalHomeSummary;
 }
 
 interface WorkspaceWritingStreaks {
@@ -148,8 +186,10 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
     };
 }
 
-export function buildJournalHomeSummary(plugin: JournalystPlugin): JournalHomeSummary {
-    const overviews = plugin.journals.map(journal => buildJournalOverviewData(plugin, journal));
+export function buildJournalHomeSummary(
+    plugin: JournalystPlugin,
+    overviews = plugin.journals.map(journal => buildJournalOverviewData(plugin, journal)),
+): JournalHomeSummary {
     const journalEntries = plugin.journals.map(journal => getJournalEntries(plugin, journal));
     const workspaceEntryDates = new Set(journalEntries.flat()
         .filter(entry => entry.isComplete)
@@ -161,7 +201,6 @@ export function buildJournalHomeSummary(plugin: JournalystPlugin): JournalHomeSu
     return {
         dueTodayCount: overviews.filter(overview => overview.dueToday).length,
         catchUpEntryCount: overviews.reduce((sum, overview) => sum + overview.catchUpCount, 0),
-        attentionJournalCount: overviews.filter(overview => overview.dueToday || overview.catchUpCount > 0).length,
         missedCount: overviews.reduce((sum, overview) => sum + overview.outstandingMisses, 0),
         missedJournalCount: overviews.filter(overview => overview.outstandingMisses > 0).length,
         remindersActiveCount,
@@ -171,4 +210,90 @@ export function buildJournalHomeSummary(plugin: JournalystPlugin): JournalHomeSu
         currentStreak: streaks.current,
         longestStreak: streaks.longest,
     };
+}
+
+export function buildJournalHomeAttentionItems(
+    plugin: JournalystPlugin,
+    overviews = plugin.journals.map(journal => buildJournalOverviewData(plugin, journal)),
+    options: JournalHomeAttentionBuildOptions = {},
+): JournalHomeAttentionItem[] {
+    const now = options.now ?? moment();
+    const summary = options.summary ?? buildJournalHomeSummary(plugin, overviews);
+    const items: JournalHomeAttentionItem[] = [];
+    const missingToday = overviews.filter(overview => overview.dueToday && !overview.todayFile);
+    const unfinishedToday = overviews.filter(overview => overview.todayFile && !overview.todayIsComplete);
+    const firstMissingToday = missingToday[0];
+    const firstUnfinishedToday = unfinishedToday[0];
+    const hasCompletedEntryToday = overviews.some(overview => overview.todayIsComplete);
+
+    if (firstMissingToday) {
+        const target: JournalHomeEntryAttentionTarget = {
+            type: 'entry',
+            journalPath: firstMissingToday.journal.path,
+            date: firstMissingToday.todayDate,
+        };
+
+        items.push(summary.currentStreak > 0 && !hasCompletedEntryToday
+            ? {
+                kind: 'streak-at-risk',
+                count: missingToday.length,
+                streakLength: summary.currentStreak,
+                target,
+            }
+            : {
+                kind: 'due-today',
+                count: missingToday.length,
+                target,
+            });
+    }
+
+    if (firstUnfinishedToday) {
+        items.push({
+            kind: 'unfinished-today',
+            count: unfinishedToday.length,
+            target: {
+                type: 'entry',
+                journalPath: firstUnfinishedToday.journal.path,
+                date: firstUnfinishedToday.todayDate,
+            },
+        });
+    }
+
+    if (!plugin.areRemindersEnabled()) {
+        return items;
+    }
+
+    const pendingReviews = overviews.flatMap((overview, journalIndex) =>
+        getPendingReviewReminderEventsForJournal({
+            journalName: overview.journal.name,
+            journalPath: overview.journal.path,
+            reminderSettings: plugin.getJournalReminderSettings(overview.journal.path),
+            synthesisNoteExists: (period, anchorDate) => {
+                const fileName = buildSynthesisReminderFileName(period, anchorDate);
+                return !!plugin.app.vault.getFileByPath(normalizePath(`${overview.journal.path}/${fileName}`));
+            },
+        }, now)
+            .filter(event => event.dueDate === now.format('YYYY-MM-DD'))
+            .map((event, eventIndex) => ({ event, journalIndex, eventIndex }))
+    ).sort((left, right) =>
+        left.event.target.anchorDate.localeCompare(right.event.target.anchorDate)
+        || left.journalIndex - right.journalIndex
+        || left.eventIndex - right.eventIndex
+    );
+    const firstPendingReview = pendingReviews[0]?.event;
+
+    if (firstPendingReview) {
+        items.push({
+            kind: 'reviews-due',
+            count: pendingReviews.length,
+            target: {
+                type: 'synthesis',
+                journalPath: firstPendingReview.journalPath,
+                anchorDate: firstPendingReview.target.anchorDate,
+                periodType: firstPendingReview.target.reviewPeriod,
+            },
+        });
+    }
+
+    return items;
 }
