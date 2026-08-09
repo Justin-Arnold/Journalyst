@@ -219,61 +219,6 @@
     gap: 0.9rem;
 }
 
-.journalyst-home-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
-}
-
-.journalyst-home-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-    padding: 1rem;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-secondary);
-}
-
-.journalyst-home-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.75rem;
-}
-
-.journalyst-home-card-header h3 {
-    margin: 0;
-    font-size: 1.05rem;
-}
-
-.journalyst-home-card-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.9rem;
-}
-
-.journalyst-home-status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.3rem 0.55rem;
-    border-radius: 999px;
-    background: rgba(var(--background-modifier-border-rgb), 0.35);
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    white-space: nowrap;
-}
-
-.journalyst-home-status-badge.is-due {
-    background: rgba(var(--interactive-accent-rgb), 0.18);
-    color: var(--text-normal);
-}
-
-.journalyst-home-status-badge.is-missed {
-    background: rgba(var(--color-red-rgb), 0.18);
-    color: var(--text-normal);
-}
-
 .journalyst-home-actions-compact {
     gap: 0.35rem;
 }
@@ -1158,7 +1103,6 @@
         grid-template-columns: 1fr;
     }
 
-    .journalyst-home-grid,
     .journalyst-synthesis-grid,
     .journalyst-reminder-rule-row {
         grid-template-columns: 1fr;

@@ -219,61 +219,6 @@
     gap: 0.9rem;
 }
 
-.journalyst-home-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
-}
-
-.journalyst-home-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-    padding: 1rem;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-secondary);
-}
-
-.journalyst-home-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.75rem;
-}
-
-.journalyst-home-card-header h3 {
-    margin: 0;
-    font-size: 1.05rem;
-}
-
-.journalyst-home-card-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.9rem;
-}
-
-.journalyst-home-status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.3rem 0.55rem;
-    border-radius: 999px;
-    background: rgba(var(--background-modifier-border-rgb), 0.35);
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    white-space: nowrap;
-}
-
-.journalyst-home-status-badge.is-due {
-    background: rgba(var(--interactive-accent-rgb), 0.18);
-    color: var(--text-normal);
-}
-
-.journalyst-home-status-badge.is-missed {
-    background: rgba(var(--color-red-rgb), 0.18);
-    color: var(--text-normal);
-}
-
 .journalyst-home-actions-compact {
     gap: 0.35rem;
 }
@@ -1158,7 +1103,6 @@
         grid-template-columns: 1fr;
     }
 
-    .journalyst-home-grid,
     .journalyst-synthesis-grid,
     .journalyst-reminder-rule-row {
         grid-template-columns: 1fr;
@@ -1452,6 +1396,323 @@
 .journalyst-home-attention-action[data-v-024a34b9] {
         grid-column: 2;
         justify-self: start;
+}
+}
+
+.journalyst-card-actions[data-v-8f840bf2] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-2);
+    margin-top: auto;
+    padding-top: var(--size-4-2);
+}
+.journalyst-card-actions button[data-v-8f840bf2] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--input-height);
+}
+.journalyst-card-today-action[data-v-8f840bf2] {
+    gap: var(--size-4-2);
+    min-width: 8.5rem;
+    padding: 0 var(--size-4-3);
+}
+.journalyst-card-more-action[data-v-8f840bf2] {
+    width: var(--input-height);
+    height: var(--input-height);
+    padding: 0;
+}
+.journalyst-card-actions button[data-v-8f840bf2]:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+.journalyst-card-calendar[data-v-2ec0cb51] {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    align-self: flex-start;
+    width: min(100%, 28rem);
+    gap: var(--size-4-2);
+}
+.journalyst-card-calendar-label[data-v-2ec0cb51] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 1.25rem;
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+}
+.journalyst-card-calendar-blank[data-v-2ec0cb51],
+.journalyst-card-calendar-day[data-v-2ec0cb51] {
+    aspect-ratio: 1;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 2px;
+}
+.journalyst-card-calendar-blank[data-v-2ec0cb51] {
+    visibility: hidden;
+}
+.journalyst-card-calendar-day[data-v-2ec0cb51] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: auto;
+    padding: 0;
+    appearance: none;
+    border: var(--border-width) solid var(--background-modifier-border);
+    background: var(--background-primary);
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    line-height: 1;
+    cursor: pointer;
+}
+.journalyst-card-calendar-day.is-complete[data-v-2ec0cb51] {
+    border-color: var(--interactive-accent);
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+.journalyst-card-calendar-day.is-draft[data-v-2ec0cb51] {
+    border: var(--border-width) solid var(--text-warning);
+    background: var(--journalyst-base-recessed);
+    color: var(--text-warning);
+}
+.journalyst-card-calendar-day.is-due-today[data-v-2ec0cb51] {
+    border: var(--border-width) dashed var(--text-warning);
+    background: transparent;
+    color: var(--text-warning);
+}
+.journalyst-card-calendar-day.is-unfinished-today[data-v-2ec0cb51] {
+    border: var(--border-width) solid var(--text-warning);
+    background: var(--background-modifier-hover);
+    color: var(--text-warning);
+}
+.journalyst-card-calendar-day.is-missing-expected[data-v-2ec0cb51] {
+    border: var(--border-width) dashed var(--text-error);
+    background: transparent;
+    color: var(--text-muted);
+}
+.journalyst-card-calendar-day.is-skipped[data-v-2ec0cb51] {
+    border-color: var(--background-modifier-border);
+    background: transparent;
+    color: var(--text-faint);
+}
+.journalyst-card-calendar-day.is-future[data-v-2ec0cb51] {
+    border-color: var(--journalyst-base-recessed);
+    background: transparent;
+    color: var(--text-faint);
+}
+.journalyst-card-calendar-day[data-v-2ec0cb51]:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: none;
+}
+.journalyst-card-calendar-day[data-v-2ec0cb51]:not(.is-complete):hover,
+.journalyst-card-calendar-day[data-v-2ec0cb51]:not(.is-complete):focus-visible {
+    color: var(--text-normal);
+}
+.journalyst-card-calendar-day[data-v-2ec0cb51]:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+.journalyst-home-card[data-v-b1f1259e] {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 28rem;
+    gap: var(--size-4-3);
+    padding: var(--size-4-4);
+    border: var(--border-width) solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: var(--journalyst-base-recessed);
+}
+.journalyst-home-card-header[data-v-b1f1259e] {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--size-4-3);
+    min-height: var(--input-height);
+}
+.journalyst-home-card-header h3[data-v-b1f1259e] {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.journalyst-home-card-icon[data-v-b1f1259e] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--input-height);
+    height: var(--input-height);
+    border-radius: var(--radius-s);
+    background: var(--background-modifier-hover);
+    color: var(--interactive-accent);
+}
+.journalyst-home-status-badge[data-v-b1f1259e] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 10rem;
+    min-height: 1.6rem;
+    padding: 0 var(--size-4-2);
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--background-modifier-hover);
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    font-weight: 600;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.journalyst-home-status-badge.is-due-today[data-v-b1f1259e],
+.journalyst-home-status-badge.is-unfinished-today[data-v-b1f1259e] {
+    color: var(--text-warning);
+}
+.journalyst-home-status-badge.is-streak[data-v-b1f1259e] {
+    color: var(--text-success);
+}
+.journalyst-home-status-badge.is-on-track[data-v-b1f1259e] {
+    color: var(--text-success);
+}
+.journalyst-home-status-badge.is-ad-hoc[data-v-b1f1259e] {
+    color: var(--text-accent);
+}
+.journalyst-home-card-meta[data-v-b1f1259e] {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0;
+    border-block: var(--border-width) solid var(--background-modifier-border);
+}
+.journalyst-home-card-meta div[data-v-b1f1259e] {
+    min-width: 0;
+    padding: var(--size-4-2) var(--size-4-3);
+}
+.journalyst-home-card-meta div[data-v-b1f1259e]:first-child {
+    padding-left: 0;
+}
+.journalyst-home-card-meta div[data-v-b1f1259e]:last-child {
+    padding-right: 0;
+}
+.journalyst-home-card-meta div + div[data-v-b1f1259e] {
+    border-left: var(--border-width) solid var(--background-modifier-border);
+}
+.journalyst-home-card-meta dt[data-v-b1f1259e],
+.journalyst-home-card-meta dd[data-v-b1f1259e] {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.journalyst-home-card-meta dt[data-v-b1f1259e] {
+    margin-bottom: var(--size-4-1);
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+    text-transform: uppercase;
+}
+.journalyst-home-card-meta dd[data-v-b1f1259e] {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    font-weight: 500;
+}
+
+.journalyst-journals-section[data-v-641de205] {
+    container-type: inline-size;
+    margin-bottom: var(--size-4-7);
+}
+.journalyst-journals-heading[data-v-641de205] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-4);
+    margin-bottom: var(--size-4-3);
+}
+.journalyst-journals-heading-copy[data-v-641de205] {
+    display: flex;
+    align-items: baseline;
+    gap: var(--size-4-3);
+    min-width: 0;
+}
+.journalyst-journals-heading h2[data-v-641de205],
+.journalyst-journals-heading p[data-v-641de205] {
+    margin: 0;
+}
+.journalyst-journals-heading h2[data-v-641de205] {
+    flex: none;
+    font-size: var(--font-ui-medium);
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.journalyst-journals-heading p[data-v-641de205] {
+    overflow: hidden;
+    color: var(--text-faint);
+    font-size: var(--font-ui-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.journalyst-journals-filter-button[data-v-641de205] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    gap: var(--size-4-2);
+    min-height: var(--input-height);
+    padding: 0 var(--size-4-3);
+    color: var(--text-muted);
+}
+.journalyst-journals-filter-button.is-active[data-v-641de205] {
+    border-color: var(--interactive-accent);
+    color: var(--text-normal);
+}
+.journalyst-journals-filter-button[data-v-641de205]:focus-visible,
+.journalyst-journals-empty button[data-v-641de205]:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+.journalyst-journals-grid[data-v-641de205] {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+    align-items: stretch;
+    gap: var(--size-4-4);
+}
+.journalyst-journals-empty[data-v-641de205] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-4);
+    min-height: 5rem;
+    padding: var(--size-4-4);
+    border: var(--border-width) solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: var(--background-secondary);
+}
+.journalyst-journals-empty p[data-v-641de205] {
+    margin: 0;
+    color: var(--text-muted);
+}
+@container (max-width: 34rem) {
+.journalyst-journals-heading-copy p[data-v-641de205] {
+        display: none;
+}
+}
+@container (max-width: 24rem) {
+.journalyst-journals-filter-button span[data-v-641de205] {
+        display: none;
+}
+.journalyst-journals-filter-button[data-v-641de205] {
+        width: var(--input-height);
+        padding: 0;
+}
+.journalyst-journals-empty[data-v-641de205] {
+        align-items: stretch;
+        flex-direction: column;
 }
 }
 

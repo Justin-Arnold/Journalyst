@@ -1,6 +1,10 @@
 import { TFile, type TFolder, normalizePath } from "obsidian";
 import moment from "moment";
-import { getCadenceStatus } from "../cadence";
+import {
+    getCadenceStatus,
+    getCurrentCadenceStreak,
+    isExpectedOnDate,
+} from "../cadence";
 import {
     buildSynthesisReminderFileName,
     getPendingReviewReminderEventsForJournal,
@@ -12,8 +16,29 @@ export interface JournalHeatmapDay {
     date: string;
     dayNumber: number;
     hasEntry: boolean;
+    isBeforeTrackingStart: boolean;
     isComplete: boolean;
+    isExpected: boolean;
+    isToday: boolean;
+    state: JournalHeatmapDayState;
 }
+
+export type JournalHeatmapDayState =
+    | 'complete'
+    | 'draft'
+    | 'due-today'
+    | 'unfinished-today'
+    | 'missing-expected'
+    | 'empty'
+    | 'skipped'
+    | 'future';
+
+export type JournalHomeCardStatus = {
+    kind: 'unfinished-today' | 'due-today' | 'on-track' | 'ad-hoc';
+} | {
+    kind: 'streak';
+    count: number;
+};
 
 export interface JournalOverviewData {
     journal: TFolder;
@@ -22,6 +47,11 @@ export interface JournalOverviewData {
     todayIsComplete: boolean;
     cadenceLabel: string;
     cadenceStatusText: string;
+    cardStatus: JournalHomeCardStatus;
+    currentStreak: number;
+    entryCount: number;
+    isTracked: boolean;
+    reminderDisplayText: string;
     reminderStatusText: string;
     outstandingMisses: number;
     catchUpCount: number;
@@ -131,6 +161,24 @@ function getWorkspaceWritingStreaks(entryDates: Set<string>, todayDate: string):
     return { current, longest };
 }
 
+function getReminderDisplayText(plugin: JournalystPlugin, journalPath: string, isTracked: boolean) {
+    if (!plugin.areRemindersEnabled()) {
+        return 'Off';
+    }
+
+    const settings = plugin.getJournalReminderSettings(journalPath);
+    if (isTracked && settings.entryReminder.enabled) {
+        return settings.entryReminder.time;
+    }
+
+    const reviewReminders = settings.reviewReminders;
+    return reviewReminders.weekly.enabled
+        || reviewReminders.monthly.enabled
+        || reviewReminders.quarterly.enabled
+        ? 'Reviews'
+        : 'Off';
+}
+
 export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFolder): JournalOverviewData {
     const cadence = plugin.getJournalCadence(journal.path);
     const entries = getJournalEntries(plugin, journal);
@@ -139,8 +187,10 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
     const todayDate = moment().format('YYYY-MM-DD');
     const yesterdayDate = moment(todayDate, 'YYYY-MM-DD', true).subtract(1, 'day').format('YYYY-MM-DD');
     const firstEntryDate = entries[0]?.date ?? null;
+    const trackingStartDate = firstEntryDate ?? todayDate;
     const cadenceStatus = getCadenceStatus(cadence, completedDateSet, todayDate, firstEntryDate);
     const catchUpStatus = getCadenceStatus(cadence, completedDateSet, yesterdayDate, firstEntryDate);
+    const currentStreak = getCurrentCadenceStreak(cadence, completedDateSet, todayDate);
 
     let cadenceStatusText = 'Flexible pace';
     if (cadenceStatus.isTracked) {
@@ -162,15 +212,46 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
     for (let day = 1; day <= daysInMonth; day += 1) {
         const date = `${monthPrefix}-${String(day).padStart(2, '0')}`;
         const entry = entryByDate.get(date);
+        const isExpected = isExpectedOnDate(cadence, date);
+        const isToday = date === todayDate;
+        const isBeforeTrackingStart = date < trackingStartDate;
+        const isEarlierExpectedGap = !isBeforeTrackingStart
+            && date < todayDate
+            && isExpected
+            && !entry;
+        const state: JournalHeatmapDayState = entry
+            ? entry.isComplete ? 'complete'
+                : isToday && isExpected ? 'unfinished-today' : 'draft'
+            : isBeforeTrackingStart ? 'skipped'
+                : isEarlierExpectedGap ? 'missing-expected'
+                : date > todayDate ? 'future'
+                    : isToday && isExpected ? 'due-today'
+                    : !isExpected ? 'skipped' : 'empty';
+
         heatmapDays.push({
             date,
             dayNumber: day,
             hasEntry: !!entry,
+            isBeforeTrackingStart,
             isComplete: entry?.isComplete ?? false,
+            isExpected,
+            isToday,
+            state,
         });
     }
 
     const todayEntry = entryByDate.get(todayDate);
+    const dueToday = cadenceStatus.isTracked && cadenceStatus.expectedToday && !completedDateSet.has(todayDate);
+    const cardStatus: JournalHomeCardStatus = todayEntry && !todayEntry.isComplete
+        ? { kind: 'unfinished-today' }
+        : dueToday
+            ? { kind: 'due-today' }
+            : currentStreak > 0
+                ? { kind: 'streak', count: currentStreak }
+                : cadenceStatus.isTracked
+                    ? { kind: 'on-track' }
+                    : { kind: 'ad-hoc' };
+
     return {
         journal,
         todayDate,
@@ -178,10 +259,15 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
         todayIsComplete: todayEntry?.isComplete ?? false,
         cadenceLabel: cadenceStatus.cadenceLabel,
         cadenceStatusText,
+        cardStatus,
+        currentStreak,
+        entryCount: entries.length,
+        isTracked: cadenceStatus.isTracked,
+        reminderDisplayText: getReminderDisplayText(plugin, journal.path, cadenceStatus.isTracked),
         reminderStatusText: plugin.getJournalReminderSummary(journal.path),
         outstandingMisses: cadenceStatus.outstandingMisses,
         catchUpCount: catchUpStatus.outstandingMisses,
-        dueToday: cadenceStatus.isTracked && cadenceStatus.expectedToday && !completedDateSet.has(todayDate),
+        dueToday,
         heatmapDays,
     };
 }

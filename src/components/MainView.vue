@@ -292,6 +292,7 @@ async function resumeOnboarding() {
                     @create-entry="actions.createJournalEntry"
                     @activate-tab="actions.activateJournalTab"
                     @attention-action="activateHomeAttention"
+                    @open-settings="actions.openSettings"
                 />
                 <ReviewTab
                     v-else-if="state.activeTab === 'review' && reviewSnapshot"
