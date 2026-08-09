@@ -1,15 +1,17 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { ReviewWorkspaceTab } from "../../../review/types";
 import type {
     JournalHomeSummary,
     JournalOverviewData,
 } from "../../../review/buildHomeSnapshot";
+import HomeAttentionSection from "./HomeAttentionSection.vue";
 import HomeSummaryStrip from "./HomeSummaryStrip.vue";
 import JournalActions from "./JournalActions.vue";
 import JournalHeatmap from "./JournalHeatmap.vue";
 import WorkspaceSection from "./WorkspaceSection.vue";
 
-defineProps<{
+const props = defineProps<{
     summary: JournalHomeSummary;
     journals: JournalOverviewData[];
 }>();
@@ -18,10 +20,25 @@ const emit = defineEmits<{
     createEntry: [journalPath: string, date?: string];
     activateTab: [journalPath: string, tab: ReviewWorkspaceTab];
 }>();
+
+const firstDueJournalPath = computed(() => props.journals
+    .find(overview => overview.dueToday)?.journal.path ?? null);
+
+function openFirstDueJournal() {
+    if (firstDueJournalPath.value) {
+        emit('createEntry', firstDueJournalPath.value);
+    }
+}
 </script>
 
 <template>
     <HomeSummaryStrip :summary="summary" />
+
+    <HomeAttentionSection
+        :summary="summary"
+        :can-open-first-due="!!firstDueJournalPath"
+        @open-first-due="openFirstDueJournal"
+    />
 
     <WorkspaceSection title="Journals" description="Create an entry, scan this month, or move into deeper review.">
         <div class="journalyst-home-grid">

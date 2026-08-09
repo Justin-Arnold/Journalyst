@@ -17,12 +17,15 @@ export interface JournalOverviewData {
     cadenceStatusText: string;
     reminderStatusText: string;
     outstandingMisses: number;
+    catchUpCount: number;
     dueToday: boolean;
     heatmapDays: JournalHeatmapDay[];
 }
 
 export interface JournalHomeSummary {
     dueTodayCount: number;
+    catchUpEntryCount: number;
+    attentionJournalCount: number;
     missedCount: number;
     missedJournalCount: number;
     remindersActiveCount: number;
@@ -82,7 +85,9 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
     const entryDates = getJournalEntryDates(plugin, journal);
     const dateSet = new Set(entryDates);
     const todayDate = moment().format('YYYY-MM-DD');
+    const yesterdayDate = moment(todayDate, 'YYYY-MM-DD', true).subtract(1, 'day').format('YYYY-MM-DD');
     const cadenceStatus = getCadenceStatus(cadence, dateSet, todayDate, entryDates[0] ?? null);
+    const catchUpStatus = getCadenceStatus(cadence, dateSet, yesterdayDate, entryDates[0] ?? null);
 
     let cadenceStatusText = 'Flexible pace';
     if (cadenceStatus.isTracked) {
@@ -118,6 +123,7 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
         cadenceStatusText,
         reminderStatusText: plugin.getJournalReminderSummary(journal.path),
         outstandingMisses: cadenceStatus.outstandingMisses,
+        catchUpCount: catchUpStatus.outstandingMisses,
         dueToday: cadenceStatus.isTracked && cadenceStatus.expectedToday && !dateSet.has(todayDate),
         heatmapDays,
     };
@@ -133,6 +139,8 @@ export function buildJournalHomeSummary(plugin: JournalystPlugin): JournalHomeSu
 
     return {
         dueTodayCount: overviews.filter(overview => overview.dueToday).length,
+        catchUpEntryCount: overviews.reduce((sum, overview) => sum + overview.catchUpCount, 0),
+        attentionJournalCount: overviews.filter(overview => overview.dueToday || overview.catchUpCount > 0).length,
         missedCount: overviews.reduce((sum, overview) => sum + overview.outstandingMisses, 0),
         missedJournalCount: overviews.filter(overview => overview.outstandingMisses > 0).length,
         remindersActiveCount,
