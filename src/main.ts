@@ -1,5 +1,6 @@
 import { Notice, Plugin, TAbstractFile, TFile, TFolder, normalizePath, WorkspaceLeaf, parseYaml } from 'obsidian';
 import moment from 'moment';
+import '../styles-vite.css';
 import {
     type BasesGenerationTarget,
     buildEntryBaseContents,
