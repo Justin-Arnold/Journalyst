@@ -106,11 +106,13 @@ onBeforeUnmount(() => newMenu?.hide());
 
 <style scoped>
 .journalyst-review-header {
+    height: var(--size-4-16);
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 1.25rem;
     flex-wrap: wrap;
+    border-bottom: var(--border-width) solid var(--background-modifier-border);
     margin-bottom: 1rem;
 }
 

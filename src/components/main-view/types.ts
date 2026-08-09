@@ -6,7 +6,6 @@ import type {
 import type { JournalReminderSettings } from "../../../reminders";
 import type {
     ReviewWorkspaceTab,
-    SidebarMode,
     SynthesisNotePreview,
     SynthesisPeriodType,
 } from "../../../review/types";
@@ -24,7 +23,6 @@ export interface MainViewActions {
     resumeOnboarding(): Promise<void>;
     setReviewState(journalPath: string | null, anchorDate: string, activeTab: ReviewWorkspaceTab): Promise<void>;
     activateJournalTab(journalPath: string, activeTab: ReviewWorkspaceTab): Promise<void>;
-    openSidebar(sidebarMode: SidebarMode): Promise<void>;
     createEntry(): Promise<void>;
     createJournal(): Promise<void>;
     createJournalEntry(journalPath: string, date?: string): Promise<void>;

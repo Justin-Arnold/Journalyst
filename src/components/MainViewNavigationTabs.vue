@@ -74,7 +74,7 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
     overflow-x: auto;
     padding: var(--size-4-1);
     border-radius: var(--tab-curve);
-    background: var(--color-base-00-dark);
+    background: var(--journalyst-base-recessed);
     border: var(--tab-outline-width) solid var(--tab-outline-color);
     scrollbar-width: thin;
 }
@@ -93,8 +93,8 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
 }
 
 .journalyst-review-tab.is-active {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    color: var(--color-accent-1);
+    background: var(--journalyst-accent-dark);
+    color: var(--color-accent-2);
 }
 
 .journalyst-review-tab:hover {

@@ -255,7 +255,6 @@ async function resumeOnboarding() {
                     v-if="state.activeTab === 'home'"
                     :summary="homeSummary"
                     :journals="homeJournals"
-                    @open-sidebar="actions.openSidebar"
                     @create-entry="actions.createJournalEntry"
                     @activate-tab="actions.activateJournalTab"
                 />

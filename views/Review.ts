@@ -102,9 +102,6 @@ export class ReviewView extends ItemView {
             activateJournalTab: async (journalPath, activeTab) => {
                 await this.plugin.activateReviewView(journalPath, undefined, activeTab);
             },
-            openSidebar: async (sidebarMode) => {
-                await this.plugin.activateSidebarView(sidebarMode);
-            },
             createEntry: async () => {
                 const journals = [...this.plugin.journals];
                 if (journals.length === 0) {

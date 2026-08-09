@@ -1,5 +1,7 @@
-:root {
-    --color-base-00-dark: #1a1a1a;
+.theme-dark,
+.theme-light {
+    --journalyst-base-recessed: color-mix(in srgb, var(--color-base-00) 85%, black);
+    --journalyst-accent-dark: color-mix(in srgb, var(--color-accent-1) 50%, black);
 }
 
 .heat-map-wrapper {
@@ -141,7 +143,6 @@
     gap: 1.25rem;
     align-items: center;
     padding: 1rem 0;
-    border-top: 1px solid var(--background-modifier-border);
     border-bottom: 1px solid var(--background-modifier-border);
     margin-bottom: 1.5rem;
 }
