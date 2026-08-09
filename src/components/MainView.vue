@@ -18,6 +18,7 @@ import type {
     SynthesisPeriodType,
 } from "../../review/types";
 import type JournalystPlugin from "../main";
+import MainViewHeader from "./MainViewHeader.vue";
 import MainViewNavigationTabs from "./MainViewNavigationTabs.vue";
 import ObsidianIcon from "./ObsidianIcon.vue";
 import AnalyticsTab from "./main-view/AnalyticsTab.vue";
@@ -72,6 +73,24 @@ const activeTab = computed<ReviewWorkspaceTab>({
     get: () => props.state.activeTab,
     set: (value) => {
         void props.actions.setReviewState(props.state.journalPath, props.state.anchorDate, value);
+    },
+});
+
+const journalPath = computed<string>({
+    get: () => props.state.journalPath ?? '',
+    set: (value) => {
+        void props.actions.setReviewState(value || null, props.state.anchorDate, props.state.activeTab);
+    },
+});
+
+const anchorDate = computed<string>({
+    get: () => props.state.anchorDate,
+    set: (value) => {
+        void props.actions.setReviewState(
+            props.state.journalPath,
+            value || moment().format('YYYY-MM-DD'),
+            props.state.activeTab,
+        );
     },
 });
 
@@ -134,26 +153,6 @@ const remindersModel = computed<ReminderWorkspaceModel>(() => {
         journals: journalsWithRules,
     };
 });
-
-function getSelectValue(event: Event) {
-    return (event.target as HTMLSelectElement).value;
-}
-
-function getInputValue(event: Event) {
-    return (event.target as HTMLInputElement).value;
-}
-
-function selectJournal(journalPath: string) {
-    void props.actions.setReviewState(journalPath || null, props.state.anchorDate, props.state.activeTab);
-}
-
-function selectAnchorDate(anchorDate: string) {
-    void props.actions.setReviewState(
-        props.state.journalPath,
-        anchorDate || moment().format('YYYY-MM-DD'),
-        props.state.activeTab,
-    );
-}
 
 async function completeOnboarding(request: CompleteOnboardingRequest) {
     if (onboardingBusy.value) return;
@@ -232,23 +231,12 @@ async function resumeOnboarding() {
         </div>
 
         <template v-else>
-            <header class="journalyst-review-header">
-                <h1>Journalyst</h1>
-                <div v-if="state.activeTab !== 'home'" class="journalyst-review-controls">
-                    <label class="journalyst-review-control">
-                        <span>Journal</span>
-                        <select :value="state.journalPath ?? ''" @change="selectJournal(getSelectValue($event))">
-                            <option v-for="journal in journals" :key="journal.path" :value="journal.path">
-                                {{ journal.name }}
-                            </option>
-                        </select>
-                    </label>
-                    <label class="journalyst-review-control">
-                        <span>Anchor date</span>
-                        <input type="date" :value="state.anchorDate" @change="selectAnchorDate(getInputValue($event))">
-                    </label>
-                </div>
-            </header>
+            <MainViewHeader
+                v-model:journal-path="journalPath"
+                v-model:anchor-date="anchorDate"
+                :active-tab="state.activeTab"
+                :journals="journals"
+            />
 
             <MainViewNavigationTabs v-model:active-tab="activeTab" :tabs="tabs" />
 
