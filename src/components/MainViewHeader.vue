@@ -2,13 +2,15 @@
 import { onBeforeUnmount, ref } from "vue";
 import { Menu } from "obsidian";
 import type { ReviewWorkspaceTab } from "../../review/types";
+import MainViewNavigationTabs from "./MainViewNavigationTabs.vue";
 import ObsidianIcon from "./ObsidianIcon.vue";
 
 const props = defineProps<{
-    activeTab: ReviewWorkspaceTab;
     journals: Array<{ path: string; name: string }>;
+    tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }>;
 }>();
 
+const activeTab = defineModel<ReviewWorkspaceTab>('activeTab', { required: true });
 const journalPath = defineModel<string>('journalPath', { required: true });
 const anchorDate = defineModel<string>('anchorDate', { required: true });
 
@@ -57,7 +59,12 @@ onBeforeUnmount(() => newMenu?.hide());
 
 <template>
     <header class="journalyst-review-header">
-        <h1>Journalyst</h1>
+        <MainViewNavigationTabs
+            v-model:active-tab="activeTab"
+            class="journalyst-header-tabs"
+            :tabs="tabs"
+        />
+
         <div v-if="activeTab !== 'home'" class="journalyst-review-controls">
             <label class="journalyst-review-control">
                 <span>Journal</span>
@@ -72,10 +79,6 @@ onBeforeUnmount(() => newMenu?.hide());
                 <input v-model="anchorDate" type="date">
             </label>
         </div>
-        <!-- #TODO
-        Create a enum for possible tabs as a single source of truth
-        and then use that enum in both MainViewHeader.vue and MainViewNavigationTabs.vue to avoid duplication.
-        -->
         <div v-if="activeTab === 'home'" class="journalyst-review-header-actions">
             <button
                 type="button"
@@ -105,16 +108,15 @@ onBeforeUnmount(() => newMenu?.hide());
 .journalyst-review-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     gap: 1.25rem;
     flex-wrap: wrap;
     margin-bottom: 1rem;
 }
 
-.journalyst-review-header h1 {
-    font-size: 1.8rem;
-    line-height: 1.15;
-    margin: 0;
+.journalyst-header-tabs {
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 .journalyst-review-controls {
@@ -187,10 +189,6 @@ onBeforeUnmount(() => newMenu?.hide());
 }
 
 @media (max-width: 430px) {
-    .journalyst-review-header h1 {
-        font-size: 1.5rem;
-    }
-
     .journalyst-review-header-actions {
         width: 100%;
         justify-content: flex-start;

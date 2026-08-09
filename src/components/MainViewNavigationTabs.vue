@@ -70,11 +70,13 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
 .journalyst-review-tab-container {
     display: inline-flex;
     gap: var(--size-4-1);
-    margin: 0 0 var(--size-4-1);
+    max-width: 100%;
+    overflow-x: auto;
     padding: var(--size-4-1);
     border-radius: var(--tab-curve);
     background: var(--color-base-00-dark);
     border: var(--tab-outline-width) solid var(--tab-outline-color);
+    scrollbar-width: thin;
 }
 
 .journalyst-review-tab {
@@ -82,10 +84,12 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
     border-radius: var(--tab-radius);
     box-shadow: none;
     color: var(--tab-text-color);
+    flex: 0 0 auto;
     font-size: var(--tab-font-size);
     font-weight: var(--tab-font-weight);
     gap: var(--size-4-1);
     padding: var(--size-4-2) var(--size-4-3);
+    white-space: nowrap;
 }
 
 .journalyst-review-tab.is-active {

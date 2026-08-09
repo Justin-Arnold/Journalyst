@@ -19,7 +19,6 @@ import type {
 } from "../../review/types";
 import type JournalystPlugin from "../main";
 import MainViewHeader from "./MainViewHeader.vue";
-import MainViewNavigationTabs from "./MainViewNavigationTabs.vue";
 import ObsidianIcon from "./ObsidianIcon.vue";
 import AnalyticsTab from "./main-view/AnalyticsTab.vue";
 import HomeTab from "./main-view/HomeTab.vue";
@@ -232,16 +231,15 @@ async function resumeOnboarding() {
 
         <template v-else>
             <MainViewHeader
+                v-model:active-tab="activeTab"
                 v-model:journal-path="journalPath"
                 v-model:anchor-date="anchorDate"
-                :active-tab="state.activeTab"
                 :journals="journals"
+                :tabs="tabs"
                 @create-entry="actions.createEntry"
                 @create-journal="actions.createJournal"
                 @open-settings="actions.openSettings"
             />
-
-            <MainViewNavigationTabs v-model:active-tab="activeTab" :tabs="tabs" />
 
             <div
                 v-if="!selectedJournal"
