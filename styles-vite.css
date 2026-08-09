@@ -1041,6 +1041,15 @@
     color: var(--text-error);
 }
 
+.journalyst-new-journal-error {
+    color: var(--text-error);
+    margin: 0 0 var(--size-4-3);
+}
+
+.journalyst-new-journal-error:empty {
+    display: none;
+}
+
 .journalyst-onboarding-existing-note {
     margin: 0.85rem 0 0;
     color: var(--text-muted);

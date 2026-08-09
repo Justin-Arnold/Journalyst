@@ -1041,6 +1041,15 @@
     color: var(--text-error);
 }
 
+.journalyst-new-journal-error {
+    color: var(--text-error);
+    margin: 0 0 var(--size-4-3);
+}
+
+.journalyst-new-journal-error:empty {
+    display: none;
+}
+
 .journalyst-onboarding-existing-note {
     margin: 0.85rem 0 0;
     color: var(--text-muted);
@@ -1199,7 +1208,7 @@
     }
 }
 
-.journalyst-review-header[data-v-923fb9c6] {
+.journalyst-review-header[data-v-a8a30a5f] {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -1207,45 +1216,77 @@
     flex-wrap: wrap;
     margin-bottom: 1rem;
 }
-.journalyst-review-header h1[data-v-923fb9c6] {
+.journalyst-review-header h1[data-v-a8a30a5f] {
     font-size: 1.8rem;
     line-height: 1.15;
     margin: 0;
 }
-.journalyst-review-controls[data-v-923fb9c6] {
+.journalyst-review-controls[data-v-a8a30a5f] {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
     margin-left: auto;
 }
-.journalyst-review-control[data-v-923fb9c6] {
+.journalyst-review-control[data-v-a8a30a5f] {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     min-width: 220px;
     flex: 1 1 220px;
 }
-.journalyst-review-control span[data-v-923fb9c6] {
+.journalyst-review-control span[data-v-a8a30a5f] {
     font-size: 0.8rem;
     color: var(--text-muted);
 }
-.journalyst-review-control select[data-v-923fb9c6],
-.journalyst-review-control input[data-v-923fb9c6] {
+.journalyst-review-control select[data-v-a8a30a5f],
+.journalyst-review-control input[data-v-a8a30a5f] {
     width: 100%;
 }
+.journalyst-review-header-actions[data-v-a8a30a5f] {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
+}
+.journalyst-review-header-actions button[data-v-a8a30a5f] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--input-height);
+}
+.journalyst-new-button[data-v-a8a30a5f] {
+    gap: var(--size-4-1);
+    padding: 0 var(--size-4-3);
+}
+.journalyst-settings-button[data-v-a8a30a5f] {
+    width: var(--input-height);
+    height: var(--input-height);
+    padding: 0;
+}
+.journalyst-review-header-actions button[data-v-a8a30a5f]:focus-visible {
+    outline: var(--border-width) solid var(--color-accent);
+    outline-offset: var(--size-2-1);
+}
 @media (max-width: 700px) {
-.journalyst-review-controls[data-v-923fb9c6] {
+.journalyst-review-controls[data-v-a8a30a5f] {
         width: 100%;
         margin-left: 0;
 }
-.journalyst-review-control[data-v-923fb9c6] {
+.journalyst-review-control[data-v-a8a30a5f] {
         min-width: 0;
         flex: 1 1 100%;
 }
 }
 @media (max-width: 430px) {
-.journalyst-review-header h1[data-v-923fb9c6] {
+.journalyst-review-header h1[data-v-a8a30a5f] {
         font-size: 1.5rem;
+}
+.journalyst-review-header-actions[data-v-a8a30a5f] {
+        width: 100%;
+        justify-content: flex-start;
+        margin-left: 0;
 }
 }
 

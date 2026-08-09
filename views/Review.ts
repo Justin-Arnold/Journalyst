@@ -8,6 +8,8 @@ import type {
 } from "../src/components/main-view/types";
 import type { ReviewWorkspaceTab } from "../review/types";
 import JournalystPlugin from "../src/main";
+import { NewEntryJournalModal } from "./NewEntryJournalModal";
+import { NewJournalModal } from "./NewJournalModal";
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
 
@@ -103,14 +105,37 @@ export class ReviewView extends ItemView {
             openSidebar: async (sidebarMode) => {
                 await this.plugin.activateSidebarView(sidebarMode);
             },
-            createJournalEntry: async (journalPath, date) => {
-                const journal = this.plugin.getJournalByPath(journalPath);
-                if (!journal) {
+            createEntry: async () => {
+                const journals = [...this.plugin.journals];
+                if (journals.length === 0) {
                     return;
                 }
 
-                await this.plugin.createJournalEntry(journal, date);
-                this.invalidateData();
+                const onlyJournal = journals[0];
+                if (journals.length === 1 && onlyJournal) {
+                    await this.createJournalEntry(onlyJournal.path);
+                    return;
+                }
+
+                new NewEntryJournalModal(this.app, journals, journal => {
+                    void this.createJournalEntry(journal.path);
+                }).open();
+            },
+            createJournal: async () => {
+                new NewJournalModal(this.app, async journalName => {
+                    const result = await this.plugin.createJournal(journalName);
+                    if (result.ok) {
+                        this.syncStateFromPlugin();
+                        this.invalidateData();
+                    }
+                    return result;
+                }).open();
+            },
+            createJournalEntry: async (journalPath, date) => {
+                await this.createJournalEntry(journalPath, date);
+            },
+            openSettings: async () => {
+                this.plugin.openSettings();
             },
             openNote: async (filePath) => {
                 await this.openReviewedNote(filePath);
@@ -156,6 +181,16 @@ export class ReviewView extends ItemView {
 
     private invalidateData() {
         this.viewState.revision += 1;
+    }
+
+    private async createJournalEntry(journalPath: string, date?: string) {
+        const journal = this.plugin.getJournalByPath(journalPath);
+        if (!journal) {
+            return;
+        }
+
+        await this.plugin.createJournalEntry(journal, date);
+        this.invalidateData();
     }
 
     private async openReviewedNote(filePath: string) {

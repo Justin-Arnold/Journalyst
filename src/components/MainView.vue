@@ -236,6 +236,9 @@ async function resumeOnboarding() {
                 v-model:anchor-date="anchorDate"
                 :active-tab="state.activeTab"
                 :journals="journals"
+                @create-entry="actions.createEntry"
+                @create-journal="actions.createJournal"
+                @open-settings="actions.openSettings"
             />
 
             <MainViewNavigationTabs v-model:active-tab="activeTab" :tabs="tabs" />

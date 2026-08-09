@@ -394,6 +394,70 @@ export default class JournalystPlugin extends Plugin {
         }
     }
 
+    async createJournal(journalName: string): Promise<CompleteOnboardingResult> {
+        const rootFolder = this.getConfiguredRootFolder();
+        if (!rootFolder) {
+            return { ok: false, error: 'Choose a valid Journalyst home directory before creating a journal.' };
+        }
+
+        const validation = this.validateJournalNames([journalName]);
+        if (!validation.ok) {
+            return validation;
+        }
+
+        const normalizedName = validation.names[0];
+        if (!normalizedName) {
+            return { ok: false, error: 'Enter a journal name.' };
+        }
+
+        const existingChild = this.findChildByName(rootFolder, normalizedName);
+        if (existingChild instanceof TFolder) {
+            return { ok: false, error: `A journal named "${existingChild.name}" already exists.` };
+        }
+        if (existingChild instanceof TFile) {
+            return { ok: false, error: `A file named "${existingChild.name}" already exists in ${rootFolder.path}.` };
+        }
+
+        const journalPath = this.getChildPath(rootFolder, normalizedName);
+        try {
+            await this.app.vault.createFolder(journalPath);
+            this.refreshJournals();
+            this.reviewState = {
+                journalPath,
+                anchorDate: this.reviewState.anchorDate,
+                activeTab: 'home',
+            };
+            this.refreshReviewViews();
+            return { ok: true };
+        } catch (error) {
+            this.refreshJournals();
+            console.error('Journalyst could not create the journal.', error);
+            return {
+                ok: false,
+                error: error instanceof Error
+                    ? `Journalyst could not create the journal: ${error.message}`
+                    : 'Journalyst could not create the journal. Try again.',
+            };
+        }
+    }
+
+    openSettings() {
+        const app = this.app as typeof this.app & {
+            setting?: {
+                open(): void;
+                openTabById(id: string): void;
+            };
+        };
+
+        if (!app.setting) {
+            new Notice('Journalyst could not open Obsidian settings.');
+            return;
+        }
+
+        app.setting.open();
+        app.setting.openTabById(this.manifest.id);
+    }
+
     async completeOnboarding(request: CompleteOnboardingRequest): Promise<CompleteOnboardingResult> {
         const previousRootPath = this.settings.rootDirectory;
         const previousOnboarding = this.settings.onboarding;
@@ -734,7 +798,7 @@ export default class JournalystPlugin extends Plugin {
 
         this.addCommand({
             id: commandId,
-            name: 'Create new journal in ' + journal.name,
+            name: "Create today's entry in " + journal.name,
             callback: () => {
                 this.createJournalEntry(journal);
             }
