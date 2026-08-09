@@ -1,5 +1,7 @@
 import type { JournalCadenceConfig, JournalCadenceType, JournalSchedulePause } from "../../../cadence";
+import type { BasesGenerationTarget } from "../../../bases";
 import type {
+    JournalBasesBackfillActionResult,
     JournalEntrySetupUpdate,
     JournalSettingsActionResult,
     JournalPromptPreviewModel,
@@ -43,7 +45,11 @@ export interface MainViewActions {
     saveJournalEntrySetup(journalPath: string, update: JournalEntrySetupUpdate): Promise<JournalSettingsActionResult>;
     saveJournalReminderSettings(journalPath: string, settings: JournalReminderSettings): Promise<JournalSettingsActionResult>;
     renameJournal(journalPath: string, name: string): Promise<JournalSettingsActionResult>;
-    generateBasesForJournal(journalPath: string): Promise<JournalSettingsActionResult>;
+    ensureJournalBase(journalPath: string, target: BasesGenerationTarget): Promise<JournalSettingsActionResult>;
+    resetJournalBase(journalPath: string, target: BasesGenerationTarget): Promise<JournalSettingsActionResult | null>;
+    previewJournalBasesBackfill(journalPath: string): Promise<JournalBasesBackfillActionResult>;
+    openJournalBase(filePath: string): Promise<void>;
+    openCorePluginsSettings(): Promise<void>;
     confirmDiscardJournalChanges(): Promise<boolean>;
     createEntry(): Promise<void>;
     createJournal(): Promise<void>;

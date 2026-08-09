@@ -16,6 +16,10 @@ import {
     confirmRemoveSchedulePause,
     openSchedulePauseModal,
 } from './SchedulePauseModal';
+import {
+    confirmResetJournalBase,
+    previewJournalBasesBackfill,
+} from './BasesModal';
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
 
@@ -171,10 +175,43 @@ export class ReviewView extends ItemView {
                 this.invalidateData();
                 return result;
             },
-            generateBasesForJournal: async (journalPath) => {
-                await this.plugin.generateBasesForJournal(journalPath);
+            ensureJournalBase: async (journalPath, target) => {
+                const result = await this.plugin.ensureJournalBase(journalPath, target);
                 this.invalidateData();
-                return { ok: true };
+                return result;
+            },
+            resetJournalBase: async (journalPath, target) => {
+                if (!await confirmResetJournalBase(this.app, target)) {
+                    return null;
+                }
+                const result = await this.plugin.resetJournalBase(journalPath, target);
+                this.invalidateData();
+                return result;
+            },
+            previewJournalBasesBackfill: async (journalPath) => {
+                try {
+                    const items = await this.plugin.getJournalNotePropertyBackfillPreview(journalPath);
+                    const apply = await previewJournalBasesBackfill(this.app, items);
+                    if (!apply) {
+                        return { ok: true, previewedCount: items.length, appliedCount: 0 };
+                    }
+                    await this.plugin.applyJournalNotePropertyBackfill(items);
+                    this.invalidateData();
+                    return { ok: true, previewedCount: items.length, appliedCount: items.length };
+                } catch (error) {
+                    return {
+                        ok: false,
+                        error: error instanceof Error
+                            ? error.message
+                            : 'Journalyst could not update journal metadata.',
+                    };
+                }
+            },
+            openJournalBase: async (filePath) => {
+                await this.openReviewedNote(filePath);
+            },
+            openCorePluginsSettings: async () => {
+                this.plugin.openCorePluginsSettings();
             },
             confirmDiscardJournalChanges: async () => confirmDiscardJournalChanges(this.app),
             createEntry: async () => {

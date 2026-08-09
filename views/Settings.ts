@@ -291,7 +291,7 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	private async renderBasesSettings(containerEl: HTMLElement) {
 		new Setting(containerEl)
 			.setName('Enable Bases integration')
-			.setDesc('Write Journalyst properties into notes and generate plugin-managed .base files for each journal.')
+			.setDesc('Add Journalyst properties to notes and create customizable starter Bases for each journal.')
 			.addToggle(toggle => {
 				toggle.setValue(this.plugin.isBasesIntegrationEnabled())
 					.onChange(async value => {
@@ -310,10 +310,10 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl)
-			.setName('Managed Bases files')
-			.setDesc('Generate Journalyst-owned starter Bases for your journals. Existing managed files are updated in place.')
+			.setName('Starter Base files')
+			.setDesc('Create missing starter Bases for your journals. Existing Base files are always left unchanged.')
 			.addButton(button => {
-				button.setButtonText('Generate all')
+				button.setButtonText('Create missing')
 					.setCta()
 					.onClick(async () => {
 						await this.plugin.generateBasesForAllJournals();

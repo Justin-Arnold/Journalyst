@@ -8,6 +8,9 @@ import {
     buildReflectionBaseContents,
     getFrontmatterPropertyDiff,
     getJournalystBaseFileName,
+    JOURNALYST_BASE_MANAGED_PROPERTIES,
+    type JournalBaseResource,
+    type JournalBasesIntegrationModel,
     type JournalNotePropertyBackfillItem,
     type ParsedJournalystNoteKind,
     type JournalystEntryType,
@@ -608,6 +611,23 @@ export default class JournalystPlugin extends Plugin {
 
         app.setting.open();
         app.setting.openTabById(this.manifest.id);
+    }
+
+    openCorePluginsSettings() {
+        const app = this.app as typeof this.app & {
+            setting?: {
+                open(): void;
+                openTabById(id: string): void;
+            };
+        };
+
+        if (!app.setting) {
+            new Notice('Journalyst could not open Obsidian settings.');
+            return;
+        }
+
+        app.setting.open();
+        app.setting.openTabById('core-plugins');
     }
 
     async completeOnboarding(request: CompleteOnboardingRequest): Promise<CompleteOnboardingResult> {
@@ -1600,7 +1620,10 @@ export default class JournalystPlugin extends Plugin {
         const customPromptLists = Object.values(this.getCustomPromptLists());
         const promptFiles = this.app.vault.getMarkdownFiles();
         const promptSettings = this.getJournalPromptSettings(journal.path);
-        const [templateAvailability, templateFiles, resolvedPromptList, templateStatus] = await Promise.all([
+        const basesBackfillItemsPromise = this.isBasesIntegrationEnabled()
+            ? this.getJournalBackfillItems(journal)
+            : Promise.resolve([]);
+        const [templateAvailability, templateFiles, resolvedPromptList, templateStatus, basesBackfillItems] = await Promise.all([
             templateEngine === 'none'
                 ? Promise.resolve('not-applicable' as const)
                 : this.getTemplateAvailability(templateEngine),
@@ -1609,6 +1632,7 @@ export default class JournalystPlugin extends Plugin {
                 : this.getTemplateFiles(templateEngine),
             this.getResolvedPromptList(journalPath),
             this.getJournalTemplateStatus(templateEngine, journal.path),
+            basesBackfillItemsPromise,
         ]);
         const legacyWeekdayPromptLabels = Object.fromEntries(
             await Promise.all(Object.entries(promptSettings.weekdayOverrides)
@@ -1661,7 +1685,7 @@ export default class JournalystPlugin extends Plugin {
             templatePath: this.getJournalTemplatePath(templateEngine, journal.path) ?? null,
             templateStatus,
             templateOptions: templateFiles.map(file => ({ label: file.path, value: file.path })),
-            basesEnabled: this.isBasesIntegrationEnabled(),
+            bases: this.buildJournalBasesIntegrationModel(journal, basesBackfillItems.length),
         };
     }
 
@@ -1836,6 +1860,7 @@ export default class JournalystPlugin extends Plugin {
     async updateBasesIntegrationEnabled(enabled: boolean) {
         this.settings.basesIntegrationEnabled = enabled;
         await this.saveSettings();
+        this.refreshReviewViews();
     }
 
     areRemindersEnabled() {
@@ -2013,36 +2038,127 @@ export default class JournalystPlugin extends Plugin {
         this.refreshReviewViews();
     }
 
-    async generateBasesForJournal(journal: TFolder | string) {
+    async generateBasesForJournal(journal: TFolder | string): Promise<JournalSettingsActionResult> {
         if (!this.settings.basesIntegrationEnabled) {
             new Notice('Enable Bases integration in Journalyst settings first.');
-            return;
+            return { ok: false, error: 'Enable Bases integration in Journalyst settings first.' };
+        }
+
+        if (!this.isBasesCorePluginAvailable()) {
+            new Notice('Enable the Obsidian Bases core plugin first.');
+            return { ok: false, error: 'Enable the Obsidian Bases core plugin first.' };
         }
 
         const resolvedJournal = typeof journal === 'string' ? this.getJournalByPath(journal) : journal;
 
         if (!resolvedJournal) {
             new Notice('Journalyst could not find that journal for Bases generation.');
-            return;
+            return { ok: false, error: 'Journalyst could not find that journal.' };
         }
 
-        await this.upsertManagedBaseFile(resolvedJournal, 'entries');
-        await this.upsertManagedBaseFile(resolvedJournal, 'reflections');
-        new Notice(`Journalyst generated Bases for ${resolvedJournal.name}.`);
+        try {
+            const results = await Promise.all((['entries', 'reflections'] as BasesGenerationTarget[])
+                .map(target => this.ensureManagedBaseFile(resolvedJournal, target)));
+            const createdCount = results.filter(Boolean).length;
+            this.showBasesGenerationNotice(createdCount, results.length - createdCount, resolvedJournal.name);
+            return { ok: true };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Journalyst could not create the journal Bases.';
+            new Notice(message);
+            return { ok: false, error: message };
+        }
     }
 
-    async generateBasesForAllJournals() {
+    async generateBasesForAllJournals(): Promise<JournalSettingsActionResult> {
         if (!this.settings.basesIntegrationEnabled) {
             new Notice('Enable Bases integration in Journalyst settings first.');
-            return;
+            return { ok: false, error: 'Enable Bases integration in Journalyst settings first.' };
         }
+
+        if (!this.isBasesCorePluginAvailable()) {
+            new Notice('Enable the Obsidian Bases core plugin first.');
+            return { ok: false, error: 'Enable the Obsidian Bases core plugin first.' };
+        }
+
+        if (this.journals.length === 0) {
+            new Notice('Journalyst could not find any journals for Bases generation.');
+            return { ok: false, error: 'Journalyst could not find any journals.' };
+        }
+
+        let createdCount = 0;
+        let preservedCount = 0;
+        const errors: string[] = [];
 
         for (const journal of this.journals) {
-            await this.upsertManagedBaseFile(journal, 'entries');
-            await this.upsertManagedBaseFile(journal, 'reflections');
+            for (const target of ['entries', 'reflections'] as BasesGenerationTarget[]) {
+                try {
+                    const created = await this.ensureManagedBaseFile(journal, target);
+                    if (created) createdCount += 1;
+                    else preservedCount += 1;
+                } catch (error) {
+                    errors.push(error instanceof Error ? error.message : `Journalyst could not create a Base for ${journal.name}.`);
+                }
+            }
         }
 
-        new Notice(`Journalyst generated Bases for ${this.journals.length} journal${this.journals.length === 1 ? '' : 's'}.`);
+        this.showBasesGenerationNotice(createdCount, preservedCount);
+        if (errors.length > 0) {
+            const message = `${errors.length} Base file${errors.length === 1 ? '' : 's'} could not be created.`;
+            new Notice(message);
+            return { ok: false, error: `${message} ${errors[0]}` };
+        }
+
+        return { ok: true };
+    }
+
+    async resetJournalBase(journalPath: string, target: BasesGenerationTarget): Promise<JournalSettingsActionResult> {
+        if (!this.settings.basesIntegrationEnabled) {
+            return { ok: false, error: 'Enable Bases integration in Journalyst settings first.' };
+        }
+
+        if (!this.isBasesCorePluginAvailable()) {
+            return { ok: false, error: 'Enable the Obsidian Bases core plugin first.' };
+        }
+
+        const journal = this.getJournalByPath(journalPath);
+        if (!journal) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        try {
+            await this.writeManagedBaseFile(journal, target);
+            return { ok: true };
+        } catch (error) {
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not reset that Base.',
+            };
+        }
+    }
+
+    async ensureJournalBase(journalPath: string, target: BasesGenerationTarget): Promise<JournalSettingsActionResult> {
+        if (!this.settings.basesIntegrationEnabled) {
+            return { ok: false, error: 'Enable Bases integration in Journalyst settings first.' };
+        }
+
+        if (!this.isBasesCorePluginAvailable()) {
+            return { ok: false, error: 'Enable the Obsidian Bases core plugin first.' };
+        }
+
+        const journal = this.getJournalByPath(journalPath);
+        if (!journal) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        try {
+            await this.ensureManagedBaseFile(journal, target);
+            return { ok: true };
+        } catch (error) {
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not create that Base.',
+            };
+        }
     }
 
     async getJournalNotePropertyBackfillPreview(journalPath?: string | null) {
@@ -2357,6 +2473,11 @@ export default class JournalystPlugin extends Plugin {
     }
 
     private async getFrontmatterFromFile(file: TFile) {
+        const cachedFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (cachedFrontmatter) {
+            return cachedFrontmatter as Record<string, unknown>;
+        }
+
         const contents = await this.app.vault.read(file);
         const frontmatterMatch = contents.match(/^---\n([\s\S]*?)\n---\n?/);
 
@@ -2367,25 +2488,128 @@ export default class JournalystPlugin extends Plugin {
         try {
             const parsed = parseYaml(frontmatterMatch[1]);
             return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
-        } catch (_error) {
+        } catch {
             return {};
         }
     }
 
-    private async upsertManagedBaseFile(journal: TFolder, target: BasesGenerationTarget) {
-        const fileName = getJournalystBaseFileName(target);
-        const filePath = normalizePath(`${journal.path}/${fileName}`);
-        const contents = target === 'entries'
-            ? buildEntryBaseContents(journal)
-            : buildReflectionBaseContents(journal);
+    private buildJournalBasesIntegrationModel(journal: TFolder, backfillCount: number): JournalBasesIntegrationModel {
+        const resources: JournalBaseResource[] = (['entries', 'reflections'] as BasesGenerationTarget[]).map(target => {
+            const filePath = normalizePath(`${journal.path}/${getJournalystBaseFileName(target)}`);
+            const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+            return {
+                target,
+                label: target === 'entries' ? 'Journal entries' : 'Reviews and reflections',
+                description: target === 'entries'
+                    ? 'Browse dated entries, prompt history, and cadence metadata.'
+                    : 'Browse weekly, monthly, and quarterly synthesis notes.',
+                filePath,
+                status: existingFile instanceof TFile
+                    ? 'ready'
+                    : existingFile
+                        ? 'conflict'
+                        : 'missing',
+            };
+        });
+        const globalEnabled = this.isBasesIntegrationEnabled();
+        const corePluginAvailable = this.isBasesCorePluginAvailable();
+        const readyCount = resources.filter(resource => resource.status === 'ready').length;
+        const status = !globalEnabled
+            ? 'off'
+            : !corePluginAvailable
+                ? 'unavailable'
+                : readyCount === resources.length
+                    ? 'ready'
+                    : readyCount > 0
+                        ? 'partial'
+                        : 'setup-needed';
+        const recognizedNoteCount = journal.children.filter(child => (
+            child instanceof TFile
+            && child.extension === 'md'
+            && (!!this.parseJournalDateFromFile(child) || !!parseJournalystNoteKind(child))
+        )).length;
+
+        return {
+            globalEnabled,
+            corePluginAvailable,
+            status,
+            resources,
+            managedProperties: JOURNALYST_BASE_MANAGED_PROPERTIES,
+            recognizedNoteCount,
+            backfillCount,
+        };
+    }
+
+    private isBasesCorePluginAvailable() {
+        const internalPlugins = this.getObsidianInternalPlugins();
+        const basesPlugin = internalPlugins?.getPluginById?.('bases')
+            ?? internalPlugins?.plugins?.['bases'];
+
+        if (typeof basesPlugin?.enabled === 'boolean') {
+            return basesPlugin.enabled;
+        }
+
+        if (typeof basesPlugin?._loaded === 'boolean') {
+            return basesPlugin._loaded;
+        }
+
+        if (basesPlugin?.instance) {
+            return true;
+        }
+
+        return true;
+    }
+
+    private async ensureManagedBaseFile(journal: TFolder, target: BasesGenerationTarget) {
+        const filePath = normalizePath(`${journal.path}/${getJournalystBaseFileName(target)}`);
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 
         if (existingFile instanceof TFile) {
-            await this.app.vault.modify(existingFile, contents);
-            return existingFile;
+            return false;
         }
 
-        return this.app.vault.create(filePath, contents);
+        if (existingFile) {
+            throw new Error(`${filePath} is occupied by a folder.`);
+        }
+
+        await this.app.vault.create(filePath, this.getManagedBaseFileContents(journal, target));
+        return true;
+    }
+
+    private async writeManagedBaseFile(journal: TFolder, target: BasesGenerationTarget) {
+        const filePath = normalizePath(`${journal.path}/${getJournalystBaseFileName(target)}`);
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        const contents = this.getManagedBaseFileContents(journal, target);
+
+        if (existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, contents);
+            return;
+        }
+
+        if (existingFile) {
+            throw new Error(`${filePath} is occupied by a folder.`);
+        }
+
+        await this.app.vault.create(filePath, contents);
+    }
+
+    private getManagedBaseFileContents(journal: TFolder, target: BasesGenerationTarget) {
+        return target === 'entries'
+            ? buildEntryBaseContents(journal)
+            : buildReflectionBaseContents(journal);
+    }
+
+    private showBasesGenerationNotice(createdCount: number, preservedCount: number, journalName?: string) {
+        const scope = journalName ? ` for ${journalName}` : '';
+        if (createdCount === 0) {
+            new Notice(`Journalyst kept ${preservedCount} existing Base file${preservedCount === 1 ? '' : 's'}${scope} unchanged.`);
+            return;
+        }
+
+        const preservedMessage = preservedCount > 0
+            ? ` ${preservedCount} existing file${preservedCount === 1 ? ' was' : 's were'} left unchanged.`
+            : '';
+        new Notice(`Journalyst created ${createdCount} missing Base file${createdCount === 1 ? '' : 's'}${scope}.${preservedMessage}`);
     }
 
     private remapTemplateMapPaths(templateMap: Record<string, string>, oldPath: string, newPath: string) {

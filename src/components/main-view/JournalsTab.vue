@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { JournalCadenceConfig, JournalSchedulePause } from '../../../cadence';
+import type { BasesGenerationTarget } from '../../../bases';
 import type {
     JournalSettingsSection,
     JournalSettingsSidebarItem,
@@ -11,6 +12,7 @@ import type { JournalReminderSettings } from '../../../reminders';
 import ObsidianIcon from '../ObsidianIcon.vue';
 import JournalEntrySetupSettings from './JournalEntrySetupSettings.vue';
 import JournalEditorHeader from './JournalEditorHeader.vue';
+import JournalIntegrationSettings from './JournalIntegrationSettings.vue';
 import JournalReminderSettingsEditor from './JournalReminderSettings.vue';
 import JournalScheduleSettings from './JournalScheduleSettings.vue';
 import JournalsSidebar from './JournalsSidebar.vue';
@@ -227,14 +229,50 @@ async function renameJournal() {
     }
 }
 
-async function generateBases() {
-    if (!props.model || busy.value || !props.model.basesEnabled) return;
+async function createBase(target: BasesGenerationTarget) {
+    if (!props.model || busy.value) return;
     busy.value = true;
     clearFeedback();
     try {
-        const result = await props.actions.generateBasesForJournal(props.model.journalPath);
+        const result = await props.actions.ensureJournalBase(props.model.journalPath, target);
         if (!result.ok) error.value = result.error;
-        else success.value = 'Journal Bases generated.';
+        else success.value = 'Base is ready. Existing Base files were left unchanged.';
+    } catch (actionError) {
+        error.value = actionError instanceof Error ? actionError.message : 'Journalyst could not create that Base.';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function resetBase(target: BasesGenerationTarget) {
+    if (!props.model || busy.value) return;
+    busy.value = true;
+    clearFeedback();
+    try {
+        const result = await props.actions.resetJournalBase(props.model.journalPath, target);
+        if (!result) return;
+        if (!result.ok) error.value = result.error;
+        else success.value = 'Base reset to Journalyst defaults.';
+    } catch (actionError) {
+        error.value = actionError instanceof Error ? actionError.message : 'Journalyst could not reset that Base.';
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function previewBasesBackfill() {
+    if (!props.model || busy.value) return;
+    busy.value = true;
+    clearFeedback();
+    try {
+        const result = await props.actions.previewJournalBasesBackfill(props.model.journalPath);
+        if (!result.ok) {
+            error.value = result.error;
+        } else if (result.appliedCount > 0) {
+            success.value = `Updated Journalyst metadata in ${result.appliedCount} note${result.appliedCount === 1 ? '' : 's'}.`;
+        }
+    } catch (actionError) {
+        error.value = actionError instanceof Error ? actionError.message : 'Journalyst could not review journal metadata.';
     } finally {
         busy.value = false;
     }
@@ -338,22 +376,18 @@ function clearFeedback() {
                     @open-global-reminders="openGlobalReminders"
                 />
 
-                <div v-else class="journalyst-journal-form-section">
-                    <div class="journalyst-journal-section-heading">
-                        <div>
-                            <h3>Integrations</h3>
-                            <p>Generate Journalyst-managed Bases for this journal.</p>
-                        </div>
-                    </div>
-                    <div class="journalyst-integration-row">
-                        <div>
-                            <h4>Obsidian Bases</h4>
-                            <p>{{ model.basesEnabled ? 'Generate or refresh the entries and reflections Bases in this journal.' : 'Enable Bases integration in plugin settings before generating files.' }}</p>
-                        </div>
-                        <button v-if="model.basesEnabled" type="button" :disabled="busy" @click="generateBases">Generate Bases</button>
-                        <button v-else type="button" @click="actions.openSettings">Open settings</button>
-                    </div>
-                </div>
+                <JournalIntegrationSettings
+                    v-else
+                    class="journalyst-journal-form-section"
+                    :model="model.bases"
+                    :busy="busy"
+                    @create-base="createBase"
+                    @open-base="actions.openJournalBase"
+                    @reset-base="resetBase"
+                    @preview-backfill="previewBasesBackfill"
+                    @open-plugin-settings="actions.openSettings"
+                    @open-core-plugins="actions.openCorePluginsSettings"
+                />
             </template>
             </section>
         </div>
@@ -397,21 +431,18 @@ function clearFeedback() {
     min-width: 0;
 }
 
-.journalyst-journal-section-heading,
-.journalyst-integration-row {
+.journalyst-journal-section-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--size-4-4);
 }
 
-.journalyst-journal-section-heading h3,
-.journalyst-integration-row h4 {
+.journalyst-journal-section-heading h3 {
     margin: 0;
 }
 
-.journalyst-journal-section-heading p,
-.journalyst-integration-row p {
+.journalyst-journal-section-heading p {
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
 }
@@ -436,17 +467,11 @@ function clearFeedback() {
     color: var(--text-success);
 }
 
-.journalyst-journal-notice,
-.journalyst-integration-row {
+.journalyst-journal-notice {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--size-4-3);
-}
-
-.journalyst-integration-row {
-    padding: var(--size-4-4) 0;
-    border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
 .journalyst-journal-mobile-selector {
@@ -496,7 +521,6 @@ summary:focus-visible {
 
 @media (max-width: 520px) {
     .journalyst-journal-section-heading,
-    .journalyst-integration-row,
     .journalyst-journal-notice {
         align-items: flex-start;
         flex-direction: column;

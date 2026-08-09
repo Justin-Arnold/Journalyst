@@ -1,4 +1,4 @@
-import { Notice, TAbstractFile, TFile, TFolder, normalizePath } from 'obsidian';
+import { Notice, TAbstractFile, TFile, normalizePath } from 'obsidian';
 import {
     type CoreTemplatesSettings,
     type JournalTemplateEngineStrategy,

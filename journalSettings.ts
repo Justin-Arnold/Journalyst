@@ -7,6 +7,7 @@ import type {
 } from './prompts';
 import type { JournalReminderSettings } from './reminders';
 import type { TemplateAvailability, TemplateEngine, TemplateFailureBehavior } from './templates/types';
+import type { JournalBasesIntegrationModel } from './bases';
 
 export type JournalSettingsSection = 'schedule' | 'entry-setup' | 'reminders' | 'integrations';
 
@@ -57,7 +58,7 @@ export interface JournalSettingsViewModel {
     templatePath: string | null;
     templateStatus: string;
     templateOptions: JournalSettingsOption[];
-    basesEnabled: boolean;
+    bases: JournalBasesIntegrationModel;
 }
 
 export interface JournalEntrySetupUpdate {
@@ -83,6 +84,15 @@ export type JournalSchedulePauseActionResult = {
 export type JournalSettingsActionResult = {
     ok: true;
     journalPath?: string;
+} | {
+    ok: false;
+    error: string;
+};
+
+export type JournalBasesBackfillActionResult = {
+    ok: true;
+    previewedCount: number;
+    appliedCount: number;
 } | {
     ok: false;
     error: string;

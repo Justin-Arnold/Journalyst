@@ -1,4 +1,13 @@
-import { TFile, TFolder, parseYaml, stringifyYaml } from 'obsidian';
+import {
+    TFile,
+    TFolder,
+    parseYaml,
+    stringifyYaml,
+    type BasesConfigFile,
+    type BasesConfigFileView,
+    type BasesPropertyId,
+    type BasesSortConfig,
+} from 'obsidian';
 import moment from 'moment';
 import { type JournalCadenceConfig } from './cadence';
 import { type JournalPromptSettings } from './prompts';
@@ -6,6 +15,31 @@ import { type SynthesisPeriodType } from './review/types';
 
 export type JournalystEntryType = 'entry' | 'weekly-review' | 'monthly-reflection' | 'quarter-summary';
 export type BasesGenerationTarget = 'entries' | 'reflections';
+export type JournalBasesIntegrationStatus = 'off' | 'unavailable' | 'setup-needed' | 'partial' | 'ready';
+export type JournalBaseResourceStatus = 'ready' | 'missing' | 'conflict';
+
+export interface JournalBaseResource {
+    target: BasesGenerationTarget;
+    label: string;
+    description: string;
+    filePath: string;
+    status: JournalBaseResourceStatus;
+}
+
+export interface JournalBasesManagedProperty {
+    key: keyof JournalystNoteProperties;
+    label: string;
+}
+
+export interface JournalBasesIntegrationModel {
+    globalEnabled: boolean;
+    corePluginAvailable: boolean;
+    status: JournalBasesIntegrationStatus;
+    resources: JournalBaseResource[];
+    managedProperties: JournalBasesManagedProperty[];
+    recognizedNoteCount: number;
+    backfillCount: number;
+}
 
 export interface JournalystNoteProperties {
     journalyst_date?: string;
@@ -52,8 +86,35 @@ export interface ParsedJournalystNoteKind {
     periodType?: SynthesisPeriodType;
 }
 
+type JournalystBaseView = Omit<BasesConfigFileView, 'groupBy' | 'order'> & {
+    groupBy?: {
+        property: BasesPropertyId;
+        direction: 'ASC' | 'DESC';
+    };
+    order?: BasesPropertyId[];
+    sort?: BasesSortConfig[];
+    limit?: number;
+};
+
+type JournalystBaseConfig = Omit<BasesConfigFile, 'views'> & {
+    views: JournalystBaseView[];
+};
+
 const ENTRY_BASE_FILE_NAME = 'journal-entries.base';
 const REFLECTION_BASE_FILE_NAME = 'journal-reflections.base';
+
+export const JOURNALYST_BASE_MANAGED_PROPERTIES: JournalBasesManagedProperty[] = [
+    { key: 'journalyst_date', label: 'Date' },
+    { key: 'journalyst_entry_type', label: 'Entry type' },
+    { key: 'journalyst_journal_name', label: 'Journal' },
+    { key: 'journalyst_journal_path', label: 'Journal path' },
+    { key: 'journalyst_cadence_type', label: 'Cadence' },
+    { key: 'journalyst_prompt_source', label: 'Prompt source' },
+    { key: 'journalyst_prompt_title', label: 'Prompt' },
+    { key: 'journalyst_period_type', label: 'Review period' },
+    { key: 'journalyst_period_start', label: 'Period start' },
+    { key: 'journalyst_period_end', label: 'Period end' },
+];
 
 export function getJournalystBaseFileName(target: BasesGenerationTarget) {
     return target === 'entries' ? ENTRY_BASE_FILE_NAME : REFLECTION_BASE_FILE_NAME;
@@ -182,86 +243,114 @@ export function parseJournalystNoteKind(file: TFile): ParsedJournalystNoteKind |
 }
 
 export function buildEntryBaseContents(journal: TFolder) {
-    return [
-        `filters:`,
-        `  and:`,
-        `    - 'file.folder == ${yamlScalar(journal.path)}'`,
-        `    - 'journalyst_entry_type == "entry"'`,
-        `properties:`,
-        `  file.name:`,
-        `    displayName: File`,
-        `  journalyst_date:`,
-        `    displayName: Date`,
-        `  journalyst_cadence_type:`,
-        `    displayName: Cadence`,
-        `  journalyst_prompt_source:`,
-        `    displayName: Prompt Source`,
-        `  journalyst_prompt_title:`,
-        `    displayName: Prompt`,
-        `views:`,
-        `  - type: table`,
-        `    name: All entries`,
-        `    order:`,
-        `      - journalyst_date`,
-        `      - file.name`,
-        `  - type: table`,
-        `    name: Recent`,
-        `    order:`,
-        `      - journalyst_date`,
-        `    limit: 30`,
-        `  - type: table`,
-        `    name: By cadence`,
-        `    groupBy:`,
-        `      property: journalyst_cadence_type`,
-        `      direction: ASC`,
-        `    order:`,
-        `      - journalyst_date`,
-        `      - file.name`,
-        ``,
-    ].join('\n');
+    const config: JournalystBaseConfig = {
+        filters: {
+            and: [
+                `file.folder == ${JSON.stringify(journal.path)}`,
+                'journalyst_entry_type == "entry"',
+            ],
+        },
+        properties: {
+            'file.name': { displayName: 'File' },
+            journalyst_date: { displayName: 'Date' },
+            journalyst_cadence_type: { displayName: 'Cadence' },
+            journalyst_prompt_source: { displayName: 'Prompt Source' },
+            journalyst_prompt_title: { displayName: 'Prompt' },
+        },
+        views: [
+            {
+                type: 'table',
+                name: 'Recent entries',
+                order: ['note.journalyst_date', 'file.name', 'note.journalyst_prompt_title'],
+                sort: [{ property: 'note.journalyst_date', direction: 'DESC' }],
+                limit: 30,
+            },
+            {
+                type: 'table',
+                name: 'All entries',
+                order: [
+                    'note.journalyst_date',
+                    'file.name',
+                    'note.journalyst_prompt_source',
+                    'note.journalyst_prompt_title',
+                ],
+                sort: [{ property: 'note.journalyst_date', direction: 'DESC' }],
+            },
+            {
+                type: 'table',
+                name: 'By prompt source',
+                groupBy: { property: 'note.journalyst_prompt_source', direction: 'ASC' },
+                order: ['note.journalyst_date', 'file.name', 'note.journalyst_prompt_title'],
+                sort: [{ property: 'note.journalyst_date', direction: 'DESC' }],
+            },
+            {
+                type: 'table',
+                name: 'By cadence',
+                groupBy: { property: 'note.journalyst_cadence_type', direction: 'ASC' },
+                order: ['note.journalyst_date', 'file.name'],
+                sort: [{ property: 'note.journalyst_date', direction: 'DESC' }],
+            },
+        ],
+    };
+
+    return serializeBaseConfig(config);
 }
 
 export function buildReflectionBaseContents(journal: TFolder) {
-    return [
-        `filters:`,
-        `  and:`,
-        `    - 'file.folder == ${yamlScalar(journal.path)}'`,
-        `    - or:`,
-        `      - 'journalyst_entry_type == "weekly-review"'`,
-        `      - 'journalyst_entry_type == "monthly-reflection"'`,
-        `      - 'journalyst_entry_type == "quarter-summary"'`,
-        `properties:`,
-        `  file.name:`,
-        `    displayName: File`,
-        `  journalyst_entry_type:`,
-        `    displayName: Reflection Type`,
-        `  journalyst_period_type:`,
-        `    displayName: Period`,
-        `  journalyst_period_start:`,
-        `    displayName: Period Start`,
-        `  journalyst_period_end:`,
-        `    displayName: Period End`,
-        `views:`,
-        `  - type: table`,
-        `    name: All reflections`,
-        `    order:`,
-        `      - journalyst_period_end`,
-        `      - file.name`,
-        `  - type: table`,
-        `    name: By type`,
-        `    groupBy:`,
-        `      property: journalyst_entry_type`,
-        `      direction: ASC`,
-        `    order:`,
-        `      - journalyst_period_end`,
-        `      - file.name`,
-        `  - type: table`,
-        `    name: Recent reflections`,
-        `    order:`,
-        `      - journalyst_period_end`,
-        `    limit: 20`,
-        ``,
-    ].join('\n');
+    const periodEnd: BasesPropertyId = 'note.journalyst_period_end';
+    const config: JournalystBaseConfig = {
+        filters: {
+            and: [
+                `file.folder == ${JSON.stringify(journal.path)}`,
+                {
+                    or: [
+                        'journalyst_entry_type == "weekly-review"',
+                        'journalyst_entry_type == "monthly-reflection"',
+                        'journalyst_entry_type == "quarter-summary"',
+                    ],
+                },
+            ],
+        },
+        properties: {
+            'file.name': { displayName: 'File' },
+            journalyst_entry_type: { displayName: 'Reflection Type' },
+            journalyst_period_type: { displayName: 'Period' },
+            journalyst_period_start: { displayName: 'Period Start' },
+            journalyst_period_end: { displayName: 'Period End' },
+        },
+        views: [
+            {
+                type: 'table',
+                name: 'Recent reviews',
+                order: [periodEnd, 'file.name', 'note.journalyst_entry_type'],
+                sort: [{ property: periodEnd, direction: 'DESC' }],
+                limit: 20,
+            },
+            buildReflectionView('Weekly', 'weekly-review', periodEnd),
+            buildReflectionView('Monthly', 'monthly-reflection', periodEnd),
+            buildReflectionView('Quarterly', 'quarter-summary', periodEnd),
+        ],
+    };
+
+    return serializeBaseConfig(config);
+}
+
+function buildReflectionView(
+    name: string,
+    entryType: JournalystEntryType,
+    periodEnd: BasesPropertyId,
+): JournalystBaseView {
+    return {
+        type: 'table',
+        name,
+        filters: { and: [`journalyst_entry_type == ${JSON.stringify(entryType)}`] },
+        order: [periodEnd, 'file.name'],
+        sort: [{ property: periodEnd, direction: 'DESC' }],
+    };
+}
+
+function serializeBaseConfig(config: JournalystBaseConfig) {
+    return `${stringifyYaml(config).trimEnd()}\n`;
 }
 
 function getPromptSourceLabel(promptSettings: JournalPromptSettings) {
@@ -282,7 +371,7 @@ function safeParseFrontmatter(frontmatter: string): Record<string, unknown> {
     try {
         const parsed = parseYaml(frontmatter);
         return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
-    } catch (_error) {
+    } catch {
         return {};
     }
 }
@@ -294,8 +383,4 @@ function parseEntryDateFromFileName(fileName: string) {
     }
 
     return match[1];
-}
-
-function yamlScalar(value: string) {
-    return JSON.stringify(value);
 }

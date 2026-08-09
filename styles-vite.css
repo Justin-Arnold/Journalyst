@@ -143,6 +143,33 @@
     height: 1rem;
 }
 
+.journalyst-bases-backfill-list {
+    display: flex;
+    max-height: min(55vh, 30rem);
+    flex-direction: column;
+    margin: var(--size-4-4) 0;
+    overflow-y: auto;
+    border-top: var(--border-width) solid var(--background-modifier-border);
+}
+
+.journalyst-bases-backfill-row {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--size-4-1);
+    padding: var(--size-4-3) var(--size-4-1);
+    border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.journalyst-bases-backfill-row code {
+    overflow-wrap: anywhere;
+}
+
+.journalyst-bases-backfill-row span {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
 .journalyst-review-overview {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
