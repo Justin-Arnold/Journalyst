@@ -233,44 +233,15 @@
     gap: 0.9rem;
 }
 
-.journalyst-reminder-journal-header,
-.journalyst-reminder-inline-row {
+.journalyst-reminder-journal-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 0.75rem;
 }
 
-.journalyst-reminder-journal-header h3,
-.journalyst-reminder-inline-row h4 {
+.journalyst-reminder-journal-header h3 {
     margin: 0;
-}
-
-.journalyst-reminder-inline-row p {
-    margin-bottom: 0;
-}
-
-.journalyst-reminder-rule-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.75rem;
-    margin-top: 0;
-}
-
-.journalyst-reminder-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.journalyst-reminder-field span {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-.journalyst-reminder-field select,
-.journalyst-reminder-field input {
-    width: 100%;
 }
 
 .journalyst-review-visual-card {
@@ -515,14 +486,12 @@
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.journalyst-reminder-global-row h3,
-.journalyst-reminder-rule-row h4 {
+.journalyst-reminder-global-row h3 {
     margin: 0 0 0.2rem;
     font-size: 1rem;
 }
 
-.journalyst-reminder-global-row p,
-.journalyst-reminder-rule-row p {
+.journalyst-reminder-global-row p {
     margin-bottom: 0;
 }
 
@@ -545,20 +514,6 @@
 
 .journalyst-reminder-journal-header p {
     margin: 0.2rem 0 0;
-}
-
-.journalyst-reminder-rule-row {
-    display: grid;
-    grid-template-columns: minmax(220px, 1.2fr) minmax(300px, 1fr);
-    align-items: center;
-    gap: 1rem;
-    padding: 0.9rem 1rem;
-    border-top: 1px solid var(--background-modifier-border);
-}
-
-.journalyst-reminder-rule-row.is-muted {
-    grid-template-columns: 1fr;
-    background: var(--background-primary-alt, var(--background-primary));
 }
 
 .journalyst-toggle {
@@ -1105,13 +1060,8 @@
         grid-template-columns: 1fr;
     }
 
-    .journalyst-synthesis-grid,
-    .journalyst-reminder-rule-row {
+    .journalyst-synthesis-grid {
         grid-template-columns: 1fr;
-    }
-
-    .journalyst-reminder-rule-fields {
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     }
 
     .journalyst-reminder-global-row {
@@ -1143,10 +1093,6 @@
 
     .journalyst-reminder-global-row {
         grid-template-columns: 1fr;
-    }
-
-    .journalyst-reminder-inline-row {
-        flex-direction: column;
     }
 
     .journalyst-onboarding-actions,

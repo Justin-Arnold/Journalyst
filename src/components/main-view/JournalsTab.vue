@@ -11,9 +11,9 @@ import type { JournalReminderSettings } from '../../../reminders';
 import ObsidianIcon from '../ObsidianIcon.vue';
 import JournalEntrySetupSettings from './JournalEntrySetupSettings.vue';
 import JournalEditorHeader from './JournalEditorHeader.vue';
+import JournalReminderSettingsEditor from './JournalReminderSettings.vue';
 import JournalScheduleSettings from './JournalScheduleSettings.vue';
 import JournalsSidebar from './JournalsSidebar.vue';
-import ReminderRuleEditor from './ReminderRuleEditor.vue';
 import type { MainViewActions } from './types';
 
 const props = defineProps<{
@@ -326,24 +326,17 @@ function clearFeedback() {
                     @save="saveEntrySetup"
                 />
 
-                <div v-else-if="section === 'reminders' && reminderDraft" class="journalyst-journal-form-section">
-                    <div class="journalyst-journal-section-heading">
-                        <div>
-                            <h3>Reminder rules</h3>
-                            <p>Schedule entry nudges and weekly, monthly, or quarterly reviews for this journal.</p>
-                        </div>
-                        <button type="button" class="mod-cta" :disabled="busy || !remindersDirty" @click="saveReminders">Save reminders</button>
-                    </div>
-                    <div v-if="!model.remindersEnabled" class="journalyst-journal-notice">
-                        <span>Global reminders are currently off. These rules will be saved but will not run.</span>
-                        <button type="button" @click="openGlobalReminders">Global controls</button>
-                    </div>
-                    <div class="journalyst-reminder-rules">
-                        <ReminderRuleEditor v-if="model.cadence.type !== 'adhoc'" kind="entry" :settings="reminderDraft" @update="reminderDraft = $event; clearFeedback()" />
-                        <div v-else class="journalyst-journal-notice">Ad-hoc journals do not have scheduled entry reminders.</div>
-                        <ReminderRuleEditor v-for="period in (['weekly', 'monthly', 'quarterly'] as const)" :key="period" :kind="period" :settings="reminderDraft" @update="reminderDraft = $event; clearFeedback()" />
-                    </div>
-                </div>
+                <JournalReminderSettingsEditor
+                    v-else-if="section === 'reminders' && reminderDraft"
+                    v-model:settings="reminderDraft"
+                    class="journalyst-journal-form-section"
+                    :model="model"
+                    :busy="busy"
+                    :dirty="remindersDirty"
+                    @change="clearFeedback"
+                    @save="saveReminders"
+                    @open-global-reminders="openGlobalReminders"
+                />
 
                 <div v-else class="journalyst-journal-form-section">
                     <div class="journalyst-journal-section-heading">
