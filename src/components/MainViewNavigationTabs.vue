@@ -47,7 +47,7 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
 </script>
 
 <template>
-    <div ref="tabList" class="journalyst-review-tabs" role="tablist" aria-label="Journalyst workspace">
+    <div ref="tabList" class="journalyst-review-tab-container" role="tablist" aria-label="Journalyst workspace">
         <button
             v-for="(tab, index) in tabs"
             :key="tab.id"
@@ -67,40 +67,38 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
 </template>
 
 <style scoped>
-.journalyst-review-tabs {
-    display: flex;
-    gap: 0.25rem;
-    max-width: 100%;
-    overflow-x: auto;
-    margin: 0 0 1.25rem;
-    padding: 0.25rem;
-    border-radius: var(--radius-s);
-    background: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    scrollbar-width: thin;
+.journalyst-review-tab-container {
+    display: inline-flex;
+    gap: var(--size-4-1);
+    margin: 0 0 var(--size-4-1);
+    padding: var(--size-4-1);
+    border-radius: var(--tab-curve);
+    background: var(--color-base-00-dark);
+    border: var(--tab-outline-width) solid var(--tab-outline-color);
 }
 
 .journalyst-review-tab {
-    border: 0;
     background: transparent;
-    color: var(--text-muted);
-    padding: 0.5rem 0.85rem;
-    border-radius: var(--radius-s);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex: 0 0 auto;
-    white-space: nowrap;
+    border-radius: var(--tab-radius);
+    box-shadow: none;
+    color: var(--tab-text-color);
+    font-size: var(--tab-font-size);
+    font-weight: var(--tab-font-weight);
+    gap: var(--size-4-1);
+    padding: var(--size-4-2) var(--size-4-3);
 }
 
 .journalyst-review-tab.is-active {
-    background: var(--background-primary);
-    color: var(--text-normal);
-    box-shadow: inset 0 -2px 0 var(--interactive-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent-1);
+}
+
+.journalyst-review-tab:hover {
+    color: var(--color-accent-1);
 }
 
 .journalyst-review-tab:focus-visible {
-    outline: 2px solid var(--interactive-accent);
-    outline-offset: 2px;
+    outline: var(--border-width) solid var(--color-accent);
+    outline-offset: var(--size-2-1);
 }
 </style>

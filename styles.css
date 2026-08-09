@@ -1,3 +1,7 @@
+:root {
+    --color-base-00-dark: #1a1a1a;
+}
+
 .heat-map-wrapper {
     height: fit-content;
     display: grid;
@@ -1249,37 +1253,34 @@
     }
 }
 
-.journalyst-review-tabs[data-v-0dee5bf9] {
-    display: flex;
-    gap: 0.25rem;
-    max-width: 100%;
-    overflow-x: auto;
-    margin: 0 0 1.25rem;
-    padding: 0.25rem;
-    border-radius: var(--radius-s);
-    background: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    scrollbar-width: thin;
-}
-.journalyst-review-tab[data-v-0dee5bf9] {
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-    padding: 0.5rem 0.85rem;
-    border-radius: var(--radius-s);
+.journalyst-review-tab-container[data-v-b2295b9c] {
     display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex: 0 0 auto;
-    white-space: nowrap;
+    gap: var(--size-4-1);
+    margin: 0 0 var(--size-4-1);
+    padding: var(--size-4-1);
+    border-radius: var(--tab-curve);
+    background: var(--color-base-00-dark);
+    border: var(--tab-outline-width) solid var(--tab-outline-color);
 }
-.journalyst-review-tab.is-active[data-v-0dee5bf9] {
-    background: var(--background-primary);
-    color: var(--text-normal);
-    box-shadow: inset 0 -2px 0 var(--interactive-accent);
+.journalyst-review-tab[data-v-b2295b9c] {
+    background: transparent;
+    border-radius: var(--tab-radius);
+    box-shadow: none;
+    color: var(--tab-text-color);
+    font-size: var(--tab-font-size);
+    font-weight: var(--tab-font-weight);
+    gap: var(--size-4-1);
+    padding: var(--size-4-2) var(--size-4-3);
 }
-.journalyst-review-tab[data-v-0dee5bf9]:focus-visible {
-    outline: 2px solid var(--interactive-accent);
-    outline-offset: 2px;
+.journalyst-review-tab.is-active[data-v-b2295b9c] {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent-1);
+}
+.journalyst-review-tab[data-v-b2295b9c]:hover {
+    color: var(--color-accent-1);
+}
+.journalyst-review-tab[data-v-b2295b9c]:focus-visible {
+    outline: var(--border-width) solid var(--color-accent);
+    outline-offset: var(--size-2-1);
 }
 /*$vite$:1*/

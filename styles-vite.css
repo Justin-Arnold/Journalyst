@@ -1,3 +1,7 @@
+:root {
+    --color-base-00-dark: #1a1a1a;
+}
+
 .heat-map-wrapper {
     height: fit-content;
     display: grid;
