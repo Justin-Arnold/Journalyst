@@ -1003,12 +1003,14 @@
     color: var(--text-error);
 }
 
-.journalyst-new-journal-error {
+.journalyst-new-journal-error,
+.journalyst-schedule-pause-error {
     color: var(--text-error);
     margin: 0 0 var(--size-4-3);
 }
 
-.journalyst-new-journal-error:empty {
+.journalyst-new-journal-error:empty,
+.journalyst-schedule-pause-error:empty {
     display: none;
 }
 

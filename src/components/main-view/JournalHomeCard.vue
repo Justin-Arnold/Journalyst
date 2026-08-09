@@ -16,7 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     createEntry: [target: { journalPath: string; date?: string }];
     activateTab: [target: { journalPath: string; tab: ReviewWorkspaceTab }];
-    openSettings: [];
+    editJournal: [journalPath: string];
 }>();
 
 function getStatusLabel(status: JournalHomeCardStatus) {
@@ -86,7 +86,7 @@ function activateTab(tab: ReviewWorkspaceTab) {
             :due-today="overview.cardStatus.kind === 'due-today'"
             @today="createEntry()"
             @navigate="activateTab"
-            @open-settings="emit('openSettings')"
+            @edit-journal="emit('editJournal', overview.journal.path)"
         />
     </article>
 </template>

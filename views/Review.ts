@@ -10,6 +10,12 @@ import type { ReviewWorkspaceTab } from "../review/types";
 import JournalystPlugin from "../src/main";
 import { NewEntryJournalModal } from "./NewEntryJournalModal";
 import { NewJournalModal } from "./NewJournalModal";
+import { confirmDiscardJournalChanges } from "./ConfirmDiscardModal";
+import type { JournalSettingsSection } from "../journalSettings";
+import {
+    confirmRemoveSchedulePause,
+    openSchedulePauseModal,
+} from './SchedulePauseModal';
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
 
@@ -20,6 +26,7 @@ export class ReviewView extends ItemView {
         journalPath: null,
         anchorDate: moment().format('YYYY-MM-DD'),
         activeTab: 'review',
+        journalSettingsSection: 'schedule',
         revision: 0,
     });
     private readonly actions: MainViewActions;
@@ -68,10 +75,16 @@ export class ReviewView extends ItemView {
         this.rootContainer = null;
     }
 
-    updateReviewState(journalPath: string | null, anchorDate?: string, activeTab?: ReviewWorkspaceTab) {
+    updateReviewState(
+        journalPath: string | null,
+        anchorDate?: string,
+        activeTab?: ReviewWorkspaceTab,
+        journalSettingsSection?: JournalSettingsSection,
+    ) {
         this.viewState.journalPath = journalPath;
         this.viewState.anchorDate = anchorDate ?? this.viewState.anchorDate;
         this.viewState.activeTab = activeTab ?? this.viewState.activeTab;
+        this.viewState.journalSettingsSection = journalSettingsSection ?? this.viewState.journalSettingsSection;
         this.viewState.revision += 1;
     }
 
@@ -102,6 +115,67 @@ export class ReviewView extends ItemView {
             activateJournalTab: async (journalPath, activeTab) => {
                 await this.plugin.activateReviewView(journalPath, undefined, activeTab);
             },
+            activateJournalSettings: async (journalPath, section = 'schedule') => {
+                await this.plugin.activateJournalSettings(journalPath, section);
+            },
+            loadJournalSettings: async (journalPath) => this.plugin.getJournalSettingsViewModel(journalPath),
+            loadJournalPromptOptions: async (settings) => this.plugin.getPromptOptionsForSettings(settings),
+            saveJournalCadence: async (journalPath, cadence) => {
+                const result = await this.plugin.saveJournalCadence(journalPath, cadence);
+                this.invalidateData();
+                return result;
+            },
+            editJournalSchedulePause: async (journalPath, pause) => {
+                const result = await openSchedulePauseModal(
+                    this.app,
+                    pause,
+                    update => this.plugin.saveJournalSchedulePause(journalPath, update),
+                );
+                if (result?.ok) {
+                    this.invalidateData();
+                }
+                return result;
+            },
+            removeJournalSchedulePause: async (journalPath, pause) => {
+                if (!await confirmRemoveSchedulePause(this.app, pause)) {
+                    return null;
+                }
+                const result = await this.plugin.removeJournalSchedulePause(journalPath, pause.id);
+                if (result.ok) {
+                    this.invalidateData();
+                }
+                return result;
+            },
+            saveJournalEntrySetup: async (journalPath, update) => {
+                const result = await this.plugin.saveJournalEntrySetup(journalPath, update);
+                this.invalidateData();
+                return result;
+            },
+            saveJournalReminderSettings: async (journalPath, settings) => {
+                const result = await this.plugin.saveJournalReminderSettings(journalPath, settings);
+                this.invalidateData();
+                return result;
+            },
+            renameJournal: async (journalPath, name) => {
+                const result = await this.plugin.renameJournal(journalPath, name);
+                if (result.ok && result.journalPath) {
+                    this.viewState.journalPath = result.journalPath;
+                    await this.plugin.setReviewState(
+                        result.journalPath,
+                        this.viewState.anchorDate,
+                        'journals',
+                        this.viewState.journalSettingsSection,
+                    );
+                }
+                this.invalidateData();
+                return result;
+            },
+            generateBasesForJournal: async (journalPath) => {
+                await this.plugin.generateBasesForJournal(journalPath);
+                this.invalidateData();
+                return { ok: true };
+            },
+            confirmDiscardJournalChanges: async () => confirmDiscardJournalChanges(this.app),
             createEntry: async () => {
                 const journals = [...this.plugin.journals];
                 if (journals.length === 0) {
@@ -156,10 +230,6 @@ export class ReviewView extends ItemView {
             sendTestReminderNotification: async () => {
                 await this.plugin.sendTestReminderNotification();
             },
-            updateJournalReminderSettings: async (journalPath, settings) => {
-                await this.plugin.updateJournalReminderSettings(journalPath, settings);
-                this.invalidateData();
-            },
         };
     }
 
@@ -174,6 +244,7 @@ export class ReviewView extends ItemView {
         this.viewState.journalPath = reviewState.journalPath ?? this.plugin.getDefaultReviewJournalPath();
         this.viewState.anchorDate = reviewState.anchorDate;
         this.viewState.activeTab = reviewState.activeTab;
+        this.viewState.journalSettingsSection = reviewState.journalSettingsSection;
     }
 
     private invalidateData() {

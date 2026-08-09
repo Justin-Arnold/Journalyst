@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { normalizePath } from "obsidian";
 import moment from "moment";
-import { getCadenceLabel } from "../../cadence";
+import { getCadenceLabel, getCompactCadenceLabel } from "../../cadence";
 import type { CompleteOnboardingRequest } from "../../onboarding";
 import {
     buildJournalHomeAttentionItems,
@@ -20,11 +20,13 @@ import type {
     ReviewWorkspaceTab,
     SynthesisPeriodType,
 } from "../../review/types";
+import { hasAnyEnabledReminder } from "../../reminders";
 import type JournalystPlugin from "../main";
 import MainViewHeader from "./MainViewHeader.vue";
 import ObsidianIcon from "./ObsidianIcon.vue";
 import AnalyticsTab from "./main-view/AnalyticsTab.vue";
 import HomeTab from "./main-view/HomeTab.vue";
+import JournalsTab from "./main-view/JournalsTab.vue";
 import OnboardingView from "./main-view/OnboardingView.vue";
 import RemindersTab from "./main-view/RemindersTab.vue";
 import ReviewTab from "./main-view/ReviewTab.vue";
@@ -35,6 +37,7 @@ import type {
     ReviewViewState,
     SynthesisPreviewModel,
 } from "./main-view/types";
+import type { JournalSettingsSidebarItem, JournalSettingsViewModel } from "../../journalSettings";
 
 const props = defineProps<{
     plugin: JournalystPlugin;
@@ -45,6 +48,11 @@ const props = defineProps<{
 const onboardingBusy = ref(false);
 const onboardingError = ref('');
 const synthesisAttentionPeriod = ref<SynthesisPeriodType | null>(null);
+const journalEditorDirty = ref(false);
+const journalSettingsModel = ref<JournalSettingsViewModel | null>(null);
+const journalSettingsLoading = ref(false);
+const journalSettingsError = ref('');
+let journalSettingsRequestRevision = 0;
 const snapshotBuildOptions: SnapshotBuildOptions = {
     isEntryComplete: file => props.plugin.isJournalEntryComplete(file),
 };
@@ -55,6 +63,7 @@ const tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }> = [
     { id: 'analytics', label: 'Analytics', icon: 'chart-column' },
     { id: 'synthesis', label: 'Synthesis', icon: 'file-pen-line' },
     { id: 'reminders', label: 'Reminders', icon: 'bell' },
+    { id: 'journals', label: 'Journals', icon: 'notebooks' },
 ];
 
 const workspaceContext = computed(() => ({
@@ -68,7 +77,29 @@ const workspaceContext = computed(() => ({
 const journals = computed(() => workspaceContext.value.journalFolders
     .map(journal => ({ path: journal.path, name: journal.name })));
 
+const journalOverviews = computed(() => workspaceContext.value.journalFolders
+    .map(journal => buildJournalOverviewData(props.plugin, journal)));
+
+const journalSidebarItems = computed<JournalSettingsSidebarItem[]>(() => workspaceContext.value.journalFolders
+    .map(journal => {
+        const journalPath = journal.path;
+        const cadenceTimeline = props.plugin.getJournalCadenceTimeline(journalPath);
+
+        return {
+            path: journalPath,
+            name: journal.name,
+            cadenceLabel: getCompactCadenceLabel(props.plugin.getJournalCadence(journalPath)),
+            hasReminders: hasAnyEnabledReminder(
+                props.plugin.getJournalReminderSettings(journalPath),
+                cadenceTimeline,
+            ),
+        };
+    }));
+
 const selectedJournal = computed(() => workspaceContext.value.selectedJournal);
+const selectedJournalRequired = computed(() => (
+    ['review', 'analytics', 'synthesis'] as ReviewWorkspaceTab[]
+).includes(props.state.activeTab));
 
 const onboardingModel = computed(() => {
     void workspaceContext.value.revision;
@@ -78,10 +109,21 @@ const onboardingModel = computed(() => {
 const activeTab = computed<ReviewWorkspaceTab>({
     get: () => props.state.activeTab,
     set: (value) => {
-        synthesisAttentionPeriod.value = null;
-        void props.actions.setReviewState(props.state.journalPath, props.state.anchorDate, value);
+        void changeWorkspaceTab(value);
     },
 });
+
+async function changeWorkspaceTab(value: ReviewWorkspaceTab) {
+    if (value === props.state.activeTab) return;
+    if (props.state.activeTab === 'journals' && journalEditorDirty.value) {
+        const discard = await props.actions.confirmDiscardJournalChanges();
+        if (!discard) return;
+        journalEditorDirty.value = false;
+    }
+
+    synthesisAttentionPeriod.value = null;
+    await props.actions.setReviewState(props.state.journalPath, props.state.anchorDate, value);
+}
 
 const journalPath = computed<string>({
     get: () => props.state.journalPath ?? '',
@@ -104,15 +146,14 @@ const anchorDate = computed<string>({
 });
 
 const homeWorkspace = computed(() => {
-    const journalOverviews = workspaceContext.value.journalFolders
-        .map(journal => buildJournalOverviewData(props.plugin, journal));
-    const summary = buildJournalHomeSummary(props.plugin, journalOverviews);
+    const overviews = journalOverviews.value;
+    const summary = buildJournalHomeSummary(props.plugin, overviews);
 
     return {
         revision: workspaceContext.value.revision,
         summary,
-        attentionItems: buildJournalHomeAttentionItems(props.plugin, journalOverviews, { summary }),
-        journals: journalOverviews,
+        attentionItems: buildJournalHomeAttentionItems(props.plugin, overviews, { summary }),
+        journals: overviews,
     };
 });
 
@@ -167,13 +208,17 @@ const synthesisPreviews = computed<SynthesisPreviewModel[]>(() => {
 const remindersModel = computed<ReminderWorkspaceModel>(() => {
     const journalsWithRules = workspaceContext.value.journalFolders.map(journal => {
         const cadence = props.plugin.getJournalCadence(journal.path);
+        const settings = props.plugin.getJournalReminderSettings(journal.path);
+        const reviewReminderCount = Object.values(settings.reviewReminders)
+            .filter(rule => rule.enabled).length;
         return {
             journalPath: journal.path,
             journalName: journal.name,
             cadenceType: cadence.type,
             cadenceLabel: getCadenceLabel(cadence),
             reminderSummary: props.plugin.getJournalReminderSummary(journal.path),
-            settings: props.plugin.getJournalReminderSettings(journal.path),
+            entryReminderEnabled: settings.entryReminder.enabled,
+            reviewReminderCount,
         };
     });
 
@@ -184,6 +229,53 @@ const remindersModel = computed<ReminderWorkspaceModel>(() => {
         activeJournalCount: journalsWithRules.filter(journal => journal.reminderSummary === 'Reminders active').length,
         journals: journalsWithRules,
     };
+});
+
+async function loadJournalSettings() {
+    const journalPath = props.state.journalPath;
+    const requestRevision = ++journalSettingsRequestRevision;
+    if (props.state.activeTab !== 'journals' || !journalPath) {
+        journalSettingsModel.value = null;
+        journalSettingsLoading.value = false;
+        journalSettingsError.value = '';
+        return;
+    }
+
+    journalSettingsLoading.value = true;
+    journalSettingsError.value = '';
+    try {
+        const model = await props.actions.loadJournalSettings(journalPath);
+        if (requestRevision !== journalSettingsRequestRevision) return;
+        journalSettingsModel.value = model;
+        if (!model) {
+            journalSettingsError.value = 'Journalyst could not load that journal.';
+        }
+    } catch (error) {
+        if (requestRevision !== journalSettingsRequestRevision) return;
+        journalSettingsModel.value = null;
+        journalSettingsError.value = error instanceof Error
+            ? error.message
+            : 'Journalyst could not load the journal settings.';
+    } finally {
+        if (requestRevision === journalSettingsRequestRevision) {
+            journalSettingsLoading.value = false;
+        }
+    }
+}
+
+watch(
+    [() => props.state.activeTab, () => props.state.journalPath],
+    () => {
+        journalEditorDirty.value = false;
+        void loadJournalSettings();
+    },
+    { immediate: true },
+);
+
+watch(() => props.state.revision, () => {
+    if (props.state.activeTab === 'journals' && !journalEditorDirty.value) {
+        void loadJournalSettings();
+    }
 });
 
 async function completeOnboarding(request: CompleteOnboardingRequest) {
@@ -275,7 +367,7 @@ async function resumeOnboarding() {
             />
 
             <div
-                v-if="!selectedJournal"
+                v-if="!selectedJournal && selectedJournalRequired"
                 class="journalyst-review-empty"
                 role="status"
             >
@@ -292,7 +384,18 @@ async function resumeOnboarding() {
                     @create-entry="actions.createJournalEntry"
                     @activate-tab="actions.activateJournalTab"
                     @attention-action="activateHomeAttention"
-                    @open-settings="actions.openSettings"
+                    @edit-journal="actions.activateJournalSettings($event, 'schedule')"
+                />
+                <JournalsTab
+                    v-else-if="state.activeTab === 'journals'"
+                    :journals="journalSidebarItems"
+                    :model="journalSettingsModel"
+                    :loading="journalSettingsLoading"
+                    :error="journalSettingsError"
+                    :active-section="state.journalSettingsSection"
+                    :actions="actions"
+                    @dirty-change="journalEditorDirty = $event"
+                    @refresh="loadJournalSettings"
                 />
                 <ReviewTab
                     v-else-if="state.activeTab === 'review' && reviewSnapshot"
@@ -317,7 +420,7 @@ async function resumeOnboarding() {
                     @update-os-notifications-enabled="actions.updateOsNotificationsEnabled"
                     @request-permission="actions.requestNotificationPermission"
                     @test-notification="actions.sendTestReminderNotification"
-                    @update-journal-settings="actions.updateJournalReminderSettings"
+                    @edit-journal="actions.activateJournalSettings($event, 'reminders')"
                 />
             </main>
         </template>

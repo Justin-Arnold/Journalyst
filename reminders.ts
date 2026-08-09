@@ -1,5 +1,11 @@
 import moment from 'moment';
-import { isCadenceTracked, type JournalCadenceConfig, getExpectedDatesInRange, getNextExpectedDate } from './cadence';
+import {
+    getExpectedDatesInRange,
+    getNextExpectedDate,
+    isCadenceTracked,
+    isSchedulePausedOnDate,
+    type JournalCadenceSource,
+} from './cadence';
 
 export type ReminderDeliveryMode = 'in-app' | 'os-preferred';
 export type ReviewReminderPeriod = 'weekly' | 'monthly' | 'quarterly';
@@ -81,7 +87,7 @@ export interface JournalReviewReminderContext {
 }
 
 export interface JournalReminderContext extends JournalReviewReminderContext {
-    cadence: JournalCadenceConfig;
+    cadence: JournalCadenceSource;
     dateSet: Set<string>;
     existingDateSet?: Set<string>;
 }
@@ -151,7 +157,7 @@ export function normalizeJournalReminderSettings(settings?: Partial<JournalRemin
     };
 }
 
-export function hasAnyEnabledReminder(settings?: Partial<JournalReminderSettings> | null, cadence?: JournalCadenceConfig | null) {
+export function hasAnyEnabledReminder(settings?: Partial<JournalReminderSettings> | null, cadence?: JournalCadenceSource) {
     const normalized = normalizeJournalReminderSettings(settings);
     const entryEnabled = normalized.entryReminder.enabled && isCadenceTracked(cadence);
     const reviewEnabled = normalized.reviewReminders.weekly.enabled
@@ -212,6 +218,10 @@ function resolveEntryReminder(
     }
 
     const today = now.format('YYYY-MM-DD');
+    if (isSchedulePausedOnDate(context.cadence, today)) {
+        return null;
+    }
+
     const expectedDates = getExpectedDatesInRange(
         context.cadence,
         now.clone().subtract(MAX_EXPECTATION_SCAN_DAYS, 'days').format('YYYY-MM-DD'),

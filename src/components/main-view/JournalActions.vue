@@ -13,7 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     today: [];
     navigate: [tab: 'review' | 'synthesis'];
-    openSettings: [];
+    editJournal: [];
 }>();
 
 let actionsMenu: Menu | null = null;
@@ -47,9 +47,9 @@ function openActionsMenu(event: MouseEvent) {
             .onClick(() => emit('navigate', 'synthesis')))
         .addSeparator()
         .addItem(item => item
-            .setTitle('Journalyst settings')
-            .setIcon('settings')
-            .onClick(() => emit('openSettings')));
+            .setTitle('Edit journal')
+            .setIcon('settings-2')
+            .onClick(() => emit('editJournal')));
 
     actionsMenu = menu;
     menuOpen.value = true;

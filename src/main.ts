@@ -14,8 +14,26 @@ import {
     parseJournalystNoteKind,
     upsertFrontmatterProperties,
 } from "../bases";
-import { type JournalCadenceConfig, normalizeJournalCadence } from "../cadence";
+import {
+    type JournalCadenceConfig,
+    type JournalCadenceRevision,
+    type JournalSchedulePause,
+    createJournalCadenceSchedule,
+    getCadenceForDate,
+    getCurrentJournalCadence,
+    normalizeJournalCadence,
+    normalizeJournalCadenceTimeline,
+    normalizeJournalSchedulePauses,
+} from "../cadence";
 import { hashJournalEntryBody } from "../entryCompletion";
+import {
+    type JournalEntrySetupUpdate,
+    type JournalSettingsActionResult,
+    type JournalSettingsSection,
+    type JournalSettingsViewModel,
+    type JournalSchedulePauseActionResult,
+    type JournalSchedulePauseUpdate,
+} from "../journalSettings";
 import {
     DEFAULT_ONBOARDING_ROOT,
     JOURNALYST_ONBOARDING_VERSION,
@@ -86,7 +104,9 @@ export interface JournalystPluginSettings {
     sidebarMode: SidebarMode;
     noteDateFormat: string;
     noteDateFormatHistory: string[];
-    journalCadences: Record<string, JournalCadenceConfig>;
+    journalCadenceRevisions: Record<string, JournalCadenceRevision[]>;
+    journalSchedulePauses: Record<string, JournalSchedulePause[]>;
+    journalCadences?: Record<string, JournalCadenceConfig>;
     customPromptLists: Record<string, PromptListDefinition>;
     journalPromptSettings: Record<string, JournalPromptSettings>;
     journalPromptHistory: Record<string, JournalPromptHistory>;
@@ -109,7 +129,8 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
     sidebarMode: 'journals-mini',
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
-    journalCadences: {},
+    journalCadenceRevisions: {},
+    journalSchedulePauses: {},
     customPromptLists: {},
     journalPromptSettings: {},
     journalPromptHistory: {},
@@ -134,10 +155,16 @@ export default class JournalystPlugin extends Plugin {
     private readonly entryCompletionRevisions = new Map<string, number>();
     private onboardingNeedsMigration = false;
     private hadStoredRootDirectory = false;
-    private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
+    private reviewState: {
+        journalPath: string | null;
+        anchorDate: string;
+        activeTab: ReviewWorkspaceTab;
+        journalSettingsSection: JournalSettingsSection;
+    } = {
         journalPath: null,
         anchorDate: moment().format('YYYY-MM-DD'),
         activeTab: 'home',
+        journalSettingsSection: 'schedule',
     };
 
 	async onload() {
@@ -168,6 +195,14 @@ export default class JournalystPlugin extends Plugin {
             name: 'Open Journalyst review',
             callback: () => {
                 this.activateReviewView(undefined, undefined, 'review');
+            }
+        });
+
+        this.addCommand({
+            id: 'open-journalyst-journals',
+            name: 'Manage Journalyst journals',
+            callback: () => {
+                void this.activateJournalSettings();
             }
         });
 
@@ -242,7 +277,9 @@ export default class JournalystPlugin extends Plugin {
         });
 
         this.registerEvent(
-            this.app.vault.on('create', (item) => this.onItemChange())
+            this.app.vault.on('create', () => {
+                void this.onItemChange();
+            })
         );
         this.registerEvent(
             this.app.vault.on('delete', (item) => {
@@ -263,8 +300,14 @@ export default class JournalystPlugin extends Plugin {
 
 	onunload() {}
 
-    private onItemChange() {
+    private async onItemChange() {
         this.refreshJournals();
+        try {
+            await this.reconcileJournalCadenceTimelines();
+        } catch (error) {
+            console.error('Journalyst could not initialize cadence history for a new journal.', error);
+        }
+        this.refreshReviewViews();
     }
 
     private async initializeWorkspaceLayout() {
@@ -277,6 +320,11 @@ export default class JournalystPlugin extends Plugin {
         }
 
         this.refreshJournals();
+        try {
+            await this.reconcileJournalCadenceTimelines();
+        } catch (error) {
+            console.error('Journalyst could not persist cadence history during startup.', error);
+        }
 
         this.registerView(
             VIEW_TYPE_SIDE_BAR,
@@ -374,6 +422,38 @@ export default class JournalystPlugin extends Plugin {
         }
     }
 
+    private async reconcileJournalCadenceTimelines(persist = true) {
+        let changed = false;
+
+        for (const journal of this.journals) {
+            const normalizedTimeline = normalizeJournalCadenceTimeline(this.settings.journalCadenceRevisions[journal.path]);
+            if (normalizedTimeline.length > 0) {
+                if (JSON.stringify(normalizedTimeline) !== JSON.stringify(this.settings.journalCadenceRevisions[journal.path])) {
+                    this.settings.journalCadenceRevisions[journal.path] = normalizedTimeline;
+                    changed = true;
+                }
+                continue;
+            }
+
+            const entryDates = journal.children
+                .map(child => this.parseJournalDateFromFile(child))
+                .filter((date): date is string => !!date)
+                .sort();
+            this.settings.journalCadenceRevisions[journal.path] = [{
+                effectiveFrom: entryDates[0] ?? moment().format('YYYY-MM-DD'),
+                cadence: normalizeJournalCadence(this.settings.journalCadences?.[journal.path]),
+            }];
+            if (this.settings.journalCadences?.[journal.path]) {
+                delete this.settings.journalCadences[journal.path];
+            }
+            changed = true;
+        }
+
+        if (changed && persist) {
+            await this.saveSettings();
+        }
+    }
+
     getOnboardingViewModel(): OnboardingViewModel {
         const root = this.app.vault.getRoot();
         const folderOptions = [root, ...this.app.vault.getAllLoadedFiles()
@@ -436,6 +516,7 @@ export default class JournalystPlugin extends Plugin {
             };
         }
         this.refreshJournals();
+        await this.reconcileJournalCadenceTimelines(false);
 
         try {
             await this.saveSettings();
@@ -480,11 +561,17 @@ export default class JournalystPlugin extends Plugin {
         try {
             await this.app.vault.createFolder(journalPath);
             this.refreshJournals();
+            this.settings.journalCadenceRevisions[journalPath] = [{
+                effectiveFrom: moment().format('YYYY-MM-DD'),
+                cadence: normalizeJournalCadence(null),
+            }];
             this.reviewState = {
                 journalPath,
                 anchorDate: this.reviewState.anchorDate,
                 activeTab: 'home',
+                journalSettingsSection: 'schedule',
             };
+            await this.saveSettings();
             this.refreshReviewViews();
             return { ok: true };
         } catch (error) {
@@ -573,10 +660,12 @@ export default class JournalystPlugin extends Plugin {
                 status: 'completed',
             };
             this.refreshJournals();
+            await this.reconcileJournalCadenceTimelines(false);
             this.reviewState = {
                 journalPath: this.getDefaultReviewJournalPath(),
                 anchorDate: this.reviewState.anchorDate,
                 activeTab: 'home',
+                journalSettingsSection: 'schedule',
             };
             await this.saveSettings();
             this.refreshReviewViews();
@@ -1015,7 +1104,7 @@ export default class JournalystPlugin extends Plugin {
         }
 
         await this.applyJournalystEntryProperties(file, {
-            cadence: this.getJournalCadence(journalFolder.path),
+            cadence: this.getJournalCadenceAtDate(journalFolder.path, date),
             date,
             entryType: 'entry',
             journalName: journalFolder.name,
@@ -1186,13 +1275,205 @@ export default class JournalystPlugin extends Plugin {
         return buildJournalMigrationPlan(this.journals, this.settings);
     }
 
+    getJournalCadenceTimeline(journalPath: string) {
+        return normalizeJournalCadenceTimeline(this.settings.journalCadenceRevisions[journalPath]);
+    }
+
+    getJournalSchedulePauses(journalPath: string) {
+        return normalizeJournalSchedulePauses(this.settings.journalSchedulePauses[journalPath]);
+    }
+
+    getJournalCadenceSchedule(journalPath: string) {
+        return createJournalCadenceSchedule(
+            this.getJournalCadenceTimeline(journalPath),
+            this.getJournalSchedulePauses(journalPath),
+        );
+    }
+
+    getJournalCadenceAtDate(journalPath: string, date: string) {
+        const timeline = this.getJournalCadenceTimeline(journalPath);
+        if (timeline.length > 0) {
+            return getCadenceForDate(timeline, date) ?? timeline[0]!.cadence;
+        }
+
+        return normalizeJournalCadence(this.settings.journalCadences?.[journalPath]);
+    }
+
     getJournalCadence(journalPath: string) {
-        return normalizeJournalCadence(this.settings.journalCadences[journalPath]);
+        const timeline = this.getJournalCadenceTimeline(journalPath);
+        return timeline.length > 0
+            ? getCurrentJournalCadence(timeline, moment().format('YYYY-MM-DD'))
+            : normalizeJournalCadence(this.settings.journalCadences?.[journalPath]);
     }
 
     async updateJournalCadence(journalPath: string, cadence: JournalCadenceConfig) {
-        this.settings.journalCadences[journalPath] = normalizeJournalCadence(cadence);
-        await this.saveSettings();
+        const result = await this.saveJournalCadence(journalPath, cadence);
+        if (!result.ok) {
+            throw new Error(result.error);
+        }
+    }
+
+    async saveJournalCadence(journalPath: string, cadence: JournalCadenceConfig): Promise<CompleteOnboardingResult> {
+        if (!this.getJournalByPath(journalPath)) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        if (cadence.type === 'weekly-days'
+            && !(cadence.weekdays ?? []).some(day => Number.isInteger(day) && day >= 0 && day <= 6)) {
+            return { ok: false, error: 'Choose at least one expected weekday.' };
+        }
+        if (cadence.type === 'interval' && (!cadence.intervalDays || cadence.intervalDays < 1)) {
+            return { ok: false, error: 'The interval must be at least one day.' };
+        }
+        if (cadence.type === 'interval' && !moment(cadence.startDate, 'YYYY-MM-DD', true).isValid()) {
+            return { ok: false, error: 'Choose a valid interval anchor date.' };
+        }
+        const normalized = normalizeJournalCadence(cadence);
+
+        const today = moment().format('YYYY-MM-DD');
+        const timeline = this.getJournalCadenceTimeline(journalPath);
+        const current = getCadenceForDate(timeline, today);
+        if (current && JSON.stringify(current) === JSON.stringify(normalized)) {
+            return { ok: true };
+        }
+
+        const previousTimeline = this.settings.journalCadenceRevisions[journalPath];
+        const previousReminderHistory = { ...this.settings.reminderHistory };
+        const nextTimeline = timeline.filter(revision => revision.effectiveFrom !== today);
+        nextTimeline.push({ effectiveFrom: today, cadence: normalized });
+        this.settings.journalCadenceRevisions[journalPath] = normalizeJournalCadenceTimeline(nextTimeline);
+        this.clearReminderHistoryForJournal(journalPath);
+
+        try {
+            await this.saveSettings();
+        } catch (error) {
+            if (previousTimeline) {
+                this.settings.journalCadenceRevisions[journalPath] = previousTimeline;
+            } else {
+                delete this.settings.journalCadenceRevisions[journalPath];
+            }
+            this.settings.reminderHistory = previousReminderHistory;
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not save the journal schedule.',
+            };
+        }
+
+        if (this.isBasesIntegrationEnabled()) {
+            const journal = this.getJournalByPath(journalPath);
+            if (journal) {
+                try {
+                    await this.applyJournalNotePropertyBackfill(await this.getJournalBackfillItems(journal));
+                } catch (error) {
+                    console.error('Journalyst could not refresh cadence properties after saving the schedule.', error);
+                    new Notice('The schedule was saved, but some managed Bases properties could not be refreshed.');
+                }
+            }
+        }
+        try {
+            await this.checkReminderNotifications(true);
+        } catch (error) {
+            console.error('Journalyst could not refresh reminders after saving the schedule.', error);
+        }
+        this.refreshCompletionViews();
+        return { ok: true };
+    }
+
+    async saveJournalSchedulePause(
+        journalPath: string,
+        update: JournalSchedulePauseUpdate,
+    ): Promise<JournalSchedulePauseActionResult> {
+        if (!this.getJournalByPath(journalPath)) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        const name = update.name.trim();
+        if (!name) {
+            return { ok: false, error: 'Enter a name for this pause.' };
+        }
+        if (!moment(update.startDate, 'YYYY-MM-DD', true).isValid()
+            || !moment(update.endDate, 'YYYY-MM-DD', true).isValid()) {
+            return { ok: false, error: 'Choose valid start and end dates.' };
+        }
+        if (update.startDate > update.endDate) {
+            return { ok: false, error: 'The pause must end on or after its start date.' };
+        }
+
+        const currentPauses = this.getJournalSchedulePauses(journalPath);
+        if (update.id && !currentPauses.some(pause => pause.id === update.id)) {
+            return { ok: false, error: 'Journalyst could not find that pause.' };
+        }
+
+        const overlaps = currentPauses.some(pause => pause.id !== update.id
+            && pause.startDate <= update.endDate
+            && pause.endDate >= update.startDate);
+        if (overlaps) {
+            return { ok: false, error: 'This pause overlaps another pause for the journal.' };
+        }
+
+        const pause: JournalSchedulePause = {
+            id: update.id ?? crypto.randomUUID(),
+            name,
+            startDate: update.startDate,
+            endDate: update.endDate,
+        };
+        const nextPauses = normalizeJournalSchedulePauses([
+            ...currentPauses.filter(current => current.id !== pause.id),
+            pause,
+        ]);
+        return this.persistJournalSchedulePauses(journalPath, nextPauses);
+    }
+
+    async removeJournalSchedulePause(
+        journalPath: string,
+        pauseId: string,
+    ): Promise<JournalSchedulePauseActionResult> {
+        if (!this.getJournalByPath(journalPath)) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        const currentPauses = this.getJournalSchedulePauses(journalPath);
+        if (!currentPauses.some(pause => pause.id === pauseId)) {
+            return { ok: false, error: 'Journalyst could not find that pause.' };
+        }
+
+        return this.persistJournalSchedulePauses(
+            journalPath,
+            currentPauses.filter(pause => pause.id !== pauseId),
+        );
+    }
+
+    private async persistJournalSchedulePauses(
+        journalPath: string,
+        pauses: JournalSchedulePause[],
+    ): Promise<JournalSchedulePauseActionResult> {
+        const previousPauses = this.settings.journalSchedulePauses[journalPath];
+        const previousReminderHistory = { ...this.settings.reminderHistory };
+        this.settings.journalSchedulePauses[journalPath] = pauses;
+        this.clearReminderHistoryForJournal(journalPath);
+
+        try {
+            await this.saveSettings();
+        } catch (error) {
+            if (previousPauses) {
+                this.settings.journalSchedulePauses[journalPath] = previousPauses;
+            } else {
+                delete this.settings.journalSchedulePauses[journalPath];
+            }
+            this.settings.reminderHistory = previousReminderHistory;
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not save the schedule pause.',
+            };
+        }
+
+        try {
+            await this.checkReminderNotifications(true);
+        } catch (error) {
+            console.error('Journalyst could not refresh reminders after saving a schedule pause.', error);
+        }
+        this.refreshCompletionViews();
+        return { ok: true, pauses };
     }
 
     getBuiltInPromptLists() {
@@ -1255,6 +1536,13 @@ export default class JournalystPlugin extends Plugin {
         return resolvePromptList(promptSettings, this.getPromptResolveContext());
     }
 
+    async getPromptOptionsForSettings(promptSettings: JournalPromptSettings) {
+        return (await resolvePromptList(
+            normalizeJournalPromptSettings(promptSettings),
+            this.getPromptResolveContext(),
+        ))?.prompts ?? [];
+    }
+
     async getPromptPreview(journalPath: string, limit = 3) {
         const resolvedList = await this.getResolvedPromptList(journalPath);
         return resolvedList?.prompts.slice(0, limit) ?? [];
@@ -1281,6 +1569,164 @@ export default class JournalystPlugin extends Plugin {
         }
 
         return null;
+    }
+
+    async getJournalSettingsViewModel(journalPath: string): Promise<JournalSettingsViewModel | null> {
+        const journal = this.getJournalByPath(journalPath);
+        if (!journal) {
+            return null;
+        }
+
+        const templateEngine = this.settings.templateEngine;
+        const [templateAvailability, templateFiles, resolvedPromptList, promptStatus, templateStatus] = await Promise.all([
+            templateEngine === 'none'
+                ? Promise.resolve('not-applicable' as const)
+                : this.getTemplateAvailability(templateEngine),
+            templateEngine === 'none'
+                ? Promise.resolve([])
+                : this.getTemplateFiles(templateEngine),
+            this.getResolvedPromptList(journalPath),
+            this.getPromptSettingsStatus(journalPath),
+            this.getJournalTemplateStatus(templateEngine, journal.path),
+        ]);
+
+        return {
+            journalPath: journal.path,
+            journalName: journal.name,
+            entryCount: journal.children.filter(child => (
+                child instanceof TFile && !!this.parseJournalDateFromFile(child)
+            )).length,
+            cadence: this.getJournalCadence(journal.path),
+            cadenceHistory: this.getJournalCadenceTimeline(journal.path),
+            schedulePauses: this.getJournalSchedulePauses(journal.path),
+            reminderSettings: this.getJournalReminderSettings(journal.path),
+            reminderSummary: this.getJournalReminderSummary(journal.path),
+            remindersEnabled: this.areRemindersEnabled(),
+            promptSettings: this.getJournalPromptSettings(journal.path),
+            promptStatus,
+            promptListOptions: {
+                builtIn: Object.values(this.getBuiltInPromptLists()).map(list => ({ label: list.name, value: list.id })),
+                custom: Object.values(this.getCustomPromptLists()).map(list => ({ label: list.name, value: list.id })),
+            },
+            promptFileOptions: this.app.vault.getMarkdownFiles().map(file => ({ label: file.path, value: file.path })),
+            promptOptions: resolvedPromptList?.prompts ?? [],
+            templateEngine,
+            templateAvailability,
+            templatePath: this.getJournalTemplatePath(templateEngine, journal.path) ?? null,
+            templateStatus,
+            templateOptions: templateFiles.map(file => ({ label: file.path, value: file.path })),
+            basesEnabled: this.isBasesIntegrationEnabled(),
+        };
+    }
+
+    async saveJournalEntrySetup(journalPath: string, update: JournalEntrySetupUpdate): Promise<JournalSettingsActionResult> {
+        if (!this.getJournalByPath(journalPath)) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        const templateEngine = this.settings.templateEngine;
+        const templateMap = this.getJournalTemplateMap(templateEngine);
+        const previousTemplateMap = templateMap ? { ...templateMap } : null;
+        const previousPromptSettings = this.settings.journalPromptSettings[journalPath];
+        const previousPromptHistory = this.settings.journalPromptHistory[journalPath];
+        const normalizedPromptSettings = normalizeJournalPromptSettings(update.promptSettings);
+        const currentPromptSettings = this.getJournalPromptSettings(journalPath);
+
+        if (templateMap) {
+            if (update.templatePath) {
+                templateMap[journalPath] = update.templatePath;
+            } else {
+                delete templateMap[journalPath];
+            }
+        }
+        this.settings.journalPromptSettings[journalPath] = normalizedPromptSettings;
+        if (this.getPromptSourceKey(currentPromptSettings) !== this.getPromptSourceKey(normalizedPromptSettings)
+            || currentPromptSettings.selectionMode !== normalizedPromptSettings.selectionMode) {
+            delete this.settings.journalPromptHistory[journalPath];
+        }
+
+        try {
+            await this.saveSettings();
+            this.refreshCompletionViews();
+            return { ok: true };
+        } catch (error) {
+            if (templateMap && previousTemplateMap) {
+                Object.keys(templateMap).forEach(path => delete templateMap[path]);
+                Object.assign(templateMap, previousTemplateMap);
+            }
+            if (previousPromptSettings) {
+                this.settings.journalPromptSettings[journalPath] = previousPromptSettings;
+            } else {
+                delete this.settings.journalPromptSettings[journalPath];
+            }
+            if (previousPromptHistory) {
+                this.settings.journalPromptHistory[journalPath] = previousPromptHistory;
+            } else {
+                delete this.settings.journalPromptHistory[journalPath];
+            }
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not save the entry setup.',
+            };
+        }
+    }
+
+    async renameJournal(journalPath: string, nextName: string): Promise<JournalSettingsActionResult> {
+        const journal = this.getJournalByPath(journalPath);
+        if (!journal || !journal.parent) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        const validation = this.validateJournalNames([nextName]);
+        if (!validation.ok) {
+            return validation;
+        }
+        const normalizedName = validation.names[0];
+        if (!normalizedName) {
+            return { ok: false, error: 'Enter a journal name.' };
+        }
+        if (normalizedName === journal.name) {
+            return { ok: true, journalPath: journal.path };
+        }
+
+        const conflict = this.findChildByName(journal.parent, normalizedName);
+        if (conflict && conflict !== journal) {
+            return { ok: false, error: `A journal or file named "${conflict.name}" already exists.` };
+        }
+
+        const oldPath = journal.path;
+        const targetPath = this.getChildPath(journal.parent, normalizedName);
+        try {
+            await this.app.fileManager.renameFile(journal, targetPath);
+            if (this.settings.journalCadenceRevisions[oldPath]) {
+                this.remapJournalPaths(oldPath, targetPath);
+                await this.saveSettings();
+            }
+            if (this.reviewState.journalPath === oldPath) {
+                this.reviewState.journalPath = targetPath;
+            }
+            this.refreshJournals();
+
+            if (this.isBasesIntegrationEnabled()) {
+                const renamedJournal = this.getJournalByPath(targetPath);
+                if (renamedJournal) {
+                    try {
+                        await this.applyJournalNotePropertyBackfill(await this.getJournalBackfillItems(renamedJournal));
+                    } catch (error) {
+                        console.error('Journalyst could not refresh Bases properties after renaming the journal.', error);
+                        new Notice('The journal was renamed, but some managed Bases properties could not be refreshed.');
+                    }
+                }
+            }
+
+            this.refreshCompletionViews();
+            return { ok: true, journalPath: targetPath };
+        } catch (error) {
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not rename the journal.',
+            };
+        }
     }
 
     getJournalMigrationPlanForFormat(noteDateFormat: string) {
@@ -1415,10 +1861,44 @@ export default class JournalystPlugin extends Plugin {
     }
 
     async updateJournalReminderSettings(journalPath: string, reminderSettings: JournalReminderSettings) {
+        const result = await this.saveJournalReminderSettings(journalPath, reminderSettings);
+        if (!result.ok) {
+            throw new Error(result.error);
+        }
+    }
+
+    async saveJournalReminderSettings(journalPath: string, reminderSettings: JournalReminderSettings): Promise<JournalSettingsActionResult> {
+        if (!this.getJournalByPath(journalPath)) {
+            return { ok: false, error: 'Journalyst could not find that journal.' };
+        }
+
+        const previousSettings = this.settings.journalReminderSettings[journalPath];
+        const previousHistory = { ...this.settings.reminderHistory };
         this.settings.journalReminderSettings[journalPath] = normalizeJournalReminderSettings(reminderSettings);
         this.clearReminderHistoryForJournal(journalPath);
-        await this.saveSettings();
-        await this.checkReminderNotifications(true);
+
+        try {
+            await this.saveSettings();
+        } catch (error) {
+            if (previousSettings) {
+                this.settings.journalReminderSettings[journalPath] = previousSettings;
+            } else {
+                delete this.settings.journalReminderSettings[journalPath];
+            }
+            this.settings.reminderHistory = previousHistory;
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not save the reminder rules.',
+            };
+        }
+
+        try {
+            await this.checkReminderNotifications(true);
+        } catch (error) {
+            console.error('Journalyst could not refresh reminders after saving journal rules.', error);
+        }
+        this.refreshCompletionViews();
+        return { ok: true };
     }
 
     getJournalReminderSummary(journalPath: string) {
@@ -1432,11 +1912,17 @@ export default class JournalystPlugin extends Plugin {
         return hasAnyEnabledReminder(reminderSettings, cadence) ? 'Reminders active' : 'Reminders off';
     }
 
-    async setReviewState(journalPath: string | null, anchorDate: string, activeTab?: ReviewWorkspaceTab) {
+    async setReviewState(
+        journalPath: string | null,
+        anchorDate: string,
+        activeTab?: ReviewWorkspaceTab,
+        journalSettingsSection?: JournalSettingsSection,
+    ) {
         this.reviewState = {
             journalPath,
             anchorDate,
             activeTab: activeTab ?? this.reviewState.activeTab,
+            journalSettingsSection: journalSettingsSection ?? this.reviewState.journalSettingsSection,
         };
     }
 
@@ -1565,7 +2051,7 @@ export default class JournalystPlugin extends Plugin {
 
         const file = await this.app.vault.create(filePath, preview.payload.body);
         await this.applyJournalystEntryProperties(file, {
-            cadence: this.getJournalCadence(journal.path),
+            cadence: this.getJournalCadenceAtDate(journal.path, anchorDate),
             entryType: this.getSynthesisEntryType(periodType),
             journalName: journal.name,
             journalPath: journal.path,
@@ -1587,7 +2073,7 @@ export default class JournalystPlugin extends Plugin {
             .filter((entry): entry is { date: string; isComplete: boolean } => !!entry.date);
 
         return getReminderEventsForJournal({
-            cadence: this.getJournalCadence(journal.path),
+            cadence: this.getJournalCadenceSchedule(journal.path),
             dateSet: new Set(entries.filter(entry => entry.isComplete).map(entry => entry.date)),
             existingDateSet: new Set(entries.map(entry => entry.date)),
             journalName: journal.name,
@@ -1757,11 +2243,21 @@ export default class JournalystPlugin extends Plugin {
 
         this.settings.templaterJournalTemplates = this.remapTemplateMapPaths(this.settings.templaterJournalTemplates, oldPath, newPath);
         this.settings.coreJournalTemplates = this.remapTemplateMapPaths(this.settings.coreJournalTemplates, oldPath, newPath);
-        this.settings.journalCadences = this.remapCadenceMapPaths(this.settings.journalCadences, oldPath, newPath);
+        this.settings.journalCadenceRevisions = this.remapCadenceTimelinePaths(this.settings.journalCadenceRevisions, oldPath, newPath);
+        this.settings.journalSchedulePauses = this.remapSchedulePausePaths(this.settings.journalSchedulePauses, oldPath, newPath);
+        if (this.settings.journalCadences) {
+            this.settings.journalCadences = this.remapCadenceMapPaths(this.settings.journalCadences, oldPath, newPath);
+        }
         this.settings.journalPromptSettings = this.remapPromptSettingsPaths(this.settings.journalPromptSettings, oldPath, newPath);
         this.settings.journalPromptHistory = this.remapPromptHistoryPaths(this.settings.journalPromptHistory, oldPath, newPath);
         this.settings.journalReminderSettings = this.remapReminderSettingsPaths(this.settings.journalReminderSettings, oldPath, newPath);
         this.settings.reminderHistory = this.remapReminderHistoryPaths(this.settings.reminderHistory, oldPath, newPath);
+
+        if (this.reviewState.journalPath === oldPath) {
+            this.reviewState.journalPath = newPath;
+        } else if (this.reviewState.journalPath?.startsWith(oldPath + '/')) {
+            this.reviewState.journalPath = newPath + this.reviewState.journalPath.slice(oldPath.length);
+        }
     }
 
     private async getJournalBackfillItems(journal: TFolder) {
@@ -1782,7 +2278,10 @@ export default class JournalystPlugin extends Plugin {
             }
 
             const desiredProperties = buildJournalystNoteProperties({
-                cadence: this.getJournalCadence(journal.path),
+                cadence: this.getJournalCadenceAtDate(
+                    journal.path,
+                    noteKind.periodEnd ?? noteKind.date ?? moment().format('YYYY-MM-DD'),
+                ),
                 date: noteKind.date,
                 entryType: noteKind.entryType,
                 journalName: journal.name,
@@ -1882,6 +2381,46 @@ export default class JournalystPlugin extends Plugin {
         });
 
         return remappedCadenceMap;
+    }
+
+    private remapCadenceTimelinePaths(cadenceMap: Record<string, JournalCadenceRevision[]>, oldPath: string, newPath: string) {
+        const remappedCadenceMap: Record<string, JournalCadenceRevision[]> = {};
+
+        Object.entries(cadenceMap).forEach(([journalPath, timeline]) => {
+            if (journalPath === oldPath) {
+                remappedCadenceMap[newPath] = timeline;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedCadenceMap[newPath + journalPath.slice(oldPath.length)] = timeline;
+                return;
+            }
+
+            remappedCadenceMap[journalPath] = timeline;
+        });
+
+        return remappedCadenceMap;
+    }
+
+    private remapSchedulePausePaths(pauseMap: Record<string, JournalSchedulePause[]>, oldPath: string, newPath: string) {
+        const remappedPauseMap: Record<string, JournalSchedulePause[]> = {};
+
+        Object.entries(pauseMap).forEach(([journalPath, pauses]) => {
+            if (journalPath === oldPath) {
+                remappedPauseMap[newPath] = pauses;
+                return;
+            }
+
+            if (journalPath.startsWith(oldPath + '/')) {
+                remappedPauseMap[newPath + journalPath.slice(oldPath.length)] = pauses;
+                return;
+            }
+
+            remappedPauseMap[journalPath] = pauses;
+        });
+
+        return remappedPauseMap;
     }
 
     private remapPromptSettingsPaths(promptSettingsMap: Record<string, JournalPromptSettings>, oldPath: string, newPath: string) {
@@ -2110,11 +2649,16 @@ export default class JournalystPlugin extends Plugin {
         workspace.revealLeaf(leaf);
     }
 
-    async activateReviewView(journalPath?: string | null, anchorDate?: string, activeTab?: ReviewWorkspaceTab) {
+    async activateReviewView(
+        journalPath?: string | null,
+        anchorDate?: string,
+        activeTab?: ReviewWorkspaceTab,
+        journalSettingsSection?: JournalSettingsSection,
+    ) {
         const { workspace } = this.app;
         const resolvedAnchorDate = anchorDate ?? moment().format('YYYY-MM-DD');
         const targetJournalPath = journalPath ?? this.inferCurrentJournal()?.path ?? this.getDefaultReviewJournalPath();
-        await this.setReviewState(targetJournalPath, resolvedAnchorDate, activeTab);
+        await this.setReviewState(targetJournalPath, resolvedAnchorDate, activeTab, journalSettingsSection);
 
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_REVIEW);
@@ -2131,10 +2675,14 @@ export default class JournalystPlugin extends Plugin {
 
         const reviewView = leaf.view;
         if (reviewView instanceof ReviewView) {
-            reviewView.updateReviewState(targetJournalPath, resolvedAnchorDate, activeTab);
+            reviewView.updateReviewState(targetJournalPath, resolvedAnchorDate, activeTab, journalSettingsSection);
         }
 
         workspace.revealLeaf(leaf);
+    }
+
+    async activateJournalSettings(journalPath?: string | null, section: JournalSettingsSection = 'schedule') {
+        await this.activateReviewView(journalPath, undefined, 'journals', section);
     }
 
     private refreshSidebarView() {
@@ -2173,6 +2721,14 @@ export default class JournalystPlugin extends Plugin {
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';
         this.settings.noteDateFormatHistory = this.settings.noteDateFormatHistory ?? [];
+        this.settings.journalCadenceRevisions = Object.fromEntries(
+            Object.entries(this.settings.journalCadenceRevisions ?? {})
+                .map(([journalPath, timeline]) => [journalPath, normalizeJournalCadenceTimeline(timeline)])
+        );
+        this.settings.journalSchedulePauses = Object.fromEntries(
+            Object.entries(this.settings.journalSchedulePauses ?? {})
+                .map(([journalPath, pauses]) => [journalPath, normalizeJournalSchedulePauses(pauses)])
+        );
         this.settings.journalCadences = this.settings.journalCadences ?? {};
         this.settings.customPromptLists = this.settings.customPromptLists ?? {};
         this.settings.journalPromptSettings = this.settings.journalPromptSettings ?? {};

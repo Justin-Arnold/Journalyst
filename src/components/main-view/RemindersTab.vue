@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { JournalReminderSettings } from "../../../reminders";
 import type { ReminderWorkspaceModel } from "./types";
-import ReminderRuleEditor from "./ReminderRuleEditor.vue";
+import ObsidianIcon from "../ObsidianIcon.vue";
 import WorkspaceOverview from "./WorkspaceOverview.vue";
 import WorkspaceSection from "./WorkspaceSection.vue";
 
@@ -15,7 +14,7 @@ const emit = defineEmits<{
     updateOsNotificationsEnabled: [enabled: boolean];
     requestPermission: [];
     testNotification: [];
-    updateJournalSettings: [journalPath: string, settings: JournalReminderSettings];
+    editJournal: [journalPath: string];
 }>();
 
 const permissionLabel = computed(() => {
@@ -112,7 +111,7 @@ function getChecked(event: Event) {
 
     <WorkspaceSection
         title="Journal reminder rules"
-        description="Configure due-entry and reflection reminders for each journal."
+        description="See which journals have active rules and open the journal editor to make changes."
     >
         <div class="journalyst-reminder-journal-list">
             <article v-for="journal in model.journals" :key="journal.journalPath" class="journalyst-reminder-journal-card">
@@ -126,30 +125,49 @@ function getChecked(event: Event) {
                     <span class="journalyst-home-status-badge">{{ journal.reminderSummary }}</span>
                 </header>
 
-                <div class="journalyst-reminder-rules">
-                    <ReminderRuleEditor
-                        v-if="journal.cadenceType !== 'adhoc'"
-                        kind="entry"
-                        :settings="journal.settings"
-                        @update="emit('updateJournalSettings', journal.journalPath, $event)"
-                    />
-                    <div v-else class="journalyst-reminder-rule-row is-muted">
-                        <div class="journalyst-reminder-rule-copy">
-                            <h4>Entry reminder</h4>
-                            <p class="journalyst-review-empty-text">
-                                Ad hoc journals do not use due-entry reminders because they are intentionally not tracked on a schedule.
-                            </p>
-                        </div>
-                    </div>
-                    <ReminderRuleEditor
-                        v-for="period in (['weekly', 'monthly', 'quarterly'] as const)"
-                        :key="period"
-                        :kind="period"
-                        :settings="journal.settings"
-                        @update="emit('updateJournalSettings', journal.journalPath, $event)"
-                    />
+                <div class="journalyst-reminder-summary-row">
+                    <span>{{ journal.entryReminderEnabled && journal.cadenceType !== 'adhoc' ? 'Entry reminder on' : 'Entry reminder off' }}</span>
+                    <span>{{ journal.reviewReminderCount }} review rule{{ journal.reviewReminderCount === 1 ? '' : 's' }}</span>
+                    <button
+                        type="button"
+                        class="journal-section-button"
+                        @click="emit('editJournal', journal.journalPath)"
+                    >
+                        Edit
+                        <ObsidianIcon name="arrow-right" />
+                    </button>
                 </div>
             </article>
         </div>
     </WorkspaceSection>
 </template>
+
+<style scoped>
+.journalyst-reminder-summary-row {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-4);
+    padding-top: var(--size-4-3);
+    color: var(--text-muted);
+    border-top: var(--border-width) solid var(--background-modifier-border);
+}
+
+.journalyst-reminder-summary-row button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+    margin-left: auto;
+}
+
+@media (max-width: 520px) {
+    .journalyst-reminder-summary-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--size-4-2);
+    }
+
+    .journalyst-reminder-summary-row button {
+        margin-left: 0;
+    }
+}
+</style>

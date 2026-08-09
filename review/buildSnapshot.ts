@@ -1,15 +1,19 @@
 import { TFile, TFolder } from 'obsidian';
 import moment from 'moment';
 import {
+    createJournalCadenceSchedule,
+    getCadenceForDate,
     getCadenceLabel,
     getCadenceStatus,
     getCurrentCadenceStreak,
     getExpectedDatesInRange,
     getLongestCadenceStreak,
     getLongestMissStretch,
-    isCadenceTracked,
+    hasTrackedCadenceInRange,
     isExpectedOnDate,
     normalizeJournalCadence,
+    normalizeJournalCadenceTimeline,
+    type JournalCadenceSource,
 } from '../cadence';
 import { type JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
@@ -39,7 +43,7 @@ interface SnapshotContext {
     completedEntries: JournalEntryRecord[];
     entryByDate: Map<string, JournalEntryRecord>;
     completedEntryByDate: Map<string, JournalEntryRecord>;
-    cadence: import('../cadence').JournalCadenceConfig;
+    cadence: JournalCadenceSource;
     insights: ReviewInsights;
 }
 
@@ -143,13 +147,24 @@ function buildSnapshotContext(
     const completedEntries = entries.filter(entry => entry.isComplete);
     const entryByDate = new Map(entries.map(entry => [entry.date, entry]));
     const completedEntryByDate = new Map(completedEntries.map(entry => [entry.date, entry]));
-    const cadence = normalizeJournalCadence(
-        (journalDateSettings as JournalDateSettings & { journalCadences?: Record<string, import('../cadence').JournalCadenceConfig> })
-            .journalCadences?.[journal.path]
-    );
     const anchor = moment(anchorDate, 'YYYY-MM-DD', true);
     const normalizedAnchor = anchor.isValid() ? anchor : moment();
     const normalizedAnchorDate = normalizedAnchor.format('YYYY-MM-DD');
+    const cadenceSettings = journalDateSettings as JournalDateSettings & {
+        journalCadenceRevisions?: Record<string, import('../cadence').JournalCadenceRevision[]>;
+        journalSchedulePauses?: Record<string, import('../cadence').JournalSchedulePause[]>;
+        journalCadences?: Record<string, import('../cadence').JournalCadenceConfig>;
+    };
+    const cadenceTimeline = normalizeJournalCadenceTimeline(cadenceSettings.journalCadenceRevisions?.[journal.path]);
+    const cadence: JournalCadenceSource = createJournalCadenceSchedule(
+        cadenceTimeline.length > 0
+            ? cadenceTimeline
+            : [{
+                effectiveFrom: entries[0]?.date ?? normalizedAnchorDate,
+                cadence: normalizeJournalCadence(cadenceSettings.journalCadences?.[journal.path]),
+            }],
+        cadenceSettings.journalSchedulePauses?.[journal.path],
+    );
     const insights = buildInsights(entries, completedEntries, normalizedAnchorDate, cadence);
 
     return {
@@ -206,7 +221,7 @@ function buildLookbacks(anchor: moment.Moment, entryByDate: Map<string, JournalE
     }));
 }
 
-function buildCalendarSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): PeriodSummary[] {
+function buildCalendarSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: JournalCadenceSource): PeriodSummary[] {
     return [
         createPeriodSummary('This week', anchor.clone().startOf('week'), anchor.clone(), entryByDate, cadence),
         createPeriodSummary('This month', anchor.clone().startOf('month'), anchor.clone(), entryByDate, cadence),
@@ -215,7 +230,7 @@ function buildCalendarSummaries(anchor: moment.Moment, entryByDate: Map<string, 
     ];
 }
 
-function buildRollingSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): PeriodSummary[] {
+function buildRollingSummaries(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: JournalCadenceSource): PeriodSummary[] {
     return [
         createRollingSummary('Last 7 days', 7, anchor, entryByDate, cadence),
         createRollingSummary('Last 30 days', 30, anchor, entryByDate, cadence),
@@ -229,7 +244,7 @@ function createRollingSummary(
     durationDays: number,
     anchor: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
-    cadence: import('../cadence').JournalCadenceConfig,
+    cadence: JournalCadenceSource,
 ): PeriodSummary {
     const start = anchor.clone().subtract(durationDays - 1, 'days');
     return createPeriodSummary(label, start, anchor.clone(), entryByDate, cadence);
@@ -240,11 +255,11 @@ function createPeriodSummary(
     start: moment.Moment,
     end: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
-    cadence: import('../cadence').JournalCadenceConfig,
+    cadence: JournalCadenceSource,
 ): PeriodSummary {
     const startDate = start.format('YYYY-MM-DD');
     const endDate = end.format('YYYY-MM-DD');
-    if (!isCadenceTracked(cadence)) {
+    if (!hasTrackedCadenceInRange(cadence, startDate, endDate)) {
         return {
             label,
             startDate,
@@ -276,9 +291,10 @@ function buildInsights(
     entries: JournalEntryRecord[],
     completedEntries: JournalEntryRecord[],
     anchorDate: string,
-    cadence: import('../cadence').JournalCadenceConfig,
+    cadence: JournalCadenceSource,
 ): ReviewInsights {
-    const cadenceLabel = getCadenceLabel(cadence);
+    const activeCadence = getCadenceForDate(cadence, anchorDate);
+    const cadenceLabel = activeCadence ? getCadenceLabel(activeCadence) : 'Not scheduled yet';
     const dateSet = new Set(completedEntries.map(entry => entry.date));
     const firstEntryDate = entries[0]?.date ?? null;
     const cadenceStatus = getCadenceStatus(cadence, dateSet, anchorDate, firstEntryDate);
@@ -325,7 +341,7 @@ function buildRecentActivity(
     anchor: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
     completedEntryByDate: Map<string, JournalEntryRecord>,
-    cadence: import('../cadence').JournalCadenceConfig,
+    cadence: JournalCadenceSource,
 ): ActivityCell[] {
     const cells: ActivityCell[] = [];
     const start = anchor.clone().subtract(34, 'days');
@@ -349,7 +365,7 @@ function buildYearActivity(
     anchor: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
     completedEntryByDate: Map<string, JournalEntryRecord>,
-    cadence: import('../cadence').JournalCadenceConfig,
+    cadence: JournalCadenceSource,
 ): YearActivityCell[] {
     const start = anchor.clone().startOf('year');
     const end = anchor.clone().endOf('year');
@@ -408,7 +424,7 @@ function buildMonthlyActivity(entries: JournalEntryRecord[], anchor: moment.Mome
     return data;
 }
 
-function buildRollingComparisons(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): RollingComparison[] {
+function buildRollingComparisons(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: JournalCadenceSource): RollingComparison[] {
     return [
         createRollingComparison('30-day momentum', 30, anchor, entryByDate, cadence),
         createRollingComparison('90-day momentum', 90, anchor, entryByDate, cadence),
@@ -420,7 +436,7 @@ function createRollingComparison(
     durationDays: number,
     anchor: moment.Moment,
     entryByDate: Map<string, JournalEntryRecord>,
-    cadence: import('../cadence').JournalCadenceConfig,
+    cadence: JournalCadenceSource,
 ): RollingComparison {
     const current = createRollingSummary(`Current ${durationDays} days`, durationDays, anchor, entryByDate, cadence);
     const previousEnd = anchor.clone().subtract(durationDays, 'days');
@@ -434,11 +450,7 @@ function createRollingComparison(
     };
 }
 
-function buildRankedPeriods(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig) {
-    if (!isCadenceTracked(cadence)) {
-        return { best: null, worst: null };
-    }
-
+function buildRankedPeriods(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: JournalCadenceSource) {
     const periods: RankedPeriod[] = [];
     for (let index = 5; index >= 0; index -= 1) {
         const month = anchor.clone().subtract(index, 'months');

@@ -20,7 +20,7 @@ const emit = defineEmits<{
     createEntry: [journalPath: string, date?: string];
     activateTab: [journalPath: string, tab: ReviewWorkspaceTab];
     attentionAction: [target: JournalHomeAttentionTarget];
-    openSettings: [];
+    editJournal: [journalPath: string];
 }>();
 </script>
 
@@ -36,6 +36,6 @@ const emit = defineEmits<{
         :journals="journals"
         @create-entry="emit('createEntry', $event.journalPath, $event.date)"
         @activate-tab="emit('activateTab', $event.journalPath, $event.tab)"
-        @open-settings="emit('openSettings')"
+        @edit-journal="emit('editJournal', $event)"
     />
 </template>

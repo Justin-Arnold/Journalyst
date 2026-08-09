@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { Menu } from "obsidian";
 import type { ReviewWorkspaceTab } from "../../review/types";
 import MainViewNavigationTabs from "./MainViewNavigationTabs.vue";
@@ -19,6 +19,10 @@ const emit = defineEmits<{
     createJournal: [];
     openSettings: [];
 }>();
+
+const showContextControls = computed(() => (
+    ['review', 'analytics', 'synthesis'] as ReviewWorkspaceTab[]
+).includes(activeTab.value));
 
 let newMenu: Menu | null = null;
 const newMenuOpen = ref(false);
@@ -65,7 +69,7 @@ onBeforeUnmount(() => newMenu?.hide());
             :tabs="tabs"
         />
 
-        <div v-if="activeTab !== 'home'" class="journalyst-review-controls">
+        <div v-if="showContextControls" class="journalyst-review-controls">
             <label class="journalyst-review-control">
                 <span>Journal</span>
                 <select v-model="journalPath">
@@ -106,7 +110,7 @@ onBeforeUnmount(() => newMenu?.hide());
 
 <style scoped>
 .journalyst-review-header {
-    height: var(--size-4-16);
+    min-height: var(--size-4-16);
     display: flex;
     justify-content: space-between;
     align-items: center;

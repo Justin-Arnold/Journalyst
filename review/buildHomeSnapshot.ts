@@ -1,6 +1,7 @@
 import { TFile, type TFolder, normalizePath } from "obsidian";
 import moment from "moment";
 import {
+    getCadenceTimelineStartDate,
     getCadenceStatus,
     getCurrentCadenceStreak,
     isExpectedOnDate,
@@ -180,14 +181,14 @@ function getReminderDisplayText(plugin: JournalystPlugin, journalPath: string, i
 }
 
 export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFolder): JournalOverviewData {
-    const cadence = plugin.getJournalCadence(journal.path);
+    const cadence = plugin.getJournalCadenceSchedule(journal.path);
     const entries = getJournalEntries(plugin, journal);
     const entryByDate = new Map(entries.map(entry => [entry.date, entry]));
     const completedDateSet = new Set(entries.filter(entry => entry.isComplete).map(entry => entry.date));
     const todayDate = moment().format('YYYY-MM-DD');
     const yesterdayDate = moment(todayDate, 'YYYY-MM-DD', true).subtract(1, 'day').format('YYYY-MM-DD');
     const firstEntryDate = entries[0]?.date ?? null;
-    const trackingStartDate = firstEntryDate ?? todayDate;
+    const trackingStartDate = getCadenceTimelineStartDate(cadence) ?? firstEntryDate ?? todayDate;
     const cadenceStatus = getCadenceStatus(cadence, completedDateSet, todayDate, firstEntryDate);
     const catchUpStatus = getCadenceStatus(cadence, completedDateSet, yesterdayDate, firstEntryDate);
     const currentStreak = getCurrentCadenceStreak(cadence, completedDateSet, todayDate);

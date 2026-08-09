@@ -16,7 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     createEntry: [target: { journalPath: string; date?: string }];
     activateTab: [target: { journalPath: string; tab: ReviewWorkspaceTab }];
-    openSettings: [];
+    editJournal: [journalPath: string];
 }>();
 
 const activeFilter = ref<JournalFilter>('all');
@@ -195,7 +195,7 @@ onBeforeUnmount(() => filterMenu?.hide());
                 :overview="overview"
                 @create-entry="emit('createEntry', $event)"
                 @activate-tab="emit('activateTab', $event)"
-                @open-settings="emit('openSettings')"
+                @edit-journal="emit('editJournal', $event)"
             />
         </div>
 

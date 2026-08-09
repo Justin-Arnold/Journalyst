@@ -1,7 +1,5 @@
-import { App, DropdownComponent, Notice, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { App, Notice, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import { type JournalNotePropertyBackfillItem } from "../bases";
-import { type JournalCadenceType } from "../cadence";
-import { type JournalPromptSettings, type PromptDeliveryMode, type PromptSelectionMode, type PromptSourceType } from "../prompts";
 import { type SidebarMode } from "../review/types";
 import { type TemplateEngine } from "../templates/types";
 import JournalystPlugin from "../src/main";
@@ -41,24 +39,15 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		this.renderSectionHeading(containerEl, 'Notes and files', 'Control how Journalyst names entry files and handles filename migrations.');
 		this.renderNoteSettings(containerEl, noteDateFormatDraft);
 
-		this.renderSectionHeading(containerEl, 'Journal cadence', 'Define how often each journal is expected so status, review, and reminders stay honest.');
-		this.renderCadenceSettings(containerEl);
-
-		this.renderSectionHeading(containerEl, 'Prompts', 'Keep prompts optional, but use them when you want a little freshness or structure in a journal entry.');
+		this.renderSectionHeading(containerEl, 'Prompts', 'Manage reusable prompt libraries. Assign prompts to journals from the Journals workspace.');
 		this.renderSubsectionIntro(
 			containerEl,
 			'Prompt libraries',
 			'Create custom prompt lists here, or use Journalyst built-in libraries and markdown note-backed lists when you assign prompts to journals.'
 		);
 		await this.renderCustomPromptLists(containerEl);
-		this.renderSubsectionIntro(
-			containerEl,
-			'Journal prompt assignments',
-			'Choose which journals use prompts, where those prompts come from, and how Journalyst rotates and delivers them.'
-		);
-		await this.renderJournalPromptSettings(containerEl);
 
-		this.renderSectionHeading(containerEl, 'Templates', 'Pick the journal template engine, choose fallback behavior, and assign per-journal templates.');
+		this.renderSectionHeading(containerEl, 'Templates', 'Choose the global template engine and fallback behavior. Assign templates from the Journals workspace.');
 		await this.renderTemplateSettings(containerEl);
 
 		this.renderSectionHeading(containerEl, 'Bases', 'Opt into Journalyst properties and managed starter Bases files for your journals.');
@@ -91,6 +80,18 @@ export class JournalystSettingsTab extends PluginSettingTab {
 	}
 
 	private renderWorkspaceSettings(containerEl: HTMLElement) {
+		new Setting(containerEl)
+			.setName('Manage journals')
+			.setDesc('Edit journal schedules, entry setup, reminders, integrations, and names in Journalyst.')
+			.addButton(button => button
+				.setButtonText('Open Journals')
+				.setCta()
+				.onClick(() => {
+					const appWithSettings = this.app as typeof this.app & { setting?: { close(): void } };
+					appWithSettings.setting?.close();
+					void this.plugin.activateJournalSettings();
+				}));
+
 		new Setting(containerEl)
 			.setName('Journalyst home directory')
 			.setDesc('The directory where Journalyst will look for your journals.')
@@ -236,95 +237,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		}
 	}
 
-	private renderCadenceSettings(containerEl: HTMLElement) {
-		for (const journal of this.plugin.journals) {
-			const cadence = this.plugin.getJournalCadence(journal.path);
-			new Setting(containerEl)
-				.setName(journal.name)
-				.addDropdown(dropdown => {
-					dropdown.addOption('daily', 'Daily');
-					dropdown.addOption('weekdays', 'Weekdays only');
-					dropdown.addOption('weekly-days', 'Specific weekdays');
-					dropdown.addOption('interval', 'Custom interval');
-					dropdown.addOption('adhoc', 'Ad hoc / no tracking');
-					dropdown.setValue(cadence.type)
-						.onChange(async (value: string) => {
-							const castValue = value as JournalCadenceType;
-							const nextCadence = castValue === 'weekly-days'
-								? { type: castValue, weekdays: cadence.weekdays ?? [1] }
-								: castValue === 'interval'
-									? { type: castValue, intervalDays: cadence.intervalDays ?? 3, startDate: cadence.startDate }
-									: { type: castValue };
-							await this.plugin.updateJournalCadence(journal.path, nextCadence);
-							this.display();
-						});
-				});
-
-			if (cadence.type === 'weekly-days') {
-				const detail = containerEl.createDiv({ cls: 'journalyst-cadence-detail' });
-				detail.createEl('span', { text: 'Expected weekdays', cls: 'journalyst-cadence-label' });
-				const buttonRow = detail.createDiv({ cls: 'journalyst-cadence-weekdays' });
-
-				['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach((label, day) => {
-					const button = buttonRow.createEl('button', { text: label, cls: 'journalyst-cadence-day' });
-					button.type = 'button';
-					if (cadence.weekdays?.includes(day)) {
-						button.addClass('is-selected');
-					}
-					button.addEventListener('click', async () => {
-						const nextWeekdays = new Set(cadence.weekdays ?? []);
-						if (nextWeekdays.has(day)) {
-							nextWeekdays.delete(day);
-						} else {
-							nextWeekdays.add(day);
-						}
-
-						await this.plugin.updateJournalCadence(journal.path, {
-							type: 'weekly-days',
-							weekdays: Array.from(nextWeekdays).sort((left, right) => left - right),
-						});
-						this.display();
-					});
-				});
-			}
-
-			if (cadence.type === 'interval') {
-				const detail = containerEl.createDiv({ cls: 'journalyst-cadence-detail' });
-				const fieldGrid = detail.createDiv({ cls: 'journalyst-cadence-fields' });
-
-				const intervalField = fieldGrid.createDiv({ cls: 'journalyst-cadence-field' });
-				intervalField.createEl('span', { text: 'Every how many days', cls: 'journalyst-cadence-label' });
-				const intervalInput = intervalField.createEl('input', { type: 'number' });
-				intervalInput.min = '1';
-				intervalInput.step = '1';
-				intervalInput.value = String(cadence.intervalDays ?? 3);
-				intervalInput.addClass('journalyst-cadence-input');
-				intervalInput.addEventListener('change', async () => {
-					const intervalDays = Math.max(1, Number.parseInt(intervalInput.value, 10) || 1);
-					intervalInput.value = String(intervalDays);
-					await this.plugin.updateJournalCadence(journal.path, {
-						type: 'interval',
-						intervalDays,
-						startDate: cadence.startDate,
-					});
-				});
-
-				const anchorField = fieldGrid.createDiv({ cls: 'journalyst-cadence-field' });
-				anchorField.createEl('span', { text: 'Anchor date', cls: 'journalyst-cadence-label' });
-				const anchorInput = anchorField.createEl('input', { type: 'date' });
-				anchorInput.value = cadence.startDate ?? '';
-				anchorInput.addClass('journalyst-cadence-input');
-				anchorInput.addEventListener('change', async () => {
-					await this.plugin.updateJournalCadence(journal.path, {
-						type: 'interval',
-						intervalDays: cadence.intervalDays ?? 3,
-						startDate: anchorInput.value,
-					});
-				});
-			}
-		}
-	}
-
 	private async renderTemplateSettings(containerEl: HTMLElement) {
 		new Setting(containerEl)
 			.setName('Template engine')
@@ -360,103 +272,20 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			return;
 		}
 
-		await this.renderJournalTemplateSettings(containerEl);
+		const templateAvailability = await this.plugin.getTemplateAvailability(this.plugin.settings.templateEngine);
+		const statusText = templateAvailability === 'ready'
+			? 'The selected template engine is ready. Template assignments are managed per journal in Journalyst.'
+			: templateAvailability === 'not-installed'
+				? 'The selected template plugin is not installed.'
+				: templateAvailability === 'disabled'
+					? 'The selected template plugin is disabled.'
+					: 'Configure a template folder before assigning journal templates.';
+		this.addTemplateNotice(statusText);
 	}
 
 	private addTemplateNotice(message: string) {
 		new Setting(this.containerEl)
 			.setDesc(message);
-	}
-
-	private async renderJournalTemplateSettings(containerEl: HTMLElement) {
-		const templateEngine = this.plugin.settings.templateEngine;
-		const templateAvailability = await this.plugin.getTemplateAvailability(templateEngine);
-		const templateFiles = await this.plugin.getTemplateFiles(templateEngine);
-
-		if (templateEngine === 'core') {
-			this.addTemplateNotice('Core Templates supports plain placeholder substitution such as {{title}}, {{date}}, and {{time}}.');
-		} else {
-			this.addTemplateNotice('Templater templates are executed by the Templater plugin, so Journalyst defers rendering to Templater.');
-		}
-
-		if (templateAvailability === 'not-installed') {
-			this.addTemplateNotice('Templater is not installed. Install and enable Templater to choose templates for Journalyst journals.');
-			return;
-		}
-
-		if (templateAvailability === 'disabled') {
-			if (templateEngine === 'core') {
-				this.addTemplateNotice('The core Templates plugin is not enabled. Enable it in Core plugins to choose templates for Journalyst journals.');
-			} else {
-				this.addTemplateNotice('Templater is installed but not enabled. Enable Templater to choose templates for Journalyst journals.');
-			}
-			return;
-		}
-
-		if (templateAvailability === 'no-template-folder') {
-			if (templateEngine === 'core') {
-				this.addTemplateNotice('The core Templates plugin does not have a template folder configured. Set "Template folder location" in Templates settings first.');
-			} else {
-				this.addTemplateNotice('Templater does not have a template folder configured. Set "Template folder location" in Templater settings first.');
-			}
-			return;
-		}
-
-		if (templateFiles.length === 0) {
-			const templateFolder = await this.plugin.getTemplateFolder(templateEngine);
-			this.addTemplateNotice(`No markdown templates were found in ${templateFolder}. Add templates there to assign them to Journalyst journals.`);
-			return;
-		}
-
-		this.renderSubsectionIntro(
-			containerEl,
-			'Journal template assignments',
-			'Choose which template file each journal should use when Journalyst creates a new entry.'
-		);
-
-		for (const journal of this.plugin.journals) {
-			const templatePath = this.plugin.getJournalTemplatePath(templateEngine, journal.path);
-			const templateStatus = await this.plugin.getJournalTemplateStatus(templateEngine, journal.path);
-			const warningMessage = this.getTemplateWarningMessage(templateStatus, templatePath);
-
-			const setting = new Setting(containerEl)
-				.setName(journal.name)
-				.addDropdown(dropdown => {
-					dropdown.addOption('', 'None');
-
-					templateFiles.forEach(file => {
-						dropdown.addOption(file.path, file.path);
-					});
-
-					dropdown.setValue(this.plugin.getJournalTemplatePath(templateEngine, journal.path) ?? '')
-						.onChange(async (value) => {
-							if (value) {
-								this.plugin.setJournalTemplatePath(templateEngine, journal.path, value);
-							} else {
-								this.plugin.clearJournalTemplatePath(templateEngine, journal.path);
-							}
-
-							await this.plugin.saveSettings();
-							this.display();
-						});
-				});
-
-			if (warningMessage) {
-				setting.setDesc(`Warning: ${warningMessage}.`);
-			}
-		}
-	}
-
-	private getTemplateWarningMessage(templateStatus: string, templatePath?: string) {
-		if (templateStatus === 'missing') {
-			return `saved template is missing: ${templatePath}`;
-		}
-
-		if (templateStatus === 'outside-folder') {
-			return `saved template is outside the configured template folder: ${templatePath}`;
-		}
-
-		return null;
 	}
 
 	private async renderBasesSettings(containerEl: HTMLElement) {
@@ -497,19 +326,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						this.display();
 					});
 			});
-
-		for (const journal of this.plugin.journals) {
-			new Setting(containerEl)
-				.setName(`${journal.name} Bases`)
-				.setDesc(`Generate or regenerate Journalyst starter Bases in ${journal.path}.`)
-				.addButton(button => {
-					button.setButtonText('Generate')
-						.onClick(async () => {
-							await this.plugin.generateBasesForJournal(journal);
-						});
-				});
-		}
-
 		if (!this.basesBackfillPreview) {
 			return;
 		}
@@ -638,194 +454,6 @@ export class JournalystSettingsTab extends PluginSettingTab {
 				};
 			});
 		});
-	}
-
-	private async renderJournalPromptSettings(containerEl: HTMLElement) {
-		for (const journal of this.plugin.journals) {
-			const promptSettings = this.plugin.getJournalPromptSettings(journal.path);
-			const promptStatus = await this.plugin.getPromptSettingsStatus(journal.path);
-			const resolvedList = await this.plugin.getResolvedPromptList(journal.path);
-			const promptOptions = resolvedList?.prompts ?? [];
-
-			const journalSetting = new Setting(containerEl)
-				.setName(journal.name)
-				.addToggle(toggle => {
-					toggle.setValue(promptSettings.enabled)
-						.onChange(async value => {
-							await this.plugin.updateJournalPromptSettings(journal.path, {
-								...promptSettings,
-								enabled: value,
-							});
-							this.display();
-						});
-				});
-
-			if (promptStatus) {
-				journalSetting.setDesc(promptStatus);
-			}
-
-			if (!promptSettings.enabled) {
-				continue;
-			}
-
-			const detailsContainer = containerEl.createDiv({ cls: 'journalyst-prompt-journal-details' });
-
-			new Setting(detailsContainer)
-				.setName(`${journal.name} source`)
-				.setDesc('Choose where this journal should pull prompts from.')
-				.addDropdown(dropdown => {
-					dropdown.addOption('built-in', 'Built-in library');
-					dropdown.addOption('custom', 'Custom prompt list');
-					dropdown.addOption('file', 'Markdown note');
-					dropdown.setValue(promptSettings.sourceType)
-						.onChange(async (value: string) => {
-							const castValue = value as PromptSourceType;
-							const nextSettings: JournalPromptSettings = {
-								...promptSettings,
-								sourceType: castValue,
-								selectedListId: castValue === 'built-in'
-									? promptSettings.selectedListId ?? Object.keys(this.plugin.getBuiltInPromptLists())[0]
-									: castValue === 'custom'
-										? promptSettings.selectedListId ?? Object.keys(this.plugin.getCustomPromptLists())[0]
-										: undefined,
-								selectedFilePath: castValue === 'file' ? promptSettings.selectedFilePath : undefined,
-								staticPromptId: undefined,
-								weekdayOverrides: {},
-							};
-							await this.plugin.updateJournalPromptSettings(journal.path, nextSettings);
-							this.display();
-						});
-				});
-
-			if (promptSettings.sourceType === 'built-in' || promptSettings.sourceType === 'custom') {
-				const listOptions = promptSettings.sourceType === 'built-in'
-					? this.plugin.getBuiltInPromptLists()
-					: this.plugin.getCustomPromptLists();
-
-				new Setting(detailsContainer)
-					.setName(`${journal.name} prompt list`)
-					.addDropdown(dropdown => {
-						Object.values(listOptions).forEach(list => {
-							dropdown.addOption(list.id, list.name);
-						});
-
-						const defaultListId = promptSettings.selectedListId ?? Object.keys(listOptions)[0] ?? '';
-						dropdown.setValue(defaultListId)
-							.onChange(async value => {
-								await this.plugin.updateJournalPromptSettings(journal.path, {
-									...promptSettings,
-									selectedListId: value,
-									staticPromptId: undefined,
-									weekdayOverrides: {},
-								});
-								this.display();
-							});
-					});
-			}
-
-			if (promptSettings.sourceType === 'file') {
-				new Setting(detailsContainer)
-					.setName(`${journal.name} prompt note`)
-					.setDesc('Journalyst reads one markdown list item per prompt from the selected note.')
-					.addDropdown(dropdown => {
-						this.app.vault.getMarkdownFiles().forEach(file => {
-							dropdown.addOption(file.path, file.path);
-						});
-
-						dropdown.setValue(promptSettings.selectedFilePath ?? '')
-							.onChange(async value => {
-								await this.plugin.updateJournalPromptSettings(journal.path, {
-									...promptSettings,
-									selectedFilePath: value || undefined,
-									staticPromptId: undefined,
-									weekdayOverrides: {},
-								});
-								this.display();
-							});
-					});
-			}
-
-			new Setting(detailsContainer)
-				.setName(`${journal.name} selection`)
-				.addDropdown(dropdown => {
-					dropdown.addOption('static', 'Static prompt');
-					dropdown.addOption('random', 'Random');
-					dropdown.addOption('random-no-repeat', 'Random, no repeats until exhausted');
-					dropdown.setValue(promptSettings.selectionMode)
-						.onChange(async (value: string) => {
-							const castValue = value as PromptSelectionMode;
-							await this.plugin.updateJournalPromptSettings(journal.path, {
-								...promptSettings,
-								selectionMode: castValue,
-								staticPromptId: castValue === 'static' ? promptSettings.staticPromptId : undefined,
-							});
-							this.display();
-						});
-				})
-				.addDropdown(dropdown => {
-					dropdown.addOption('append-body', 'Append into note');
-					dropdown.addOption('template-variables', 'Use template variables');
-					dropdown.setValue(promptSettings.deliveryMode)
-						.onChange(async (value: string) => {
-							const castValue = value as PromptDeliveryMode;
-							await this.plugin.updateJournalPromptSettings(journal.path, {
-								...promptSettings,
-								deliveryMode: castValue,
-							});
-							this.display();
-						});
-				});
-
-			if (promptSettings.selectionMode === 'static' && promptOptions.length > 0) {
-				new Setting(detailsContainer)
-					.setName(`${journal.name} static prompt`)
-					.addDropdown(dropdown => {
-						promptOptions.forEach(prompt => {
-							dropdown.addOption(prompt.id, prompt.title);
-						});
-
-						dropdown.setValue(promptSettings.staticPromptId ?? promptOptions[0]?.id ?? '')
-							.onChange(async value => {
-								await this.plugin.updateJournalPromptSettings(journal.path, {
-									...promptSettings,
-									staticPromptId: value,
-								});
-							});
-					});
-			}
-
-			if (promptOptions.length > 0) {
-				const weekdaysContainer = detailsContainer.createDiv({ cls: 'journalyst-prompt-weekdays' });
-				weekdaysContainer.createEl('span', { text: 'Weekday overrides', cls: 'journalyst-cadence-label' });
-				['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach((label, index) => {
-					new Setting(weekdaysContainer)
-						.setName(label)
-						.addDropdown(dropdown => {
-							dropdown.addOption('', 'None');
-							promptOptions.forEach(prompt => {
-								dropdown.addOption(prompt.id, prompt.title);
-							});
-
-							dropdown.setValue(promptSettings.weekdayOverrides[index.toString()] ?? '')
-								.onChange(async value => {
-									const nextOverrides = { ...promptSettings.weekdayOverrides };
-									if (value) {
-										nextOverrides[index.toString()] = value;
-									} else {
-										delete nextOverrides[index.toString()];
-									}
-
-									await this.plugin.updateJournalPromptSettings(journal.path, {
-										...promptSettings,
-										weekdayOverrides: nextOverrides,
-									});
-									this.display();
-								});
-						});
-				});
-			}
-
-		}
 	}
 
 	private getCustomPromptListDraft(listId: string, defaultName: string, defaultBody: string) {
