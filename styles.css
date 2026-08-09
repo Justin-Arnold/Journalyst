@@ -158,38 +158,6 @@
     width: 100%;
 }
 
-.journalyst-review-tabs {
-    display: flex;
-    gap: 0.25rem;
-    max-width: 100%;
-    overflow-x: auto;
-    margin: 0 0 1.25rem;
-    padding: 0.25rem;
-    border-radius: var(--radius-s);
-    background: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    scrollbar-width: thin;
-}
-
-.journalyst-review-tab {
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-    padding: 0.5rem 0.85rem;
-    border-radius: var(--radius-s);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex: 0 0 auto;
-    white-space: nowrap;
-}
-
-.journalyst-review-tab.is-active {
-    background: var(--background-primary);
-    color: var(--text-normal);
-    box-shadow: inset 0 -2px 0 var(--interactive-accent);
-}
-
 .journalyst-icon {
     display: inline-flex;
     align-items: center;
@@ -702,7 +670,6 @@
     margin-top: auto;
 }
 
-.journalyst-review-tab:focus-visible,
 .heat-map-day:focus-visible,
 .journalyst-review-lookback:focus-visible,
 .journalyst-synthesis-link:focus-visible {
@@ -1280,5 +1247,39 @@
     .journalyst-onboarding-root-summary button {
         grid-column: 1 / -1;
     }
+}
+
+.journalyst-review-tabs[data-v-0dee5bf9] {
+    display: flex;
+    gap: 0.25rem;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0 0 1.25rem;
+    padding: 0.25rem;
+    border-radius: var(--radius-s);
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    scrollbar-width: thin;
+}
+.journalyst-review-tab[data-v-0dee5bf9] {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--radius-s);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.journalyst-review-tab.is-active[data-v-0dee5bf9] {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-shadow: inset 0 -2px 0 var(--interactive-accent);
+}
+.journalyst-review-tab[data-v-0dee5bf9]:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
 }
 /*$vite$:1*/

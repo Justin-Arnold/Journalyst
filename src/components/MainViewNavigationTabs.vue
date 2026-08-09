@@ -65,3 +65,42 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
         </button>
     </div>
 </template>
+
+<style scoped>
+.journalyst-review-tabs {
+    display: flex;
+    gap: 0.25rem;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0 0 1.25rem;
+    padding: 0.25rem;
+    border-radius: var(--radius-s);
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    scrollbar-width: thin;
+}
+
+.journalyst-review-tab {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--radius-s);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.journalyst-review-tab.is-active {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-shadow: inset 0 -2px 0 var(--interactive-accent);
+}
+
+.journalyst-review-tab:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+</style>
