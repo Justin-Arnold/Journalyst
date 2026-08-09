@@ -15,6 +15,17 @@ import {
     upsertFrontmatterProperties,
 } from "../bases";
 import { type JournalCadenceConfig, normalizeJournalCadence } from "../cadence";
+import {
+    DEFAULT_ONBOARDING_ROOT,
+    JOURNALYST_ONBOARDING_VERSION,
+    type CompleteOnboardingRequest,
+    type CompleteOnboardingResult,
+    type JournalystOnboardingSettings,
+    type OnboardingViewModel,
+    createPendingOnboardingSettings,
+    isCurrentOnboardingSettings,
+    normalizeOnboardingSettings,
+} from "../onboarding";
 import { BUILT_IN_PROMPT_LISTS } from "../promptLibrary";
 import {
     createCustomPromptListDefinition,
@@ -66,7 +77,8 @@ import { SideBarView, VIEW_TYPE_SIDE_BAR } from "../views/SideBar";
 import { JournalystSettingsTab } from "../views/Settings";
 
 export interface JournalystPluginSettings {
-    rootDirectory: string;
+    rootDirectory: string | null;
+    onboarding: JournalystOnboardingSettings;
     basesIntegrationEnabled: boolean;
     remindersEnabled: boolean;
     osNotificationsEnabled: boolean;
@@ -87,7 +99,8 @@ export interface JournalystPluginSettings {
 }
 
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
-	rootDirectory: '/',
+	rootDirectory: null,
+    onboarding: createPendingOnboardingSettings(),
     basesIntegrationEnabled: false,
     remindersEnabled: false,
     osNotificationsEnabled: false,
@@ -114,6 +127,8 @@ export default class JournalystPlugin extends Plugin {
     // Strategy instances keep engine-specific behavior out of the main plugin flow.
     private templateStrategies!: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
     private lastReminderCheckMinute: string | null = null;
+    private onboardingNeedsMigration = false;
+    private hadStoredRootDirectory = false;
     private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
         journalPath: null,
         anchorDate: moment().format('YYYY-MM-DD'),
@@ -133,18 +148,7 @@ export default class JournalystPlugin extends Plugin {
         });
 
         this.app.workspace.onLayoutReady(() => {
-            this.refreshJournals();
-
-            this.registerView(
-                VIEW_TYPE_SIDE_BAR,
-                (leaf) => new SideBarView(leaf, this)
-            );
-            this.registerView(
-                VIEW_TYPE_REVIEW,
-                (leaf) => new ReviewView(leaf, this)
-            );
-
-            void this.checkReminderNotifications();
+            void this.initializeWorkspaceLayout();
         })
 
         if (typeof window !== 'undefined') {
@@ -250,6 +254,29 @@ export default class JournalystPlugin extends Plugin {
         this.refreshJournals();
     }
 
+    private async initializeWorkspaceLayout() {
+        this.refreshJournals();
+
+        try {
+            await this.reconcileOnboardingAfterLoad();
+        } catch (error) {
+            console.error('Journalyst could not reconcile onboarding state.', error);
+        }
+
+        this.refreshJournals();
+
+        this.registerView(
+            VIEW_TYPE_SIDE_BAR,
+            (leaf) => new SideBarView(leaf, this)
+        );
+        this.registerView(
+            VIEW_TYPE_REVIEW,
+            (leaf) => new ReviewView(leaf, this)
+        );
+
+        void this.checkReminderNotifications();
+    }
+
     private async onItemRename(item: TAbstractFile, oldPath: string) {
         if (item instanceof TFolder) {
             this.remapJournalPaths(oldPath, item.path);
@@ -260,15 +287,18 @@ export default class JournalystPlugin extends Plugin {
     }
 
     refreshJournals() {
-        const rootFolder = this.app.vault.getAbstractFileByPath(this.settings.rootDirectory);
-
         // Journal commands are derived from folders under the configured root, so
         // rebuild them whenever the root changes or the vault structure changes.
         this.journalCommandIds.forEach(commandId => this.removeCommand(commandId));
         this.journalCommandIds = [];
         this.journals = [];
 
-        if (!(rootFolder instanceof TFolder)) {
+        if (this.settings.onboarding.status !== 'completed') {
+            return;
+        }
+
+        const rootFolder = this.getConfiguredRootFolder();
+        if (!rootFolder) {
             return;
         }
 
@@ -284,6 +314,418 @@ export default class JournalystPlugin extends Plugin {
         if (!this.reviewState.journalPath || !this.getJournalByPath(this.reviewState.journalPath)) {
             this.reviewState.journalPath = this.getDefaultReviewJournalPath();
         }
+    }
+
+    getOnboardingViewModel(): OnboardingViewModel {
+        const root = this.app.vault.getRoot();
+        const folderOptions = [root, ...this.app.vault.getAllLoadedFiles()
+            .filter((file): file is TFolder => file instanceof TFolder && file.path !== root.path)]
+            .map(folder => ({
+                path: folder === root ? '/' : folder.path,
+                name: folder === root ? 'Vault root' : folder.path,
+                journalCount: this.getJournalFolders(folder).length,
+            }))
+            .sort((left, right) => {
+                if (left.path === '/') return -1;
+                if (right.path === '/') return 1;
+                return left.path.localeCompare(right.path, undefined, { sensitivity: 'base' });
+            });
+
+        return {
+            status: this.settings.onboarding.status,
+            configuredRootPath: this.settings.rootDirectory,
+            suggestedRootPath: this.settings.rootDirectory || DEFAULT_ONBOARDING_ROOT,
+            folderOptions,
+        };
+    }
+
+    async updateRootDirectory(rootPath: string | null): Promise<CompleteOnboardingResult> {
+        const previousRootPath = this.settings.rootDirectory;
+        const previousOnboarding = this.settings.onboarding;
+
+        if (rootPath === null) {
+            this.settings.rootDirectory = null;
+            this.refreshJournals();
+            try {
+                await this.saveSettings();
+                this.refreshReviewViews();
+                return { ok: true };
+            } catch (error) {
+                this.settings.rootDirectory = previousRootPath;
+                this.refreshJournals();
+                return {
+                    ok: false,
+                    error: error instanceof Error ? error.message : 'Journalyst could not save the home directory.',
+                };
+            }
+        }
+
+        const validation = this.validateRootPath(rootPath);
+        if (!validation.ok) {
+            return validation;
+        }
+
+        const rootFolder = this.getConfiguredRootFolder(validation.path);
+        if (!rootFolder) {
+            return { ok: false, error: 'Choose a folder that currently exists in the vault.' };
+        }
+
+        this.settings.rootDirectory = validation.path;
+        if (this.settings.onboarding.status !== 'completed' && this.getJournalFolders(rootFolder).length > 0) {
+            this.settings.onboarding = {
+                version: JOURNALYST_ONBOARDING_VERSION,
+                status: 'completed',
+            };
+        }
+        this.refreshJournals();
+
+        try {
+            await this.saveSettings();
+            this.refreshReviewViews();
+            return { ok: true };
+        } catch (error) {
+            this.settings.rootDirectory = previousRootPath;
+            this.settings.onboarding = previousOnboarding;
+            this.refreshJournals();
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not save the home directory.',
+            };
+        }
+    }
+
+    async completeOnboarding(request: CompleteOnboardingRequest): Promise<CompleteOnboardingResult> {
+        const previousRootPath = this.settings.rootDirectory;
+        const previousOnboarding = this.settings.onboarding;
+        const previousReviewState = { ...this.reviewState };
+        const rootValidation = this.validateRootPath(request.rootPath);
+        if (!rootValidation.ok) {
+            return rootValidation;
+        }
+
+        const journalValidation = this.validateJournalNames(request.journalNames);
+        if (!journalValidation.ok) {
+            return journalValidation;
+        }
+
+        const rootConflict = this.findRootPathConflict(rootValidation.path);
+        if (rootConflict) {
+            return { ok: false, error: rootConflict };
+        }
+
+        const existingRoot = this.findExistingRootFolder(rootValidation.path);
+        const existingJournals = existingRoot ? this.getJournalFolders(existingRoot) : [];
+        if (journalValidation.names.length === 0 && existingJournals.length === 0) {
+            return {
+                ok: false,
+                error: 'Select at least one journal, or choose a folder that already contains journal folders.',
+            };
+        }
+
+        if (existingRoot) {
+            const journalConflict = this.findJournalPathConflict(existingRoot, journalValidation.names);
+            if (journalConflict) {
+                return { ok: false, error: journalConflict };
+            }
+        }
+
+        try {
+            const rootFolder = await this.ensureRootFolder(rootValidation.path);
+            const journalConflict = this.findJournalPathConflict(rootFolder, journalValidation.names);
+            if (journalConflict) {
+                return { ok: false, error: journalConflict };
+            }
+
+            for (const journalName of journalValidation.names) {
+                const existingChild = this.findChildByName(rootFolder, journalName);
+                if (existingChild instanceof TFolder) {
+                    continue;
+                }
+
+                await this.app.vault.createFolder(this.getChildPath(rootFolder, journalName));
+            }
+
+            this.settings.rootDirectory = rootFolder === this.app.vault.getRoot() ? '/' : rootFolder.path;
+            this.settings.onboarding = {
+                version: JOURNALYST_ONBOARDING_VERSION,
+                status: 'completed',
+            };
+            this.refreshJournals();
+            this.reviewState = {
+                journalPath: this.getDefaultReviewJournalPath(),
+                anchorDate: this.reviewState.anchorDate,
+                activeTab: 'home',
+            };
+            await this.saveSettings();
+            this.refreshReviewViews();
+            return { ok: true };
+        } catch (error) {
+            this.settings.rootDirectory = previousRootPath;
+            this.settings.onboarding = previousOnboarding;
+            this.reviewState = previousReviewState;
+            this.refreshJournals();
+            this.refreshReviewViews();
+            console.error('Journalyst could not complete onboarding.', error);
+            return {
+                ok: false,
+                error: error instanceof Error
+                    ? `Journalyst could not create the folders: ${error.message}`
+                    : 'Journalyst could not create the folders. Check the paths and try again.',
+            };
+        }
+    }
+
+    async deferOnboarding() {
+        if (this.settings.onboarding.status === 'completed') {
+            return;
+        }
+
+        const previousOnboarding = this.settings.onboarding;
+        this.settings.onboarding = {
+            version: JOURNALYST_ONBOARDING_VERSION,
+            status: 'deferred',
+        };
+        try {
+            await this.saveSettings();
+            this.refreshReviewViews();
+        } catch (error) {
+            this.settings.onboarding = previousOnboarding;
+            throw error;
+        }
+    }
+
+    async resumeOnboarding() {
+        if (this.settings.onboarding.status === 'completed') {
+            return;
+        }
+
+        const previousOnboarding = this.settings.onboarding;
+        this.settings.onboarding = {
+            version: JOURNALYST_ONBOARDING_VERSION,
+            status: 'pending',
+        };
+        try {
+            await this.saveSettings();
+            this.refreshReviewViews();
+        } catch (error) {
+            this.settings.onboarding = previousOnboarding;
+            throw error;
+        }
+    }
+
+    private async reconcileOnboardingAfterLoad() {
+        if (!this.onboardingNeedsMigration) {
+            return;
+        }
+
+        let configuredRootPath = this.settings.rootDirectory;
+        let hasUsableLegacySetup = false;
+
+        if (this.hadStoredRootDirectory) {
+            if (configuredRootPath) {
+                const configuredRoot = this.getConfiguredRootFolder(configuredRootPath);
+                hasUsableLegacySetup = configuredRootPath === '/'
+                    ? !!configuredRoot && this.hasLegacyEntryEvidence(configuredRoot)
+                    : !!configuredRoot && this.getJournalFolders(configuredRoot).length > 0;
+            }
+        } else {
+            const vaultRoot = this.app.vault.getRoot();
+            if (this.hasLegacyEntryEvidence(vaultRoot)) {
+                configuredRootPath = '/';
+                hasUsableLegacySetup = true;
+            }
+        }
+
+        this.settings.rootDirectory = configuredRootPath;
+        this.settings.onboarding = {
+            version: JOURNALYST_ONBOARDING_VERSION,
+            status: hasUsableLegacySetup ? 'completed' : 'pending',
+        };
+        this.onboardingNeedsMigration = false;
+        await this.saveSettings();
+    }
+
+    private getConfiguredRootFolder(rootPath = this.settings.rootDirectory) {
+        if (!rootPath) {
+            return null;
+        }
+
+        if (rootPath === '/') {
+            return this.app.vault.getRoot();
+        }
+
+        return this.app.vault.getFolderByPath(normalizePath(rootPath));
+    }
+
+    private findExistingRootFolder(rootPath: string) {
+        if (rootPath === '/') {
+            return this.app.vault.getRoot();
+        }
+
+        let currentFolder = this.app.vault.getRoot();
+        for (const segment of rootPath.split('/')) {
+            const child = this.findChildByName(currentFolder, segment);
+            if (!(child instanceof TFolder)) {
+                return null;
+            }
+            currentFolder = child;
+        }
+
+        return currentFolder;
+    }
+
+    private getJournalFolders(rootFolder: TFolder) {
+        return rootFolder.children.filter((child): child is TFolder => child instanceof TFolder);
+    }
+
+    private hasLegacyEntryEvidence(rootFolder: TFolder) {
+        return this.getJournalFolders(rootFolder).some(journal =>
+            journal.children.some(child => child instanceof TFile && !!this.parseJournalDateFromFile(child))
+        );
+    }
+
+    private validateRootPath(rootPath: string):
+        | { ok: true; path: string }
+        | { ok: false; error: string } {
+        const trimmedPath = rootPath.trim();
+        if (trimmedPath === '/') {
+            return { ok: true, path: '/' };
+        }
+
+        if (!trimmedPath) {
+            return { ok: false, error: 'Enter a vault-relative folder path.' };
+        }
+
+        if (trimmedPath.includes('\\')) {
+            return { ok: false, error: 'Use forward slashes in folder paths.' };
+        }
+
+        const segments = trimmedPath.split('/').map(segment => segment.trim());
+        if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+            return { ok: false, error: 'Use a vault-relative path without empty, . or .. segments.' };
+        }
+
+        const invalidSegment = segments.find(segment => this.hasInvalidFileNameCharacters(segment));
+        if (invalidSegment) {
+            return { ok: false, error: `The folder name "${invalidSegment}" contains unsupported characters.` };
+        }
+
+        return { ok: true, path: normalizePath(segments.join('/')) };
+    }
+
+    private validateJournalNames(journalNames: string[]):
+        | { ok: true; names: string[] }
+        | { ok: false; error: string } {
+        const names: string[] = [];
+        const seenNames = new Set<string>();
+
+        for (const rawName of journalNames) {
+            const name = rawName.trim();
+            if (!name) {
+                continue;
+            }
+
+            if (name === '.' || name === '..' || this.hasInvalidFileNameCharacters(name)) {
+                return { ok: false, error: `The journal name "${name}" contains unsupported characters.` };
+            }
+
+            const comparisonName = name.toLocaleLowerCase();
+            if (seenNames.has(comparisonName)) {
+                continue;
+            }
+
+            seenNames.add(comparisonName);
+            names.push(name);
+        }
+
+        return { ok: true, names };
+    }
+
+    private hasInvalidFileNameCharacters(name: string) {
+        const hasControlCharacter = Array.from(name).some(character => character.charCodeAt(0) < 32);
+        return hasControlCharacter || /[\\/:*?"<>|]/.test(name) || /[. ]$/.test(name);
+    }
+
+    private findRootPathConflict(rootPath: string) {
+        if (rootPath === '/') {
+            return null;
+        }
+
+        let currentFolder = this.app.vault.getRoot();
+        for (const segment of rootPath.split('/')) {
+            const child = this.findChildByName(currentFolder, segment);
+            if (child instanceof TFile) {
+                return `A file named "${child.name}" already blocks that folder path.`;
+            }
+            if (!(child instanceof TFolder)) {
+                return null;
+            }
+            currentFolder = child;
+        }
+
+        return null;
+    }
+
+    private findJournalPathConflict(rootFolder: TFolder, journalNames: string[]) {
+        for (const journalName of journalNames) {
+            const child = this.findChildByName(rootFolder, journalName);
+            if (child instanceof TFile) {
+                return `A file named "${child.name}" already exists in ${rootFolder.path}.`;
+            }
+        }
+
+        return null;
+    }
+
+    private async ensureRootFolder(rootPath: string) {
+        if (rootPath === '/') {
+            return this.app.vault.getRoot();
+        }
+
+        let currentFolder = this.app.vault.getRoot();
+        for (const segment of rootPath.split('/')) {
+            const existingChild = this.findChildByName(currentFolder, segment);
+            if (existingChild instanceof TFile) {
+                throw new Error(`A file named "${existingChild.name}" blocks the folder path.`);
+            }
+            if (existingChild instanceof TFolder) {
+                currentFolder = existingChild;
+                continue;
+            }
+
+            const nextPath = this.getChildPath(currentFolder, segment);
+            await this.app.vault.createFolder(nextPath);
+            const createdFolder = this.app.vault.getFolderByPath(nextPath);
+            if (!createdFolder) {
+                throw new Error(`The folder "${nextPath}" was not available after creation.`);
+            }
+            currentFolder = createdFolder;
+        }
+
+        return currentFolder;
+    }
+
+    private findChildByName(folder: TFolder, name: string) {
+        const comparisonName = name.toLocaleLowerCase();
+        return folder.children.find(child => child.name.toLocaleLowerCase() === comparisonName) ?? null;
+    }
+
+    private getChildPath(folder: TFolder, childName: string) {
+        return normalizePath([folder === this.app.vault.getRoot() ? '' : folder.path, childName]
+            .filter(Boolean)
+            .join('/'));
+    }
+
+    private refreshReviewViews() {
+        this.app.workspace.getLeavesOfType(VIEW_TYPE_REVIEW).forEach(leaf => {
+            if (leaf.view instanceof ReviewView) {
+                leaf.view.updateReviewState(
+                    this.reviewState.journalPath,
+                    this.reviewState.anchorDate,
+                    this.reviewState.activeTab,
+                );
+            }
+        });
     }
 
     private addJournalCommand(journal: TFolder, index: number) {
@@ -1475,7 +1917,19 @@ export default class JournalystPlugin extends Plugin {
 
 
     async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        const loadedData: unknown = await this.loadData();
+        const storedSettings = loadedData && typeof loadedData === 'object'
+            ? loadedData as Partial<JournalystPluginSettings>
+            : null;
+        const storedOnboarding = storedSettings?.onboarding;
+
+        this.hadStoredRootDirectory = typeof storedSettings?.rootDirectory === 'string';
+        this.onboardingNeedsMigration = !isCurrentOnboardingSettings(storedOnboarding);
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, storedSettings ?? {});
+        this.settings.rootDirectory = typeof storedSettings?.rootDirectory === 'string'
+            ? storedSettings.rootDirectory
+            : null;
+        this.settings.onboarding = normalizeOnboardingSettings(storedOnboarding);
         // Older installs stored a single journalTemplates map before engine-specific
         // settings existed. Preserve those choices by migrating them into the
         // templater map on load.

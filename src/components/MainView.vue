@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { normalizePath } from "obsidian";
 import moment from "moment";
 import { getCadenceLabel } from "../../cadence";
+import type { CompleteOnboardingRequest } from "../../onboarding";
 import {
     buildJournalHomeSummary,
     buildJournalOverviewData,
@@ -18,8 +19,10 @@ import type {
 } from "../../review/types";
 import type JournalystPlugin from "../main";
 import MainViewNavigationTabs from "./MainViewNavigationTabs.vue";
+import ObsidianIcon from "./ObsidianIcon.vue";
 import AnalyticsTab from "./main-view/AnalyticsTab.vue";
 import HomeTab from "./main-view/HomeTab.vue";
+import OnboardingView from "./main-view/OnboardingView.vue";
 import RemindersTab from "./main-view/RemindersTab.vue";
 import ReviewTab from "./main-view/ReviewTab.vue";
 import SynthesisTab from "./main-view/SynthesisTab.vue";
@@ -35,6 +38,9 @@ const props = defineProps<{
     state: ReviewViewState;
     actions: MainViewActions;
 }>();
+
+const onboardingBusy = ref(false);
+const onboardingError = ref('');
 
 const tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }> = [
     { id: 'home', label: 'Home', icon: 'house' },
@@ -56,6 +62,11 @@ const journals = computed(() => workspaceContext.value.journalFolders
     .map(journal => ({ path: journal.path, name: journal.name })));
 
 const selectedJournal = computed(() => workspaceContext.value.selectedJournal);
+
+const onboardingModel = computed(() => {
+    void workspaceContext.value.revision;
+    return props.plugin.getOnboardingViewModel();
+});
 
 const activeTab = computed<ReviewWorkspaceTab>({
     get: () => props.state.activeTab,
@@ -143,72 +154,147 @@ function selectAnchorDate(anchorDate: string) {
         props.state.activeTab,
     );
 }
+
+async function completeOnboarding(request: CompleteOnboardingRequest) {
+    if (onboardingBusy.value) return;
+
+    onboardingBusy.value = true;
+    onboardingError.value = '';
+    try {
+        const result = await props.actions.completeOnboarding(request);
+        if (!result.ok) {
+            onboardingError.value = result.error;
+        }
+    } catch (error) {
+        onboardingError.value = error instanceof Error
+            ? error.message
+            : 'Journalyst could not finish setup. Try again.';
+    } finally {
+        onboardingBusy.value = false;
+    }
+}
+
+async function deferOnboarding() {
+    if (onboardingBusy.value) return;
+
+    onboardingBusy.value = true;
+    onboardingError.value = '';
+    try {
+        await props.actions.deferOnboarding();
+    } catch (error) {
+        onboardingError.value = error instanceof Error
+            ? error.message
+            : 'Journalyst could not defer setup. Try again.';
+    } finally {
+        onboardingBusy.value = false;
+    }
+}
+
+async function resumeOnboarding() {
+    onboardingError.value = '';
+    try {
+        await props.actions.resumeOnboarding();
+    } catch (error) {
+        onboardingError.value = error instanceof Error
+            ? error.message
+            : 'Journalyst could not resume setup. Try again.';
+    }
+}
 </script>
 
 <template>
     <div class="journalyst-workspace">
-        <header class="journalyst-review-header">
-            <h1>Journalyst</h1>
-            <div v-if="state.activeTab !== 'home'" class="journalyst-review-controls">
-                <label class="journalyst-review-control">
-                    <span>Journal</span>
-                    <select :value="state.journalPath ?? ''" @change="selectJournal(getSelectValue($event))">
-                        <option v-for="journal in journals" :key="journal.path" :value="journal.path">
-                            {{ journal.name }}
-                        </option>
-                    </select>
-                </label>
-                <label class="journalyst-review-control">
-                    <span>Anchor date</span>
-                    <input type="date" :value="state.anchorDate" @change="selectAnchorDate(getInputValue($event))">
-                </label>
-            </div>
-        </header>
+        <OnboardingView
+            v-if="onboardingModel.status === 'pending'"
+            :model="onboardingModel"
+            :busy="onboardingBusy"
+            :error="onboardingError"
+            @complete="completeOnboarding"
+            @defer="deferOnboarding"
+        />
 
-        <MainViewNavigationTabs v-model:active-tab="activeTab" :tabs="tabs" />
-
-        <div
-            v-if="!selectedJournal"
-            class="journalyst-review-empty"
-            role="status"
-        >
-            <h2>Nothing to review yet</h2>
-            <p>No journals are available for review yet.</p>
+        <div v-else-if="onboardingModel.status === 'deferred'" class="journalyst-onboarding-deferred">
+            <header class="journalyst-onboarding-header">
+                <h1>Journalyst</h1>
+            </header>
+            <main class="journalyst-onboarding-deferred-content" role="status">
+                <ObsidianIcon name="folder-plus" />
+                <h2>Journalyst is ready when you are</h2>
+                <p>Choose a home folder and create your starting journals when you are ready to begin.</p>
+                <p v-if="onboardingError" class="journalyst-onboarding-error" role="alert">
+                    {{ onboardingError }}
+                </p>
+                <button type="button" class="mod-cta" @click="resumeOnboarding">
+                    Resume setup
+                    <ObsidianIcon name="arrow-right" />
+                </button>
+            </main>
         </div>
 
-        <main v-else class="journalyst-workspace-content" role="tabpanel">
-            <HomeTab
-                v-if="state.activeTab === 'home'"
-                :summary="homeSummary"
-                :journals="homeJournals"
-                @open-sidebar="actions.openSidebar"
-                @create-entry="actions.createJournalEntry"
-                @activate-tab="actions.activateJournalTab"
-            />
-            <ReviewTab
-                v-else-if="state.activeTab === 'review' && reviewSnapshot"
-                :snapshot="reviewSnapshot"
-                @open-note="actions.openNote"
-            />
-            <AnalyticsTab
-                v-else-if="state.activeTab === 'analytics' && analyticsSnapshot"
-                :snapshot="analyticsSnapshot"
-            />
-            <SynthesisTab
-                v-else-if="state.activeTab === 'synthesis'"
-                :previews="synthesisPreviews"
-                @open-note="actions.openNote"
-                @create-note="actions.createSynthesisNote(state.journalPath!, state.anchorDate, $event)"
-            />
-            <RemindersTab
-                v-else-if="state.activeTab === 'reminders'"
-                :model="remindersModel"
-                @update-reminders-enabled="actions.updateRemindersEnabled"
-                @update-os-notifications-enabled="actions.updateOsNotificationsEnabled"
-                @request-permission="actions.requestNotificationPermission"
-                @test-notification="actions.sendTestReminderNotification"
-                @update-journal-settings="actions.updateJournalReminderSettings"
-            />
-        </main>
+        <template v-else>
+            <header class="journalyst-review-header">
+                <h1>Journalyst</h1>
+                <div v-if="state.activeTab !== 'home'" class="journalyst-review-controls">
+                    <label class="journalyst-review-control">
+                        <span>Journal</span>
+                        <select :value="state.journalPath ?? ''" @change="selectJournal(getSelectValue($event))">
+                            <option v-for="journal in journals" :key="journal.path" :value="journal.path">
+                                {{ journal.name }}
+                            </option>
+                        </select>
+                    </label>
+                    <label class="journalyst-review-control">
+                        <span>Anchor date</span>
+                        <input type="date" :value="state.anchorDate" @change="selectAnchorDate(getInputValue($event))">
+                    </label>
+                </div>
+            </header>
+
+            <MainViewNavigationTabs v-model:active-tab="activeTab" :tabs="tabs" />
+
+            <div
+                v-if="!selectedJournal"
+                class="journalyst-review-empty"
+                role="status"
+            >
+                <h2>Nothing to review yet</h2>
+                <p>No journals are available for review. Choose another home directory in Journalyst settings or add a journal folder.</p>
+            </div>
+
+            <main v-else class="journalyst-workspace-content" role="tabpanel">
+                <HomeTab
+                    v-if="state.activeTab === 'home'"
+                    :summary="homeSummary"
+                    :journals="homeJournals"
+                    @open-sidebar="actions.openSidebar"
+                    @create-entry="actions.createJournalEntry"
+                    @activate-tab="actions.activateJournalTab"
+                />
+                <ReviewTab
+                    v-else-if="state.activeTab === 'review' && reviewSnapshot"
+                    :snapshot="reviewSnapshot"
+                    @open-note="actions.openNote"
+                />
+                <AnalyticsTab
+                    v-else-if="state.activeTab === 'analytics' && analyticsSnapshot"
+                    :snapshot="analyticsSnapshot"
+                />
+                <SynthesisTab
+                    v-else-if="state.activeTab === 'synthesis'"
+                    :previews="synthesisPreviews"
+                    @open-note="actions.openNote"
+                    @create-note="actions.createSynthesisNote(state.journalPath!, state.anchorDate, $event)"
+                />
+                <RemindersTab
+                    v-else-if="state.activeTab === 'reminders'"
+                    :model="remindersModel"
+                    @update-reminders-enabled="actions.updateRemindersEnabled"
+                    @update-os-notifications-enabled="actions.updateOsNotificationsEnabled"
+                    @request-permission="actions.requestNotificationPermission"
+                    @test-notification="actions.sendTestReminderNotification"
+                    @update-journal-settings="actions.updateJournalReminderSettings"
+                />
+            </main>
+        </template>
     </div>
 </template>

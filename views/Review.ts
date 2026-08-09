@@ -75,6 +75,22 @@ export class ReviewView extends ItemView {
 
     private createActions(): MainViewActions {
         return {
+            completeOnboarding: async (request) => {
+                const result = await this.plugin.completeOnboarding(request);
+                if (result.ok) {
+                    this.syncStateFromPlugin();
+                }
+                this.invalidateData();
+                return result;
+            },
+            deferOnboarding: async () => {
+                await this.plugin.deferOnboarding();
+                this.invalidateData();
+            },
+            resumeOnboarding: async () => {
+                await this.plugin.resumeOnboarding();
+                this.invalidateData();
+            },
             setReviewState: async (journalPath, anchorDate, activeTab) => {
                 this.viewState.journalPath = journalPath;
                 this.viewState.anchorDate = anchorDate;

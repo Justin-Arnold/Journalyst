@@ -1,4 +1,4 @@
-import { App, DropdownComponent, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { App, DropdownComponent, Notice, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import { type JournalNotePropertyBackfillItem } from "../bases";
 import { type JournalCadenceType } from "../cadence";
 import { type JournalPromptSettings, type PromptDeliveryMode, type PromptSelectionMode, type PromptSourceType } from "../prompts";
@@ -95,16 +95,27 @@ export class JournalystSettingsTab extends PluginSettingTab {
 			.setName('Journalyst home directory')
 			.setDesc('The directory where Journalyst will look for your journals.')
 			.addDropdown(dropdown => {
-				this.app.vault.getAllLoadedFiles()
-					.filter(file => file instanceof TFolder)
-					.forEach(folder => {
-						dropdown.addOption(folder.path, folder.path);
-					});
-				dropdown.setValue(this.plugin.settings.rootDirectory)
+				const folderPaths = Array.from(new Set([
+					'/',
+					...this.app.vault.getAllLoadedFiles()
+						.filter(file => file instanceof TFolder)
+						.map(folder => folder.path),
+				]));
+
+				dropdown.addOption('', 'Not configured');
+				folderPaths.forEach(folderPath => dropdown.addOption(folderPath, folderPath));
+
+				const configuredRoot = this.plugin.settings.rootDirectory;
+				if (configuredRoot && !folderPaths.includes(configuredRoot)) {
+					dropdown.addOption(configuredRoot, `${configuredRoot} (missing)`);
+				}
+
+				dropdown.setValue(configuredRoot ?? '')
 					.onChange(async (value) => {
-						this.plugin.settings.rootDirectory = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshJournals();
+						const result = await this.plugin.updateRootDirectory(value || null);
+						if (!result.ok) {
+							new Notice(result.error);
+						}
 						this.display();
 					});
 			});

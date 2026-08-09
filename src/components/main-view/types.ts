@@ -1,4 +1,8 @@
 import type { JournalCadenceType } from "../../../cadence";
+import type {
+    CompleteOnboardingRequest,
+    CompleteOnboardingResult,
+} from "../../../onboarding";
 import type { JournalReminderSettings } from "../../../reminders";
 import type {
     ReviewWorkspaceTab,
@@ -15,6 +19,9 @@ export interface ReviewViewState {
 }
 
 export interface MainViewActions {
+    completeOnboarding(request: CompleteOnboardingRequest): Promise<CompleteOnboardingResult>;
+    deferOnboarding(): Promise<void>;
+    resumeOnboarding(): Promise<void>;
     setReviewState(journalPath: string | null, anchorDate: string, activeTab: ReviewWorkspaceTab): Promise<void>;
     activateJournalTab(journalPath: string, activeTab: ReviewWorkspaceTab): Promise<void>;
     openSidebar(sidebarMode: SidebarMode): Promise<void>;
