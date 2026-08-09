@@ -39,6 +39,12 @@
     color: var(--text-success);
 }
 
+.heat-map-day-draft {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--text-muted);
+    color: var(--text-muted);
+}
+
 .journal-section-actions {
     display: flex;
     gap: 0.5rem;
@@ -422,6 +428,11 @@
     border-color: rgba(var(--interactive-accent-rgb), 1);
 }
 
+.journalyst-review-activity-cell.is-draft {
+    background: var(--background-modifier-hover);
+    border-color: var(--text-muted);
+}
+
 .journalyst-review-activity-cell.is-missed {
     background: rgba(var(--color-red-rgb), 0.18);
     border-color: rgba(var(--color-red-rgb), 0.45);
@@ -472,6 +483,11 @@
 
 .journalyst-review-year-cell.is-future {
     background: rgba(var(--background-modifier-border-rgb), 0.15);
+}
+
+.journalyst-review-year-cell.is-draft:not(.is-future) {
+    background: var(--background-modifier-hover);
+    box-shadow: inset 0 0 0 1px var(--text-muted);
 }
 
 .journalyst-review-bar-column {

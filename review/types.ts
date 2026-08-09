@@ -3,6 +3,7 @@ export interface JournalEntryRecord {
     filePath: string;
     date: string;
     displayLabel: string;
+    isComplete: boolean;
 }
 
 export interface ReviewAnchor {
@@ -46,6 +47,7 @@ export interface ReviewInsights {
 export interface ActivityCell {
     date: string;
     hasEntry: boolean;
+    isComplete: boolean;
     isExpected: boolean;
 }
 

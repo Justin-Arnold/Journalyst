@@ -12,6 +12,7 @@ import {
     buildJournalAnalyticsSnapshot,
     buildJournalReviewSnapshot,
     buildSynthesisNotePreview,
+    type SnapshotBuildOptions,
 } from "../../review/buildSnapshot";
 import type {
     ReviewWorkspaceTab,
@@ -41,6 +42,9 @@ const props = defineProps<{
 
 const onboardingBusy = ref(false);
 const onboardingError = ref('');
+const snapshotBuildOptions: SnapshotBuildOptions = {
+    isEntryComplete: file => props.plugin.isJournalEntryComplete(file),
+};
 
 const tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }> = [
     { id: 'home', label: 'Home', icon: 'house' },
@@ -106,14 +110,14 @@ const homeJournals = computed(() => homeWorkspace.value.journals);
 const reviewSnapshot = computed(() => {
     const journal = workspaceContext.value.selectedJournal;
     return journal
-        ? buildJournalReviewSnapshot(journal, props.state.anchorDate, props.plugin.settings)
+        ? buildJournalReviewSnapshot(journal, props.state.anchorDate, props.plugin.settings, snapshotBuildOptions)
         : null;
 });
 
 const analyticsSnapshot = computed(() => {
     const journal = workspaceContext.value.selectedJournal;
     return journal
-        ? buildJournalAnalyticsSnapshot(journal, props.state.anchorDate, props.plugin.settings)
+        ? buildJournalAnalyticsSnapshot(journal, props.state.anchorDate, props.plugin.settings, snapshotBuildOptions)
         : null;
 });
 
@@ -122,7 +126,13 @@ const synthesisPreviews = computed<SynthesisPreviewModel[]>(() => {
     if (!journal) return [];
 
     return (['weekly', 'monthly', 'quarterly'] as SynthesisPeriodType[]).map(periodType => {
-        const preview = buildSynthesisNotePreview(journal, props.state.anchorDate, props.plugin.settings, periodType);
+        const preview = buildSynthesisNotePreview(
+            journal,
+            props.state.anchorDate,
+            props.plugin.settings,
+            periodType,
+            snapshotBuildOptions,
+        );
         const filePath = normalizePath(`${journal.path}/${preview.fileName}`);
         return {
             preview,

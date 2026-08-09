@@ -15,6 +15,7 @@ import {
     upsertFrontmatterProperties,
 } from "../bases";
 import { type JournalCadenceConfig, normalizeJournalCadence } from "../cadence";
+import { hashJournalEntryBody } from "../entryCompletion";
 import {
     DEFAULT_ONBOARDING_ROOT,
     JOURNALYST_ONBOARDING_VERSION,
@@ -91,6 +92,7 @@ export interface JournalystPluginSettings {
     journalPromptHistory: Record<string, JournalPromptHistory>;
     journalReminderSettings: Record<string, JournalReminderSettings>;
     reminderHistory: Record<string, ReminderOccurrenceRecord>;
+    journalEntryBaselines: Record<string, string>;
     templateEngine: TemplateEngine;
     templateFailureBehavior: TemplateFailureBehavior;
     templaterJournalTemplates: Record<string, string>;
@@ -113,6 +115,7 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
     journalPromptHistory: {},
     journalReminderSettings: {},
     reminderHistory: {},
+    journalEntryBaselines: {},
     templateEngine: 'templater',
     templateFailureBehavior: 'fallback-default',
     templaterJournalTemplates: {},
@@ -127,6 +130,8 @@ export default class JournalystPlugin extends Plugin {
     // Strategy instances keep engine-specific behavior out of the main plugin flow.
     private templateStrategies!: Partial<Record<Exclude<TemplateEngine, 'none'>, JournalTemplateEngineStrategy>>;
     private lastReminderCheckMinute: string | null = null;
+    private readonly entryCompletionByPath = new Map<string, boolean>();
+    private readonly entryCompletionRevisions = new Map<string, number>();
     private onboardingNeedsMigration = false;
     private hadStoredRootDirectory = false;
     private reviewState: { journalPath: string | null; anchorDate: string; activeTab: ReviewWorkspaceTab } = {
@@ -137,6 +142,7 @@ export default class JournalystPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+        await this.initializeEntryCompletionCache();
         this.initializeTemplateStrategies();
         this.addSettingTab(new JournalystSettingsTab(this.app, this));
 
@@ -239,11 +245,18 @@ export default class JournalystPlugin extends Plugin {
             this.app.vault.on('create', (item) => this.onItemChange())
         );
         this.registerEvent(
-            this.app.vault.on('delete', (item) => this.onItemChange())
+            this.app.vault.on('delete', (item) => {
+                void this.onItemDelete(item);
+            })
         );
         this.registerEvent(
             this.app.vault.on('rename', (item, oldPath) => {
                 void this.onItemRename(item, oldPath);
+            })
+        );
+        this.registerEvent(
+            this.app.vault.on('modify', (item) => {
+                void this.onItemModify(item);
             })
         );
     };
@@ -278,12 +291,57 @@ export default class JournalystPlugin extends Plugin {
     }
 
     private async onItemRename(item: TAbstractFile, oldPath: string) {
+        const completionPathChanged = this.remapEntryCompletionPaths(oldPath, item.path, item instanceof TFolder);
+
         if (item instanceof TFolder) {
             this.remapJournalPaths(oldPath, item.path);
+            await this.saveSettings();
+        } else if (completionPathChanged) {
             await this.saveSettings();
         }
 
         this.refreshJournals();
+        if (completionPathChanged) {
+            this.refreshCompletionViews();
+        }
+    }
+
+    private async onItemDelete(item: TAbstractFile) {
+        const completionPathRemoved = this.removeEntryCompletionPaths(item.path, item instanceof TFolder);
+        this.refreshJournals();
+
+        if (completionPathRemoved) {
+            await this.saveSettings();
+            this.refreshCompletionViews();
+        }
+    }
+
+    private async onItemModify(item: TAbstractFile) {
+        if (!(item instanceof TFile) || !this.settings.journalEntryBaselines[item.path]) {
+            return;
+        }
+
+        const revision = (this.entryCompletionRevisions.get(item.path) ?? 0) + 1;
+        this.entryCompletionRevisions.set(item.path, revision);
+
+        try {
+            const contents = await this.app.vault.read(item);
+            const currentHash = await hashJournalEntryBody(contents);
+
+            if (this.entryCompletionRevisions.get(item.path) !== revision) {
+                return;
+            }
+
+            const isComplete = currentHash !== this.settings.journalEntryBaselines[item.path];
+            if (this.entryCompletionByPath.get(item.path) === isComplete) {
+                return;
+            }
+
+            this.entryCompletionByPath.set(item.path, isComplete);
+            this.refreshCompletionViews();
+        } catch (error) {
+            console.error(`Journalyst could not evaluate completion for "${item.path}".`, error);
+        }
     }
 
     refreshJournals() {
@@ -792,6 +850,106 @@ export default class JournalystPlugin extends Plugin {
         });
     }
 
+    private refreshCompletionViews() {
+        this.refreshReviewViews();
+        this.refreshSidebarView();
+    }
+
+    private async initializeEntryCompletionCache() {
+        this.entryCompletionByPath.clear();
+        let settingsChanged = false;
+
+        await Promise.all(Object.entries(this.settings.journalEntryBaselines).map(async ([filePath, baselineHash]) => {
+            const file = this.app.vault.getFileByPath(filePath);
+            if (!file) {
+                delete this.settings.journalEntryBaselines[filePath];
+                settingsChanged = true;
+                return;
+            }
+
+            try {
+                const contents = await this.app.vault.read(file);
+                const currentHash = await hashJournalEntryBody(contents);
+                this.entryCompletionByPath.set(filePath, currentHash !== baselineHash);
+            } catch (error) {
+                this.entryCompletionByPath.set(filePath, false);
+                console.error(`Journalyst could not initialize completion for "${filePath}".`, error);
+            }
+        }));
+
+        if (settingsChanged) {
+            await this.saveSettings();
+        }
+    }
+
+    private async captureJournalEntryBaseline(file: TFile) {
+        try {
+            const contents = await this.app.vault.read(file);
+            const baselineHash = await hashJournalEntryBody(contents);
+            this.settings.journalEntryBaselines[file.path] = baselineHash;
+            this.entryCompletionByPath.set(file.path, false);
+            this.entryCompletionRevisions.delete(file.path);
+            await this.saveSettings();
+            this.refreshCompletionViews();
+        } catch (error) {
+            delete this.settings.journalEntryBaselines[file.path];
+            this.entryCompletionByPath.delete(file.path);
+            this.entryCompletionRevisions.delete(file.path);
+            console.error(`Journalyst could not track completion for "${file.path}".`, error);
+            new Notice('Journalyst created the entry but could not track whether its generated content has changed.');
+        }
+    }
+
+    private remapEntryCompletionPaths(oldPath: string, newPath: string, includeDescendants: boolean) {
+        const pathPrefix = oldPath + '/';
+        const matchesPath = (filePath: string) => filePath === oldPath
+            || (includeDescendants && filePath.startsWith(pathPrefix));
+        let changed = false;
+
+        Object.entries(this.settings.journalEntryBaselines).forEach(([filePath, baselineHash]) => {
+            if (!matchesPath(filePath)) {
+                return;
+            }
+
+            const nextPath = newPath + filePath.slice(oldPath.length);
+            delete this.settings.journalEntryBaselines[filePath];
+            this.settings.journalEntryBaselines[nextPath] = baselineHash;
+
+            const completion = this.entryCompletionByPath.get(filePath);
+            this.entryCompletionByPath.delete(filePath);
+            if (completion !== undefined) {
+                this.entryCompletionByPath.set(nextPath, completion);
+            }
+
+            this.entryCompletionRevisions.delete(filePath);
+            changed = true;
+        });
+
+        return changed;
+    }
+
+    private removeEntryCompletionPaths(path: string, includeDescendants: boolean) {
+        const pathPrefix = path + '/';
+        const pathsToRemove = Object.keys(this.settings.journalEntryBaselines)
+            .filter(filePath => filePath === path || (includeDescendants && filePath.startsWith(pathPrefix)));
+
+        pathsToRemove.forEach(filePath => {
+            delete this.settings.journalEntryBaselines[filePath];
+            this.entryCompletionByPath.delete(filePath);
+            this.entryCompletionRevisions.delete(filePath);
+        });
+
+        return pathsToRemove.length > 0;
+    }
+
+    isJournalEntryComplete(file: TFile) {
+        if (!this.settings.journalEntryBaselines[file.path]) {
+            return true;
+        }
+
+        return this.entryCompletionByPath.get(file.path) ?? false;
+    }
+
     private addJournalCommand(journal: TFolder, index: number) {
         const commandId = 'create-journal-' + index + '-' + journal.path.replace(/[^a-zA-Z0-9-]/g, '-');
         this.journalCommandIds.push(commandId);
@@ -865,6 +1023,7 @@ export default class JournalystPlugin extends Plugin {
             promptSettings: this.getJournalPromptSettings(journalFolder.path),
             promptTitle: resolvedPrompt?.prompt.title ?? null,
         });
+        await this.captureJournalEntryBaseline(file);
 
         if (resolvedPrompt?.history) {
             this.settings.journalPromptHistory[journalFolder.path] = resolvedPrompt.history;
@@ -1391,7 +1550,9 @@ export default class JournalystPlugin extends Plugin {
             return null;
         }
 
-        const preview = buildSynthesisNotePreview(journal, anchorDate, this.settings, periodType);
+        const preview = buildSynthesisNotePreview(journal, anchorDate, this.settings, periodType, {
+            isEntryComplete: file => this.isJournalEntryComplete(file),
+        });
         const filePath = normalizePath(journal.path + '/' + preview.payload.fileName);
         const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 
@@ -1415,13 +1576,18 @@ export default class JournalystPlugin extends Plugin {
     }
 
     private getReminderEventsForJournal(journal: TFolder, now: moment.Moment) {
-        const entryDates = journal.children
-            .map(file => this.parseJournalDateFromFile(file))
-            .filter((date): date is string => !!date);
+        const entries = journal.children
+            .filter((file): file is TFile => file instanceof TFile)
+            .map(file => ({
+                date: this.parseJournalDateFromFile(file),
+                isComplete: this.isJournalEntryComplete(file),
+            }))
+            .filter((entry): entry is { date: string; isComplete: boolean } => !!entry.date);
 
         return getReminderEventsForJournal({
             cadence: this.getJournalCadence(journal.path),
-            dateSet: new Set(entryDates),
+            dateSet: new Set(entries.filter(entry => entry.isComplete).map(entry => entry.date)),
+            existingDateSet: new Set(entries.map(entry => entry.date)),
             journalName: journal.name,
             journalPath: journal.path,
             reminderSettings: this.getJournalReminderSettings(journal.path),
@@ -2011,6 +2177,10 @@ export default class JournalystPlugin extends Plugin {
         this.settings.journalPromptHistory = this.settings.journalPromptHistory ?? {};
         this.settings.journalReminderSettings = this.settings.journalReminderSettings ?? {};
         this.settings.reminderHistory = this.settings.reminderHistory ?? {};
+        this.settings.journalEntryBaselines = Object.fromEntries(
+            Object.entries(this.settings.journalEntryBaselines ?? {})
+                .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+        );
         this.settings.templateEngine = this.settings.templateEngine ?? 'templater';
         this.settings.templateFailureBehavior = this.settings.templateFailureBehavior ?? 'fallback-default';
 	}

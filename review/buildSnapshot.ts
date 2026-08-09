@@ -1,4 +1,4 @@
-import { TFolder } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import moment from 'moment';
 import {
     getCadenceLabel,
@@ -36,43 +36,57 @@ interface SnapshotContext {
     anchor: moment.Moment;
     anchorDate: string;
     entries: JournalEntryRecord[];
+    completedEntries: JournalEntryRecord[];
     entryByDate: Map<string, JournalEntryRecord>;
-    dateSet: Set<string>;
-    firstEntryDate: string | null;
+    completedEntryByDate: Map<string, JournalEntryRecord>;
     cadence: import('../cadence').JournalCadenceConfig;
     insights: ReviewInsights;
 }
 
-export function buildJournalReviewSnapshot(journal: TFolder, anchorDate: string, journalDateSettings: JournalDateSettings): JournalReviewSnapshot {
-    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings);
+export interface SnapshotBuildOptions {
+    isEntryComplete?: (file: TFile) => boolean;
+}
+
+export function buildJournalReviewSnapshot(
+    journal: TFolder,
+    anchorDate: string,
+    journalDateSettings: JournalDateSettings,
+    options: SnapshotBuildOptions = {},
+): JournalReviewSnapshot {
+    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
 
     return {
         journalPath: context.journal.path,
         journalName: context.journal.name,
         anchor: { date: context.anchorDate },
         lookbacks: buildLookbacks(context.anchor, context.entryByDate),
-        calendarSummaries: buildCalendarSummaries(context.anchor, context.entryByDate, context.cadence),
-        rollingSummaries: buildRollingSummaries(context.anchor, context.entryByDate, context.cadence),
+        calendarSummaries: buildCalendarSummaries(context.anchor, context.completedEntryByDate, context.cadence),
+        rollingSummaries: buildRollingSummaries(context.anchor, context.completedEntryByDate, context.cadence),
         insights: context.insights,
         entryCount: context.entries.length,
-        recentActivity: buildRecentActivity(context.anchor, context.entryByDate, context.cadence),
+        recentActivity: buildRecentActivity(context.anchor, context.entryByDate, context.completedEntryByDate, context.cadence),
         reviewCallouts: buildReviewCallouts(context),
     };
 }
 
-export function buildJournalAnalyticsSnapshot(journal: TFolder, anchorDate: string, journalDateSettings: JournalDateSettings): JournalAnalyticsSnapshot {
-    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings);
+export function buildJournalAnalyticsSnapshot(
+    journal: TFolder,
+    anchorDate: string,
+    journalDateSettings: JournalDateSettings,
+    options: SnapshotBuildOptions = {},
+): JournalAnalyticsSnapshot {
+    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
 
     return {
         journalPath: context.journal.path,
         journalName: context.journal.name,
         anchor: { date: context.anchorDate },
         insights: context.insights,
-        yearActivity: buildYearActivity(context.anchor, context.entryByDate, context.cadence),
-        weekdayDistribution: buildWeekdayDistribution(context.entries),
-        monthlyActivity: buildMonthlyActivity(context.entries, context.anchor),
-        rollingComparisons: buildRollingComparisons(context.anchor, context.entryByDate, context.cadence),
-        rankedPeriods: buildRankedPeriods(context.anchor, context.entryByDate, context.cadence),
+        yearActivity: buildYearActivity(context.anchor, context.entryByDate, context.completedEntryByDate, context.cadence),
+        weekdayDistribution: buildWeekdayDistribution(context.completedEntries),
+        monthlyActivity: buildMonthlyActivity(context.completedEntries, context.anchor),
+        rollingComparisons: buildRollingComparisons(context.anchor, context.completedEntryByDate, context.cadence),
+        rankedPeriods: buildRankedPeriods(context.anchor, context.completedEntryByDate, context.cadence),
         callouts: buildAnalyticsCallouts(context),
     };
 }
@@ -82,11 +96,12 @@ export function buildSynthesisNotePreview(
     anchorDate: string,
     journalDateSettings: JournalDateSettings,
     periodType: SynthesisPeriodType,
+    options: SnapshotBuildOptions = {},
 ): SynthesisNotePreview {
-    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings);
+    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
     const period = getSynthesisPeriod(context.anchor, periodType);
-    const summary = createPeriodSummary(period.label, period.start, period.end, context.entryByDate, context.cadence);
-    const notableEntries = context.entries
+    const summary = createPeriodSummary(period.label, period.start, period.end, context.completedEntryByDate, context.cadence);
+    const notableEntries = context.completedEntries
         .filter(entry => entry.date >= summary.startDate && entry.date <= summary.endDate)
         .slice(-5)
         .reverse();
@@ -118,9 +133,16 @@ export function buildSynthesisNotePreview(
     };
 }
 
-function buildSnapshotContext(journal: TFolder, anchorDate: string, journalDateSettings: JournalDateSettings): SnapshotContext {
-    const entries = getJournalEntries(journal, journalDateSettings);
+function buildSnapshotContext(
+    journal: TFolder,
+    anchorDate: string,
+    journalDateSettings: JournalDateSettings,
+    options: SnapshotBuildOptions,
+): SnapshotContext {
+    const entries = getJournalEntries(journal, journalDateSettings, options);
+    const completedEntries = entries.filter(entry => entry.isComplete);
     const entryByDate = new Map(entries.map(entry => [entry.date, entry]));
+    const completedEntryByDate = new Map(completedEntries.map(entry => [entry.date, entry]));
     const cadence = normalizeJournalCadence(
         (journalDateSettings as JournalDateSettings & { journalCadences?: Record<string, import('../cadence').JournalCadenceConfig> })
             .journalCadences?.[journal.path]
@@ -128,26 +150,32 @@ function buildSnapshotContext(journal: TFolder, anchorDate: string, journalDateS
     const anchor = moment(anchorDate, 'YYYY-MM-DD', true);
     const normalizedAnchor = anchor.isValid() ? anchor : moment();
     const normalizedAnchorDate = normalizedAnchor.format('YYYY-MM-DD');
-    const dateSet = new Set(entries.map(entry => entry.date));
-    const firstEntryDate = entries[0]?.date ?? null;
-    const insights = buildInsights(entries, normalizedAnchorDate, cadence);
+    const insights = buildInsights(entries, completedEntries, normalizedAnchorDate, cadence);
 
     return {
         journal,
         anchor: normalizedAnchor,
         anchorDate: normalizedAnchorDate,
         entries,
+        completedEntries,
         entryByDate,
-        dateSet,
-        firstEntryDate,
+        completedEntryByDate,
         cadence,
         insights,
     };
 }
 
-function getJournalEntries(journal: TFolder, journalDateSettings: JournalDateSettings): JournalEntryRecord[] {
+function getJournalEntries(
+    journal: TFolder,
+    journalDateSettings: JournalDateSettings,
+    options: SnapshotBuildOptions,
+): JournalEntryRecord[] {
     return journal.children
         .map(file => {
+            if (!(file instanceof TFile)) {
+                return null;
+            }
+
             const date = parseJournalDateFromFile(file, journalDateSettings);
 
             if (!date) {
@@ -159,6 +187,7 @@ function getJournalEntries(journal: TFolder, journalDateSettings: JournalDateSet
                 filePath: file.path,
                 date,
                 displayLabel: date,
+                isComplete: options.isEntryComplete?.(file) ?? true,
             };
         })
         .filter((entry): entry is JournalEntryRecord => entry !== null)
@@ -243,9 +272,14 @@ function createPeriodSummary(
     };
 }
 
-function buildInsights(entries: JournalEntryRecord[], anchorDate: string, cadence: import('../cadence').JournalCadenceConfig): ReviewInsights {
+function buildInsights(
+    entries: JournalEntryRecord[],
+    completedEntries: JournalEntryRecord[],
+    anchorDate: string,
+    cadence: import('../cadence').JournalCadenceConfig,
+): ReviewInsights {
     const cadenceLabel = getCadenceLabel(cadence);
-    const dateSet = new Set(entries.map(entry => entry.date));
+    const dateSet = new Set(completedEntries.map(entry => entry.date));
     const firstEntryDate = entries[0]?.date ?? null;
     const cadenceStatus = getCadenceStatus(cadence, dateSet, anchorDate, firstEntryDate);
 
@@ -265,12 +299,12 @@ function buildInsights(entries: JournalEntryRecord[], anchorDate: string, cadenc
         };
     }
 
-    const dates = entries.map(entry => entry.date);
+    const dates = completedEntries.map(entry => entry.date);
     const currentStreak = getCurrentCadenceStreak(cadence, dateSet, anchorDate);
     const longestStreak = getLongestCadenceStreak(cadence, dateSet, dates);
     const longestMissStretch = getLongestMissStretch(cadence, dateSet, firstEntryDate, anchorDate);
-    const busiestWeekday = getBusiestWeekday(entries);
-    const busiestMonth = getBusiestMonth(entries);
+    const busiestWeekday = getBusiestWeekday(completedEntries);
+    const busiestMonth = getBusiestMonth(completedEntries);
 
     return {
         currentStreak,
@@ -287,7 +321,12 @@ function buildInsights(entries: JournalEntryRecord[], anchorDate: string, cadenc
     };
 }
 
-function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): ActivityCell[] {
+function buildRecentActivity(
+    anchor: moment.Moment,
+    entryByDate: Map<string, JournalEntryRecord>,
+    completedEntryByDate: Map<string, JournalEntryRecord>,
+    cadence: import('../cadence').JournalCadenceConfig,
+): ActivityCell[] {
     const cells: ActivityCell[] = [];
     const start = anchor.clone().subtract(34, 'days');
     let cursor = start.clone();
@@ -297,6 +336,7 @@ function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, Jou
         cells.push({
             date,
             hasEntry: entryByDate.has(date),
+            isComplete: completedEntryByDate.has(date),
             isExpected: isExpectedOnDate(cadence, date),
         });
         cursor.add(1, 'day');
@@ -305,7 +345,12 @@ function buildRecentActivity(anchor: moment.Moment, entryByDate: Map<string, Jou
     return cells;
 }
 
-function buildYearActivity(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: import('../cadence').JournalCadenceConfig): YearActivityCell[] {
+function buildYearActivity(
+    anchor: moment.Moment,
+    entryByDate: Map<string, JournalEntryRecord>,
+    completedEntryByDate: Map<string, JournalEntryRecord>,
+    cadence: import('../cadence').JournalCadenceConfig,
+): YearActivityCell[] {
     const start = anchor.clone().startOf('year');
     const end = anchor.clone().endOf('year');
     const cells: YearActivityCell[] = [];
@@ -316,6 +361,7 @@ function buildYearActivity(anchor: moment.Moment, entryByDate: Map<string, Journ
         cells.push({
             date,
             hasEntry: entryByDate.has(date),
+            isComplete: completedEntryByDate.has(date),
             isExpected: isExpectedOnDate(cadence, date),
             isFuture: cursor.isAfter(anchor, 'day'),
             monthLabel: cursor.format('MMM'),
@@ -438,8 +484,8 @@ function buildReviewCallouts(context: SnapshotContext): AnalyticsCallout[] {
 }
 
 function buildAnalyticsCallouts(context: SnapshotContext): AnalyticsCallout[] {
-    const comparisons = buildRollingComparisons(context.anchor, context.entryByDate, context.cadence);
-    const ranked = buildRankedPeriods(context.anchor, context.entryByDate, context.cadence);
+    const comparisons = buildRollingComparisons(context.anchor, context.completedEntryByDate, context.cadence);
+    const ranked = buildRankedPeriods(context.anchor, context.completedEntryByDate, context.cadence);
     const callouts: AnalyticsCallout[] = [];
 
     comparisons.forEach(comparison => {

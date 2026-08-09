@@ -41,8 +41,16 @@ export function renderJournalHeatmap(
         });
 
         if (day.hasEntry) {
-            dayEl.addClass("heat-map-day-exists");
+            dayEl.addClass(day.isComplete ? "heat-map-day-exists" : "heat-map-day-draft");
         }
+
+        const actionLabel = day.isComplete
+            ? 'Open journal entry'
+            : day.hasEntry
+                ? 'Open unfinished journal entry'
+                : 'Create journal entry';
+        dayEl.setAttr('aria-label', `${actionLabel} for ${day.date}`);
+        dayEl.setAttr('title', `${actionLabel} for ${day.date}`);
     });
 }
 
@@ -60,7 +68,9 @@ export function renderJournalActionButtons(
     });
 
     const todayButton = actions.createEl("button", {
-        text: overview.todayFile ? "Open today" : "Go to today",
+        text: overview.todayFile
+            ? overview.todayIsComplete ? "Open today" : "Open unfinished entry"
+            : "Go to today",
         cls: "journal-section-button",
     });
     todayButton.addEventListener("click", () => {

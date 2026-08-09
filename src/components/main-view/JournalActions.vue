@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{
     todayExists: boolean;
+    todayIsComplete: boolean;
     includeSynthesis?: boolean;
     compact?: boolean;
 }>();
@@ -14,7 +15,7 @@ defineEmits<{
 <template>
     <div class="journal-section-actions" :class="{ 'journalyst-home-actions-compact': compact }">
         <button type="button" class="journal-section-button" @click="$emit('today')">
-            {{ todayExists ? 'Open today' : 'Go to today' }}
+            {{ todayExists ? (todayIsComplete ? 'Open today' : 'Open unfinished entry') : 'Go to today' }}
         </button>
         <button type="button" class="journal-section-button" @click="$emit('navigate', 'review')">
             Review

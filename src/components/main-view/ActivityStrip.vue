@@ -6,7 +6,9 @@ defineProps<{
 }>();
 
 function getStatus(cell: ActivityCell) {
-    return cell.hasEntry ? 'entry written' : cell.isExpected ? 'expected but missed' : 'not expected';
+    if (cell.isComplete) return 'entry written';
+    if (cell.hasEntry) return 'unfinished entry';
+    return cell.isExpected ? 'expected but missed' : 'not expected';
 }
 </script>
 
@@ -16,7 +18,11 @@ function getStatus(cell: ActivityCell) {
             v-for="cell in cells"
             :key="cell.date"
             class="journalyst-review-activity-cell"
-            :class="{ 'is-active': cell.hasEntry, 'is-missed': !cell.hasEntry && cell.isExpected }"
+            :class="{
+                'is-active': cell.isComplete,
+                'is-draft': cell.hasEntry && !cell.isComplete,
+                'is-missed': !cell.hasEntry && cell.isExpected,
+            }"
             :aria-label="`${cell.date}: ${getStatus(cell)}`"
             :title="`${cell.date}: ${getStatus(cell)}`"
         />

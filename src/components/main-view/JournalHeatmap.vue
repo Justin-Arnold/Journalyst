@@ -16,6 +16,12 @@ const startOffset = computed(() => {
     const firstDate = props.days[0]?.date;
     return firstDate ? moment(firstDate, 'YYYY-MM-DD', true).day() : 0;
 });
+
+function getActionLabel(day: JournalHeatmapDay) {
+    if (day.isComplete) return 'Open journal entry';
+    if (day.hasEntry) return 'Open unfinished journal entry';
+    return 'Create journal entry';
+}
 </script>
 
 <template>
@@ -29,9 +35,12 @@ const startOffset = computed(() => {
             :key="day.date"
             type="button"
             class="heat-map-day"
-            :class="{ 'heat-map-day-exists': day.hasEntry }"
-            :aria-label="`${day.hasEntry ? 'Open' : 'Create'} journal entry for ${day.date}`"
-            :title="`${day.hasEntry ? 'Open' : 'Create'} entry for ${day.date}`"
+            :class="{
+                'heat-map-day-exists': day.isComplete,
+                'heat-map-day-draft': day.hasEntry && !day.isComplete,
+            }"
+            :aria-label="`${getActionLabel(day)} for ${day.date}`"
+            :title="`${getActionLabel(day)} for ${day.date}`"
             @click="$emit('select', day.date)"
         >
             {{ day.dayNumber }}

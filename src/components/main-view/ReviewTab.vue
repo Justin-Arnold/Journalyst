@@ -53,7 +53,9 @@ const insightCards = computed(() => [
             >
                 <span class="journalyst-review-label">{{ lookback.label }}</span>
                 <strong>{{ lookback.targetDate }}</strong>
-                <span v-if="lookback.entry" class="journalyst-review-meta">Open entry</span>
+                <span v-if="lookback.entry" class="journalyst-review-meta">
+                    {{ lookback.entry.isComplete ? 'Open entry' : 'Open unfinished entry' }}
+                </span>
                 <span v-else class="journalyst-review-empty-text">No note for this date yet</span>
             </button>
         </div>

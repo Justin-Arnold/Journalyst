@@ -62,6 +62,7 @@ function openFirstDueJournal() {
                 />
                 <JournalActions
                     :today-exists="!!overview.todayFile"
+                    :today-is-complete="overview.todayIsComplete"
                     include-synthesis
                     @today="emit('createEntry', overview.journal.path)"
                     @navigate="emit('activateTab', overview.journal.path, $event)"

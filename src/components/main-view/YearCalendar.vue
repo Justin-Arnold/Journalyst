@@ -15,7 +15,8 @@ const weeks = computed(() => {
 });
 
 function getStatus(cell: YearActivityCell) {
-    if (cell.hasEntry) return 'entry written';
+    if (cell.isComplete) return 'entry written';
+    if (cell.hasEntry) return 'unfinished entry';
     if (cell.isExpected && !cell.isFuture) return 'expected but missed';
     if (cell.isFuture) return 'future day';
     return 'not expected';
@@ -30,7 +31,8 @@ function getStatus(cell: YearActivityCell) {
                 :key="cell.date"
                 class="journalyst-review-year-cell"
                 :class="{
-                    'is-active': cell.hasEntry,
+                    'is-active': cell.isComplete,
+                    'is-draft': cell.hasEntry && !cell.isComplete,
                     'is-missed': !cell.hasEntry && cell.isExpected && !cell.isFuture,
                     'is-future': cell.isFuture,
                 }"

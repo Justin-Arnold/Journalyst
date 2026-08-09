@@ -1,4 +1,4 @@
-import { type TFile, type TFolder } from "obsidian";
+import { TFile, type TFolder } from "obsidian";
 import moment from "moment";
 import { getCadenceStatus } from "../cadence";
 import type JournalystPlugin from "../src/main";
@@ -7,12 +7,14 @@ export interface JournalHeatmapDay {
     date: string;
     dayNumber: number;
     hasEntry: boolean;
+    isComplete: boolean;
 }
 
 export interface JournalOverviewData {
     journal: TFolder;
     todayDate: string;
     todayFile: TFile | null;
+    todayIsComplete: boolean;
     cadenceLabel: string;
     cadenceStatusText: string;
     reminderStatusText: string;
@@ -41,11 +43,22 @@ interface WorkspaceWritingStreaks {
     longest: number;
 }
 
-function getJournalEntryDates(plugin: JournalystPlugin, journal: TFolder) {
+function getJournalEntries(plugin: JournalystPlugin, journal: TFolder) {
     return journal.children
-        .map(file => plugin.parseJournalDateFromFile(file))
-        .filter((date): date is string => !!date)
-        .sort();
+        .map(file => {
+            if (!(file instanceof TFile)) {
+                return null;
+            }
+
+            const date = plugin.parseJournalDateFromFile(file);
+            return date ? {
+                date,
+                file,
+                isComplete: plugin.isJournalEntryComplete(file),
+            } : null;
+        })
+        .filter((entry): entry is { date: string; file: TFile; isComplete: boolean } => !!entry)
+        .sort((left, right) => left.date.localeCompare(right.date));
 }
 
 function getWorkspaceWritingStreaks(entryDates: Set<string>, todayDate: string): WorkspaceWritingStreaks {
@@ -82,20 +95,22 @@ function getWorkspaceWritingStreaks(entryDates: Set<string>, todayDate: string):
 
 export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFolder): JournalOverviewData {
     const cadence = plugin.getJournalCadence(journal.path);
-    const entryDates = getJournalEntryDates(plugin, journal);
-    const dateSet = new Set(entryDates);
+    const entries = getJournalEntries(plugin, journal);
+    const entryByDate = new Map(entries.map(entry => [entry.date, entry]));
+    const completedDateSet = new Set(entries.filter(entry => entry.isComplete).map(entry => entry.date));
     const todayDate = moment().format('YYYY-MM-DD');
     const yesterdayDate = moment(todayDate, 'YYYY-MM-DD', true).subtract(1, 'day').format('YYYY-MM-DD');
-    const cadenceStatus = getCadenceStatus(cadence, dateSet, todayDate, entryDates[0] ?? null);
-    const catchUpStatus = getCadenceStatus(cadence, dateSet, yesterdayDate, entryDates[0] ?? null);
+    const firstEntryDate = entries[0]?.date ?? null;
+    const cadenceStatus = getCadenceStatus(cadence, completedDateSet, todayDate, firstEntryDate);
+    const catchUpStatus = getCadenceStatus(cadence, completedDateSet, yesterdayDate, firstEntryDate);
 
     let cadenceStatusText = 'Flexible pace';
     if (cadenceStatus.isTracked) {
-        if (cadenceStatus.expectedToday && !dateSet.has(todayDate)) {
+        if (cadenceStatus.expectedToday && !completedDateSet.has(todayDate)) {
             cadenceStatusText = 'Due today';
         } else if (cadenceStatus.outstandingMisses > 0) {
             cadenceStatusText = `${cadenceStatus.outstandingMisses} missed`;
-        } else if (dateSet.has(todayDate)) {
+        } else if (completedDateSet.has(todayDate)) {
             cadenceStatusText = 'On track';
         } else if (cadenceStatus.nextExpectedDate) {
             cadenceStatusText = `Next ${cadenceStatus.nextExpectedDate}`;
@@ -108,31 +123,37 @@ export function buildJournalOverviewData(plugin: JournalystPlugin, journal: TFol
 
     for (let day = 1; day <= daysInMonth; day += 1) {
         const date = `${monthPrefix}-${String(day).padStart(2, '0')}`;
+        const entry = entryByDate.get(date);
         heatmapDays.push({
             date,
             dayNumber: day,
-            hasEntry: !!plugin.findJournalEntryFile(journal, date),
+            hasEntry: !!entry,
+            isComplete: entry?.isComplete ?? false,
         });
     }
 
+    const todayEntry = entryByDate.get(todayDate);
     return {
         journal,
         todayDate,
-        todayFile: plugin.findJournalEntryFile(journal, todayDate),
+        todayFile: todayEntry?.file ?? null,
+        todayIsComplete: todayEntry?.isComplete ?? false,
         cadenceLabel: cadenceStatus.cadenceLabel,
         cadenceStatusText,
         reminderStatusText: plugin.getJournalReminderSummary(journal.path),
         outstandingMisses: cadenceStatus.outstandingMisses,
         catchUpCount: catchUpStatus.outstandingMisses,
-        dueToday: cadenceStatus.isTracked && cadenceStatus.expectedToday && !dateSet.has(todayDate),
+        dueToday: cadenceStatus.isTracked && cadenceStatus.expectedToday && !completedDateSet.has(todayDate),
         heatmapDays,
     };
 }
 
 export function buildJournalHomeSummary(plugin: JournalystPlugin): JournalHomeSummary {
     const overviews = plugin.journals.map(journal => buildJournalOverviewData(plugin, journal));
-    const journalEntryDates = plugin.journals.map(journal => getJournalEntryDates(plugin, journal));
-    const workspaceEntryDates = new Set(journalEntryDates.flat());
+    const journalEntries = plugin.journals.map(journal => getJournalEntries(plugin, journal));
+    const workspaceEntryDates = new Set(journalEntries.flat()
+        .filter(entry => entry.isComplete)
+        .map(entry => entry.date));
     const streaks = getWorkspaceWritingStreaks(workspaceEntryDates, moment().format('YYYY-MM-DD'));
     const remindersActiveCount = overviews
         .filter(overview => overview.reminderStatusText === 'Reminders active').length;
@@ -145,7 +166,7 @@ export function buildJournalHomeSummary(plugin: JournalystPlugin): JournalHomeSu
         missedJournalCount: overviews.filter(overview => overview.outstandingMisses > 0).length,
         remindersActiveCount,
         remindersInactiveCount: overviews.length - remindersActiveCount,
-        totalEntries: journalEntryDates.reduce((sum, dates) => sum + dates.length, 0),
+        totalEntries: journalEntries.reduce((sum, entries) => sum + entries.length, 0),
         totalJournals: overviews.length,
         currentStreak: streaks.current,
         longestStreak: streaks.longest,

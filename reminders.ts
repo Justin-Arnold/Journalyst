@@ -69,6 +69,7 @@ export interface ResolvedReminderEvent {
 export interface JournalReminderContext {
     cadence: JournalCadenceConfig;
     dateSet: Set<string>;
+    existingDateSet?: Set<string>;
     journalName: string;
     journalPath: string;
     reminderSettings: JournalReminderSettings;
@@ -221,17 +222,25 @@ function resolveEntryReminder(
         return null;
     }
 
+    const isDraft = context.existingDateSet?.has(dueDate) === true;
+
     return {
         historyKey,
         journalPath: context.journalPath,
         journalName: context.journalName,
         deliveryMode: reminder.deliveryMode,
-        title: dueDate === today
-            ? `${context.journalName} is due today`
-            : `${context.journalName} entry is still missing`,
-        message: dueDate === today
-            ? `Create today's ${context.journalName.toLowerCase()} entry in Journalyst.`
-            : `You still have a missing expected ${context.journalName.toLowerCase()} entry from ${dueDate}.`,
+        title: isDraft
+            ? `${context.journalName} entry is unfinished`
+            : dueDate === today
+                ? `${context.journalName} is due today`
+                : `${context.journalName} entry is still missing`,
+        message: isDraft
+            ? dueDate === today
+                ? `Finish today's ${context.journalName.toLowerCase()} entry in Journalyst.`
+                : `Finish your ${context.journalName.toLowerCase()} entry from ${dueDate} in Journalyst.`
+            : dueDate === today
+                ? `Create today's ${context.journalName.toLowerCase()} entry in Journalyst.`
+                : `You still have a missing expected ${context.journalName.toLowerCase()} entry from ${dueDate}.`,
         target: {
             type: 'entry' as const,
             anchorDate: dueDate,
