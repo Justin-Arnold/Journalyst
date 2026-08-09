@@ -9,6 +9,7 @@ import type {
 import type { JournalPromptSettings } from '../../../prompts';
 import type { JournalReminderSettings } from '../../../reminders';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import JournalEntrySetupSettings from './JournalEntrySetupSettings.vue';
 import JournalEditorHeader from './JournalEditorHeader.vue';
 import JournalScheduleSettings from './JournalScheduleSettings.vue';
 import JournalsSidebar from './JournalsSidebar.vue';
@@ -35,8 +36,6 @@ const sections: Array<{ id: JournalSettingsSection; label: string; icon: string 
     { id: 'reminders', label: 'Reminders', icon: 'bell' },
     { id: 'integrations', label: 'Integrations', icon: 'blocks' },
 ];
-const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 const section = ref<JournalSettingsSection>(props.activeSection);
 const scheduleDraft = ref<JournalCadenceConfig>({ type: 'daily' });
 const schedulePauses = ref<JournalSchedulePause[]>([]);
@@ -47,16 +46,14 @@ const promptDraft = ref<JournalPromptSettings>({
     selectionMode: 'random',
     deliveryMode: 'append-body',
     weekdayOverrides: {},
+    weekdaySourceOverrides: {},
 });
 const reminderDraft = ref<JournalReminderSettings | null>(null);
-const promptOptions = ref(props.model?.promptOptions ?? []);
-const promptOptionsLoading = ref(false);
 const busy = ref(false);
 const error = ref('');
 const success = ref('');
 const renameOpen = ref(false);
 const renameDraft = ref('');
-let promptRequestRevision = 0;
 
 function clone<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
@@ -69,7 +66,6 @@ function hydrate(model: JournalSettingsViewModel | null) {
     templatePathDraft.value = model.templatePath;
     promptDraft.value = clone(model.promptSettings);
     reminderDraft.value = clone(model.reminderSettings);
-    promptOptions.value = clone(model.promptOptions);
     renameDraft.value = model.journalName;
 }
 
@@ -100,20 +96,6 @@ const isDirty = computed(() => section.value === 'schedule'
         : section.value === 'reminders' && remindersDirty.value);
 
 watch(isDirty, value => emit('dirtyChange', value), { immediate: true });
-
-const promptListOptions = computed(() => promptDraft.value.sourceType === 'custom'
-    ? props.model?.promptListOptions.custom ?? []
-    : props.model?.promptListOptions.builtIn ?? []);
-
-const templateAvailabilityText = computed(() => {
-    if (!props.model || props.model.templateEngine === 'none') return 'Journalyst will use its default entry format.';
-    if (props.model.templateAvailability === 'not-installed') return 'The selected template plugin is not installed.';
-    if (props.model.templateAvailability === 'disabled') return 'The selected template plugin is disabled.';
-    if (props.model.templateAvailability === 'no-template-folder') return 'Configure a template folder before assigning a template.';
-    if (props.model.templateStatus === 'missing') return 'The assigned template file is missing.';
-    if (props.model.templateStatus === 'outside-folder') return 'The assigned template is outside the configured template folder.';
-    return null;
-});
 
 async function changeSection(nextSection: JournalSettingsSection) {
     if (nextSection === section.value) return;
@@ -263,62 +245,6 @@ async function openGlobalReminders() {
     await props.actions.activateJournalTab(props.model.journalPath, 'reminders');
 }
 
-function updatePrompt(patch: Partial<JournalPromptSettings>) {
-    promptDraft.value = { ...promptDraft.value, ...patch };
-    clearFeedback();
-}
-
-async function updatePromptSource(sourceType: JournalPromptSettings['sourceType']) {
-    const listOptions = sourceType === 'custom'
-        ? props.model?.promptListOptions.custom ?? []
-        : props.model?.promptListOptions.builtIn ?? [];
-    promptDraft.value = {
-        ...promptDraft.value,
-        sourceType,
-        selectedListId: sourceType === 'file' ? undefined : listOptions[0]?.value,
-        selectedFilePath: sourceType === 'file' ? props.model?.promptFileOptions[0]?.value : undefined,
-        staticPromptId: undefined,
-        weekdayOverrides: {},
-    };
-    clearFeedback();
-    await refreshPromptOptions();
-}
-
-async function updatePromptSelection(value: string, kind: 'list' | 'file') {
-    promptDraft.value = {
-        ...promptDraft.value,
-        selectedListId: kind === 'list' ? value : undefined,
-        selectedFilePath: kind === 'file' ? value : undefined,
-        staticPromptId: undefined,
-        weekdayOverrides: {},
-    };
-    clearFeedback();
-    await refreshPromptOptions();
-}
-
-async function refreshPromptOptions() {
-    const requestRevision = ++promptRequestRevision;
-    promptOptionsLoading.value = true;
-    try {
-        const options = await props.actions.loadJournalPromptOptions(clone(promptDraft.value));
-        if (requestRevision !== promptRequestRevision) return;
-        promptOptions.value = options;
-        if (promptDraft.value.selectionMode === 'static' && !options.some(option => option.id === promptDraft.value.staticPromptId)) {
-            promptDraft.value = { ...promptDraft.value, staticPromptId: options[0]?.id };
-        }
-    } finally {
-        if (requestRevision === promptRequestRevision) promptOptionsLoading.value = false;
-    }
-}
-
-function updateWeekdayPrompt(day: number, promptId: string) {
-    const weekdayOverrides = { ...promptDraft.value.weekdayOverrides };
-    if (promptId) weekdayOverrides[String(day)] = promptId;
-    else delete weekdayOverrides[String(day)];
-    promptDraft.value = { ...promptDraft.value, weekdayOverrides };
-    clearFeedback();
-}
-
 function clearFeedback() {
     error.value = '';
     success.value = '';
@@ -388,99 +314,17 @@ function clearFeedback() {
                     @remove-pause="removeSchedulePause"
                 />
 
-                <div v-else-if="section === 'entry-setup'" class="journalyst-journal-form-section">
-                    <div class="journalyst-journal-section-heading">
-                        <div>
-                            <h3>Entry setup</h3>
-                            <p>Choose the template and optional prompt behavior used for new entries.</p>
-                        </div>
-                        <button type="button" class="mod-cta" :disabled="busy || !entrySetupDirty" @click="saveEntrySetup">Save entry setup</button>
-                    </div>
-
-                    <div class="journalyst-journal-form-group">
-                        <h4>Template</h4>
-                        <p class="journalyst-journal-help">Global template engine: {{ model.templateEngine === 'none' ? 'None' : model.templateEngine }}</p>
-                        <label v-if="model.templateEngine !== 'none' && model.templateAvailability === 'ready'" class="journalyst-journal-field">
-                            <span>Journal template</span>
-                            <select v-model="templatePathDraft" @change="clearFeedback">
-                                <option :value="null">None</option>
-                                <option v-for="option in model.templateOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                            </select>
-                        </label>
-                        <p v-if="templateAvailabilityText" class="journalyst-journal-help is-warning">{{ templateAvailabilityText }}</p>
-                    </div>
-
-                    <div class="journalyst-journal-form-group">
-                        <div class="journalyst-journal-inline-heading">
-                            <div><h4>Prompts</h4><p class="journalyst-journal-help">Add a prompt when Journalyst creates an entry.</p></div>
-                            <label class="journalyst-toggle" aria-label="Enable prompts">
-                                <input type="checkbox" :checked="promptDraft.enabled" @change="updatePrompt({ enabled: ($event.target as HTMLInputElement).checked })">
-                            </label>
-                        </div>
-
-                        <template v-if="promptDraft.enabled">
-                            <div class="journalyst-journal-field-grid">
-                                <label class="journalyst-journal-field">
-                                    <span>Source</span>
-                                    <select :value="promptDraft.sourceType" @change="updatePromptSource(($event.target as HTMLSelectElement).value as JournalPromptSettings['sourceType'])">
-                                        <option value="built-in">Built-in library</option>
-                                        <option value="custom">Custom list</option>
-                                        <option value="file">Markdown note</option>
-                                    </select>
-                                </label>
-                                <label v-if="promptDraft.sourceType !== 'file'" class="journalyst-journal-field">
-                                    <span>Prompt list</span>
-                                    <select :value="promptDraft.selectedListId" @change="updatePromptSelection(($event.target as HTMLSelectElement).value, 'list')">
-                                        <option v-for="option in promptListOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                                    </select>
-                                </label>
-                                <label v-else class="journalyst-journal-field">
-                                    <span>Prompt note</span>
-                                    <select :value="promptDraft.selectedFilePath" @change="updatePromptSelection(($event.target as HTMLSelectElement).value, 'file')">
-                                        <option value="">Choose a note</option>
-                                        <option v-for="option in model.promptFileOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                                    </select>
-                                </label>
-                                <label class="journalyst-journal-field">
-                                    <span>Selection</span>
-                                    <select :value="promptDraft.selectionMode" @change="updatePrompt({ selectionMode: ($event.target as HTMLSelectElement).value as JournalPromptSettings['selectionMode'] })">
-                                        <option value="static">Static prompt</option>
-                                        <option value="random">Random</option>
-                                        <option value="random-no-repeat">Random without repeats</option>
-                                    </select>
-                                </label>
-                                <label class="journalyst-journal-field">
-                                    <span>Delivery</span>
-                                    <select :value="promptDraft.deliveryMode" @change="updatePrompt({ deliveryMode: ($event.target as HTMLSelectElement).value as JournalPromptSettings['deliveryMode'] })">
-                                        <option value="append-body">Append into note</option>
-                                        <option value="template-variables">Template variables</option>
-                                    </select>
-                                </label>
-                            </div>
-
-                            <label v-if="promptDraft.selectionMode === 'static'" class="journalyst-journal-field">
-                                <span>Static prompt</span>
-                                <select :value="promptDraft.staticPromptId" :disabled="promptOptionsLoading" @change="updatePrompt({ staticPromptId: ($event.target as HTMLSelectElement).value })">
-                                    <option v-for="option in promptOptions" :key="option.id" :value="option.id">{{ option.title }}</option>
-                                </select>
-                            </label>
-
-                            <details v-if="promptOptions.length > 0" class="journalyst-prompt-overrides">
-                                <summary>Weekday prompt overrides</summary>
-                                <div class="journalyst-prompt-override-grid">
-                                    <label v-for="(label, day) in weekdayLabels" :key="day" class="journalyst-journal-field">
-                                        <span>{{ label }}</span>
-                                        <select :value="promptDraft.weekdayOverrides[String(day)] ?? ''" @change="updateWeekdayPrompt(day, ($event.target as HTMLSelectElement).value)">
-                                            <option value="">Default selection</option>
-                                            <option v-for="option in promptOptions" :key="option.id" :value="option.id">{{ option.title }}</option>
-                                        </select>
-                                    </label>
-                                </div>
-                            </details>
-                        </template>
-                        <p v-if="model.promptStatus" class="journalyst-journal-help is-warning">{{ model.promptStatus }}</p>
-                    </div>
-                </div>
+                <JournalEntrySetupSettings
+                    v-else-if="section === 'entry-setup'"
+                    v-model:template-path="templatePathDraft"
+                    v-model:prompt-settings="promptDraft"
+                    :model="model"
+                    :actions="actions"
+                    :busy="busy"
+                    :dirty="entrySetupDirty"
+                    @change="clearFeedback"
+                    @save="saveEntrySetup"
+                />
 
                 <div v-else-if="section === 'reminders' && reminderDraft" class="journalyst-journal-form-section">
                     <div class="journalyst-journal-section-heading">
@@ -561,7 +405,6 @@ function clearFeedback() {
 }
 
 .journalyst-journal-section-heading,
-.journalyst-journal-inline-heading,
 .journalyst-integration-row {
     display: flex;
     align-items: center;
@@ -570,51 +413,18 @@ function clearFeedback() {
 }
 
 .journalyst-journal-section-heading h3,
-.journalyst-journal-form-group h4,
 .journalyst-integration-row h4 {
     margin: 0;
 }
 
 .journalyst-journal-section-heading p,
-.journalyst-integration-row p,
-.journalyst-journal-help {
+.journalyst-integration-row p {
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
 }
 
 .journalyst-journal-form-section {
     padding: var(--size-4-5) 0;
-}
-
-.journalyst-journal-form-group {
-    padding: var(--size-4-4) 0;
-    border-bottom: var(--border-width) solid var(--background-modifier-border);
-}
-
-.journalyst-journal-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--size-4-2);
-    margin-top: var(--size-4-4);
-    max-width: 32rem;
-}
-
-.journalyst-journal-field > span {
-    color: var(--text-muted);
-    font-size: var(--font-ui-small);
-}
-
-.journalyst-journal-field-grid,
-.journalyst-prompt-override-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 var(--size-4-4);
-    max-width: 48rem;
-}
-
-.journalyst-prompt-overrides {
-    margin-top: var(--size-4-5);
-    max-width: 48rem;
 }
 
 .journalyst-journal-feedback,
@@ -631,10 +441,6 @@ function clearFeedback() {
 
 .journalyst-journal-feedback.is-success {
     color: var(--text-success);
-}
-
-.journalyst-journal-help.is-warning {
-    color: var(--text-warning);
 }
 
 .journalyst-journal-notice,
@@ -697,16 +503,10 @@ summary:focus-visible {
 
 @media (max-width: 520px) {
     .journalyst-journal-section-heading,
-    .journalyst-journal-inline-heading,
     .journalyst-integration-row,
     .journalyst-journal-notice {
         align-items: flex-start;
         flex-direction: column;
-    }
-
-    .journalyst-journal-field-grid,
-    .journalyst-prompt-override-grid {
-        grid-template-columns: minmax(0, 1fr);
     }
 
     .journalyst-journal-section-heading button {

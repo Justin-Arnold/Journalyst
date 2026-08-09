@@ -120,6 +120,7 @@ export class ReviewView extends ItemView {
             },
             loadJournalSettings: async (journalPath) => this.plugin.getJournalSettingsViewModel(journalPath),
             loadJournalPromptOptions: async (settings) => this.plugin.getPromptOptionsForSettings(settings),
+            loadJournalPromptPreview: async (settings) => this.plugin.getPromptPreviewForSettings(settings),
             saveJournalCadence: async (journalPath, cadence) => {
                 const result = await this.plugin.saveJournalCadence(journalPath, cadence);
                 this.invalidateData();

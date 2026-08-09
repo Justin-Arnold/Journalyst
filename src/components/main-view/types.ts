@@ -2,6 +2,7 @@ import type { JournalCadenceConfig, JournalCadenceType, JournalSchedulePause } f
 import type {
     JournalEntrySetupUpdate,
     JournalSettingsActionResult,
+    JournalPromptPreviewModel,
     JournalSettingsSection,
     JournalSettingsViewModel,
     JournalSchedulePauseActionResult,
@@ -35,6 +36,7 @@ export interface MainViewActions {
     activateJournalSettings(journalPath: string, section?: JournalSettingsSection): Promise<void>;
     loadJournalSettings(journalPath: string): Promise<JournalSettingsViewModel | null>;
     loadJournalPromptOptions(settings: JournalPromptSettings): Promise<PromptOption[]>;
+    loadJournalPromptPreview(settings: JournalPromptSettings): Promise<JournalPromptPreviewModel | null>;
     saveJournalCadence(journalPath: string, cadence: JournalCadenceConfig): Promise<JournalSettingsActionResult>;
     editJournalSchedulePause(journalPath: string, pause: JournalSchedulePause | null): Promise<JournalSchedulePauseActionResult | null>;
     removeJournalSchedulePause(journalPath: string, pause: JournalSchedulePause): Promise<JournalSchedulePauseActionResult | null>;

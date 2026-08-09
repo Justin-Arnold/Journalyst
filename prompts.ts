@@ -4,7 +4,13 @@ import { BUILT_IN_PROMPT_LISTS } from './promptLibrary';
 
 export type PromptSourceType = 'built-in' | 'custom' | 'file';
 export type PromptSelectionMode = 'static' | 'random' | 'random-no-repeat';
-export type PromptDeliveryMode = 'append-body' | 'template-variables';
+export type PromptDeliveryMode = 'append-body' | 'callout' | 'template-variables';
+
+export interface PromptSourceSelection {
+    sourceType: PromptSourceType;
+    selectedListId?: string;
+    selectedFilePath?: string;
+}
 
 export interface PromptListDefinition {
     id: string;
@@ -22,11 +28,13 @@ export interface JournalPromptSettings {
     deliveryMode: PromptDeliveryMode;
     staticPromptId?: string;
     weekdayOverrides: Record<string, string>;
+    weekdaySourceOverrides: Record<string, PromptSourceSelection>;
 }
 
 export interface JournalPromptHistory {
-    sourceKey: string;
-    usedPromptIds: string[];
+    usedPromptIdsBySource: Record<string, string[]>;
+    sourceKey?: string;
+    usedPromptIds?: string[];
 }
 
 export interface PromptOption {
@@ -62,6 +70,7 @@ const DEFAULT_PROMPT_SETTINGS: JournalPromptSettings = {
     selectionMode: 'random',
     deliveryMode: 'append-body',
     weekdayOverrides: {},
+    weekdaySourceOverrides: {},
 };
 
 export function getBuiltInPromptLists() {
@@ -69,14 +78,82 @@ export function getBuiltInPromptLists() {
 }
 
 export function normalizeJournalPromptSettings(settings?: Partial<JournalPromptSettings> | null): JournalPromptSettings {
+    const weekdaySourceOverrides = Object.fromEntries(
+        Object.entries(settings?.weekdaySourceOverrides ?? {})
+            .map(([day, source]) => [day, normalizePromptSourceSelection(source)] as const)
+            .filter((entry): entry is [string, PromptSourceSelection] => (
+                /^[0-6]$/.test(entry[0]) && !!entry[1]
+            )),
+    );
+
     return {
         ...DEFAULT_PROMPT_SETTINGS,
         ...settings,
         weekdayOverrides: settings?.weekdayOverrides ?? {},
+        weekdaySourceOverrides,
     };
 }
 
-export function createPromptBlock(resolvedPrompt: ResolvedPrompt | null) {
+export function normalizeJournalPromptHistory(history?: Partial<JournalPromptHistory> | null): JournalPromptHistory {
+    const usedPromptIdsBySource = Object.fromEntries(
+        Object.entries(history?.usedPromptIdsBySource ?? {})
+            .filter((entry): entry is [string, string[]] => (
+                !!entry[0] && Array.isArray(entry[1])
+            ))
+            .map(([sourceKey, promptIds]) => [
+                sourceKey,
+                promptIds.filter((promptId): promptId is string => typeof promptId === 'string'),
+            ]),
+    );
+
+    if (history?.sourceKey && Array.isArray(history.usedPromptIds) && !usedPromptIdsBySource[history.sourceKey]) {
+        usedPromptIdsBySource[history.sourceKey] = history.usedPromptIds
+            .filter((promptId): promptId is string => typeof promptId === 'string');
+    }
+
+    return { usedPromptIdsBySource };
+}
+
+export function normalizePromptSourceSelection(
+    source?: Partial<PromptSourceSelection> | null,
+): PromptSourceSelection | null {
+    if (!source || !['built-in', 'custom', 'file'].includes(source.sourceType ?? '')) {
+        return null;
+    }
+
+    if (source.sourceType === 'file') {
+        return {
+            sourceType: 'file',
+            selectedFilePath: source.selectedFilePath,
+        };
+    }
+
+    if (source.sourceType === 'built-in' || source.sourceType === 'custom') {
+        return {
+            sourceType: source.sourceType,
+            selectedListId: source.selectedListId,
+        };
+    }
+
+    return null;
+}
+
+export function getPromptSourceSelection(settings: JournalPromptSettings): PromptSourceSelection {
+    return settings.sourceType === 'file'
+        ? { sourceType: 'file', selectedFilePath: settings.selectedFilePath }
+        : { sourceType: settings.sourceType, selectedListId: settings.selectedListId };
+}
+
+export function getPromptSourceKey(source: PromptSourceSelection) {
+    return source.sourceType === 'file'
+        ? `file:${source.selectedFilePath ?? ''}`
+        : `${source.sourceType}:${source.selectedListId ?? ''}`;
+}
+
+export function createPromptBlock(
+    resolvedPrompt: ResolvedPrompt | null,
+    deliveryMode = resolvedPrompt?.deliveryMode ?? 'append-body',
+) {
     if (!resolvedPrompt) {
         return '';
     }
@@ -85,7 +162,31 @@ export function createPromptBlock(resolvedPrompt: ResolvedPrompt | null) {
         ? `**${resolvedPrompt.prompt.title}**\n\n`
         : '';
 
-    return `## Prompt\n\n${titleLine}${resolvedPrompt.prompt.text}`;
+    const body = `${titleLine}${resolvedPrompt.prompt.text}`;
+    if (deliveryMode === 'callout') {
+        const quotedBody = body
+            .split('\n')
+            .map(line => line ? `> ${line}` : '>')
+            .join('\n');
+        return `> [!question] Prompt\n${quotedBody}`;
+    }
+
+    return `## Prompt\n\n${body}`;
+}
+
+export function createPromptOutputPreview(resolvedPrompt: ResolvedPrompt | null) {
+    if (!resolvedPrompt) {
+        return '';
+    }
+
+    if (resolvedPrompt.deliveryMode === 'template-variables') {
+        return [
+            `prompt: ${resolvedPrompt.prompt.text}`,
+            `promptTitle: ${resolvedPrompt.prompt.title}`,
+        ].join('\n');
+    }
+
+    return createPromptBlock(resolvedPrompt, resolvedPrompt.deliveryMode);
 }
 
 export function getPromptTemplateContext(resolvedPrompt: ResolvedPrompt | null) {
@@ -111,7 +212,12 @@ export async function resolvePromptForJournal(
         return { resolvedPrompt: null, list: null };
     }
 
-    const resolvedList = await resolvePromptList(normalizedSettings, context);
+    const weekday = moment(date, 'YYYY-MM-DD', true).day().toString();
+    const sourceOverride = normalizedSettings.selectionMode === 'static'
+        ? null
+        : normalizedSettings.weekdaySourceOverrides[weekday] ?? null;
+    const source = sourceOverride ?? getPromptSourceSelection(normalizedSettings);
+    const resolvedList = await resolvePromptListFromSource(source, context);
     if (!resolvedList) {
         return { resolvedPrompt: null, error: 'No prompts are available for this journal.', list: null };
     }
@@ -120,15 +226,18 @@ export async function resolvePromptForJournal(
         return { resolvedPrompt: null, error: 'The selected prompt list is empty.', list: resolvedList };
     }
 
-    const weekdayOverrideId = normalizedSettings.weekdayOverrides[moment(date, 'YYYY-MM-DD', true).day().toString()];
+    const weekdayOverrideId = sourceOverride ? null : normalizedSettings.weekdayOverrides[weekday];
     if (weekdayOverrideId) {
-        const overridePrompt = resolvedList.prompts.find(prompt => prompt.id === weekdayOverrideId);
-        if (overridePrompt) {
+        const currentListPrompt = resolvedList.prompts.find(prompt => prompt.id === weekdayOverrideId);
+        const legacyPrompt = currentListPrompt
+            ? { list: resolvedList, prompt: currentListPrompt }
+            : await resolvePromptOptionById(weekdayOverrideId, context);
+        if (legacyPrompt) {
             return {
                 resolvedPrompt: {
-                    prompt: overridePrompt,
-                    list: resolvedList.list,
-                    sourceKey: resolvedList.sourceKey,
+                    prompt: legacyPrompt.prompt,
+                    list: legacyPrompt.list.list,
+                    sourceKey: legacyPrompt.list.sourceKey,
                     history: null,
                     deliveryMode: normalizedSettings.deliveryMode,
                 },
@@ -167,7 +276,8 @@ export async function resolvePromptForJournal(
         };
     }
 
-    const usableHistory = history?.sourceKey === resolvedList.sourceKey ? history.usedPromptIds : [];
+    const normalizedHistory = normalizeJournalPromptHistory(history);
+    const usableHistory = normalizedHistory.usedPromptIdsBySource[resolvedList.sourceKey] ?? [];
     let availablePrompts = resolvedList.prompts.filter(prompt => !usableHistory.includes(prompt.id));
     let nextUsedPromptIds = [...usableHistory];
 
@@ -185,8 +295,10 @@ export async function resolvePromptForJournal(
             list: resolvedList.list,
             sourceKey: resolvedList.sourceKey,
             history: {
-                sourceKey: resolvedList.sourceKey,
-                usedPromptIds: nextUsedPromptIds,
+                usedPromptIdsBySource: {
+                    ...normalizedHistory.usedPromptIdsBySource,
+                    [resolvedList.sourceKey]: nextUsedPromptIds,
+                },
             },
             deliveryMode: normalizedSettings.deliveryMode,
         },
@@ -199,24 +311,58 @@ export async function resolvePromptList(
     context: ResolvePromptContext,
 ): Promise<ResolvedPromptList | null> {
     const normalizedSettings = normalizeJournalPromptSettings(settings);
+    return resolvePromptListFromSource(getPromptSourceSelection(normalizedSettings), context);
+}
 
-    if (normalizedSettings.sourceType === 'built-in') {
-        const list = normalizedSettings.selectedListId
-            ? BUILT_IN_PROMPT_LISTS[normalizedSettings.selectedListId]
+export async function resolvePromptPreview(
+    settings: JournalPromptSettings,
+    context: ResolvePromptContext,
+): Promise<ResolvedPrompt | null> {
+    const normalizedSettings = normalizeJournalPromptSettings(settings);
+    if (!normalizedSettings.enabled) {
+        return null;
+    }
+
+    const resolvedList = await resolvePromptList(normalizedSettings, context);
+    const prompt = normalizedSettings.selectionMode === 'static'
+        ? resolvedList?.prompts.find(option => option.id === normalizedSettings.staticPromptId)
+            ?? resolvedList?.prompts[0]
+        : resolvedList?.prompts[0];
+    if (!resolvedList || !prompt) {
+        return null;
+    }
+
+    return {
+        prompt,
+        list: resolvedList.list,
+        sourceKey: resolvedList.sourceKey,
+        history: null,
+        deliveryMode: normalizedSettings.deliveryMode,
+    };
+}
+
+export async function resolvePromptListFromSource(
+    source: PromptSourceSelection,
+    context: ResolvePromptContext,
+): Promise<ResolvedPromptList | null> {
+
+    if (source.sourceType === 'built-in') {
+        const list = source.selectedListId
+            ? BUILT_IN_PROMPT_LISTS[source.selectedListId]
             : Object.values(BUILT_IN_PROMPT_LISTS)[0];
 
         return list ? hydratePromptList(list, `built-in:${list.id}`) : null;
     }
 
-    if (normalizedSettings.sourceType === 'custom') {
-        const list = normalizedSettings.selectedListId
-            ? context.customPromptLists[normalizedSettings.selectedListId]
+    if (source.sourceType === 'custom') {
+        const list = source.selectedListId
+            ? context.customPromptLists[source.selectedListId]
             : Object.values(context.customPromptLists)[0];
 
         return list ? hydratePromptList(list, `custom:${list.id}`) : null;
     }
 
-    const filePath = normalizedSettings.selectedFilePath;
+    const filePath = source.selectedFilePath;
     if (!filePath) {
         return null;
     }
@@ -236,6 +382,40 @@ export async function resolvePromptList(
     };
 
     return hydratePromptList(list, `file:${file.path}`);
+}
+
+export async function resolvePromptOptionById(
+    promptId: string,
+    context: ResolvePromptContext,
+): Promise<{ list: ResolvedPromptList; prompt: PromptOption } | null> {
+    const source = getPromptSourceFromPromptId(promptId);
+    if (!source) return null;
+    const list = await resolvePromptListFromSource(source, context);
+    const prompt = list?.prompts.find(option => option.id === promptId);
+    return list && prompt ? { list, prompt } : null;
+}
+
+function getPromptSourceFromPromptId(promptId: string): PromptSourceSelection | null {
+    if (promptId.startsWith('built-in:') || promptId.startsWith('custom:')) {
+        const [sourceType, selectedListId] = promptId.split(':');
+        return selectedListId
+            ? { sourceType: sourceType as 'built-in' | 'custom', selectedListId }
+            : null;
+    }
+
+    if (promptId.startsWith('file:')) {
+        const withoutPrefix = promptId.slice('file:'.length);
+        const slugSeparator = withoutPrefix.lastIndexOf(':');
+        const indexSeparator = slugSeparator > 0
+            ? withoutPrefix.lastIndexOf(':', slugSeparator - 1)
+            : -1;
+        const selectedFilePath = indexSeparator > 0
+            ? withoutPrefix.slice(0, indexSeparator)
+            : '';
+        return selectedFilePath ? { sourceType: 'file', selectedFilePath } : null;
+    }
+
+    return null;
 }
 
 export function createCustomPromptListDefinition(id: string, name: string, rawPromptText: string): PromptListDefinition {

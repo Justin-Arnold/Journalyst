@@ -1,13 +1,33 @@
 import type { JournalCadenceConfig, JournalCadenceRevision, JournalSchedulePause } from './cadence';
-import type { JournalPromptSettings, PromptOption } from './prompts';
+import type {
+    JournalPromptSettings,
+    PromptDeliveryMode,
+    PromptOption,
+    PromptSourceSelection,
+} from './prompts';
 import type { JournalReminderSettings } from './reminders';
-import type { TemplateAvailability, TemplateEngine } from './templates/types';
+import type { TemplateAvailability, TemplateEngine, TemplateFailureBehavior } from './templates/types';
 
 export type JournalSettingsSection = 'schedule' | 'entry-setup' | 'reminders' | 'integrations';
 
 export interface JournalSettingsOption {
     label: string;
     value: string;
+}
+
+export interface JournalPromptSourceOption {
+    group: 'Built-in libraries' | 'Custom libraries' | 'Markdown notes';
+    label: string;
+    promptCount?: number;
+    source: PromptSourceSelection;
+}
+
+export interface JournalPromptPreviewModel {
+    deliveryMode: PromptDeliveryMode;
+    output: string;
+    promptText: string;
+    promptTitle: string;
+    sourceLabel: string;
 }
 
 export interface JournalSettingsSidebarItem {
@@ -28,15 +48,12 @@ export interface JournalSettingsViewModel {
     reminderSummary: string;
     remindersEnabled: boolean;
     promptSettings: JournalPromptSettings;
-    promptStatus: string | null;
-    promptListOptions: {
-        builtIn: JournalSettingsOption[];
-        custom: JournalSettingsOption[];
-    };
-    promptFileOptions: JournalSettingsOption[];
+    promptSourceOptions: JournalPromptSourceOption[];
     promptOptions: PromptOption[];
+    legacyWeekdayPromptLabels: Record<string, string>;
     templateEngine: TemplateEngine;
     templateAvailability: TemplateAvailability | 'not-applicable';
+    templateFailureBehavior: TemplateFailureBehavior;
     templatePath: string | null;
     templateStatus: string;
     templateOptions: JournalSettingsOption[];

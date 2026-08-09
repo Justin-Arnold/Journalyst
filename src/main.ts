@@ -28,6 +28,7 @@ import {
 import { hashJournalEntryBody } from "../entryCompletion";
 import {
     type JournalEntrySetupUpdate,
+    type JournalPromptPreviewModel,
     type JournalSettingsActionResult,
     type JournalSettingsSection,
     type JournalSettingsViewModel,
@@ -49,14 +50,20 @@ import { BUILT_IN_PROMPT_LISTS } from "../promptLibrary";
 import {
     createCustomPromptListDefinition,
     createPromptBlock,
+    createPromptOutputPreview,
+    getPromptSourceKey,
+    getPromptSourceSelection,
     getPromptTemplateContext,
     type JournalPromptHistory,
     type JournalPromptSettings,
     normalizeJournalPromptSettings,
+    normalizeJournalPromptHistory,
     type PromptListDefinition,
     type ResolvedPrompt,
     resolvePromptForJournal,
     resolvePromptList,
+    resolvePromptOptionById,
+    resolvePromptPreview,
 } from "../prompts";
 import {
     buildReminderHistoryKey,
@@ -1072,13 +1079,12 @@ export default class JournalystPlugin extends Plugin {
         const promptContext = promptTemplateMode && supportsPromptVariables
             ? getPromptTemplateContext(resolvedPrompt)
             : null;
-        const promptBlock = resolvedPrompt && (!promptTemplateMode || !supportsPromptVariables)
-            ? createPromptBlock(resolvedPrompt)
+        const promptBlock = resolvedPrompt && !promptTemplateMode
+            ? createPromptBlock(resolvedPrompt, resolvedPrompt.deliveryMode)
             : '';
-
-        if (resolvedPrompt && promptTemplateMode && !supportsPromptVariables) {
-            new Notice('This template engine cannot receive prompt variables directly, so Journalyst appended the prompt to the note body instead.');
-        }
+        const fallbackPromptBlock = resolvedPrompt
+            ? createPromptBlock(resolvedPrompt, 'append-body')
+            : '';
 
         let file: TFile | null = null;
         const templatePath = this.getJournalTemplatePath(this.settings.templateEngine, journalFolder.path);
@@ -1096,8 +1102,14 @@ export default class JournalystPlugin extends Plugin {
         }
 
         if (!file) {
+            const defaultPromptBlock = promptTemplateMode ? fallbackPromptBlock : promptBlock;
+            if (resolvedPrompt && promptTemplateMode) {
+                new Notice('The prompt could not be passed to a template, so Journalyst added it to the note body instead.');
+            }
             const baseContents = this.getDefaultJournalEntryContents(date);
-            const nextContents = promptBlock ? this.appendPromptBlock(baseContents, promptBlock) : baseContents;
+            const nextContents = defaultPromptBlock
+                ? this.appendPromptBlock(baseContents, defaultPromptBlock)
+                : baseContents;
             file = await this.app.vault.create(fullPath, nextContents);
         } else if (promptBlock) {
             await this.appendPromptBlockToFile(file, promptBlock);
@@ -1110,6 +1122,7 @@ export default class JournalystPlugin extends Plugin {
             journalName: journalFolder.name,
             journalPath: journalFolder.path,
             promptSettings: this.getJournalPromptSettings(journalFolder.path),
+            promptSource: resolvedPrompt?.sourceKey ?? null,
             promptTitle: resolvedPrompt?.prompt.title ?? null,
         });
         await this.captureJournalEntryBaseline(file);
@@ -1491,12 +1504,10 @@ export default class JournalystPlugin extends Plugin {
     async updateJournalPromptSettings(journalPath: string, promptSettings: JournalPromptSettings) {
         const normalizedSettings = normalizeJournalPromptSettings(promptSettings);
         const previousSettings = this.getJournalPromptSettings(journalPath);
-        const previousSourceKey = this.getPromptSourceKey(previousSettings);
-        const nextSourceKey = this.getPromptSourceKey(normalizedSettings);
 
         this.settings.journalPromptSettings[journalPath] = normalizedSettings;
 
-        if (previousSourceKey !== nextSourceKey || previousSettings.selectionMode !== normalizedSettings.selectionMode) {
+        if (this.getPromptHistoryIdentity(previousSettings) !== this.getPromptHistoryIdentity(normalizedSettings)) {
             delete this.settings.journalPromptHistory[journalPath];
         }
 
@@ -1512,13 +1523,25 @@ export default class JournalystPlugin extends Plugin {
         delete this.settings.customPromptLists[listId];
 
         Object.entries(this.settings.journalPromptSettings).forEach(([journalPath, promptSettings]) => {
-            if (promptSettings.sourceType === 'custom' && promptSettings.selectedListId === listId) {
+            const normalized = normalizeJournalPromptSettings(promptSettings);
+            const weekdaySourceOverrides = Object.fromEntries(
+                Object.entries(normalized.weekdaySourceOverrides)
+                    .filter(([, source]) => !(
+                        source.sourceType === 'custom' && source.selectedListId === listId
+                    )),
+            );
+            const usesDeletedDefault = normalized.sourceType === 'custom'
+                && normalized.selectedListId === listId;
+            const sourceOverridesChanged = Object.keys(weekdaySourceOverrides).length
+                !== Object.keys(normalized.weekdaySourceOverrides).length;
+
+            if (usesDeletedDefault || sourceOverridesChanged) {
                 this.settings.journalPromptSettings[journalPath] = normalizeJournalPromptSettings({
-                    ...promptSettings,
-                    enabled: false,
-                    selectedListId: undefined,
-                    staticPromptId: undefined,
-                    weekdayOverrides: {},
+                    ...normalized,
+                    enabled: usesDeletedDefault ? false : normalized.enabled,
+                    selectedListId: usesDeletedDefault ? undefined : normalized.selectedListId,
+                    staticPromptId: usesDeletedDefault ? undefined : normalized.staticPromptId,
+                    weekdaySourceOverrides,
                 });
                 delete this.settings.journalPromptHistory[journalPath];
             }
@@ -1543,32 +1566,27 @@ export default class JournalystPlugin extends Plugin {
         ))?.prompts ?? [];
     }
 
-    async getPromptPreview(journalPath: string, limit = 3) {
-        const resolvedList = await this.getResolvedPromptList(journalPath);
-        return resolvedList?.prompts.slice(0, limit) ?? [];
-    }
-
-    async getPromptSettingsStatus(journalPath: string) {
-        const promptSettings = this.getJournalPromptSettings(journalPath);
-
-        if (!promptSettings.enabled) {
+    async getPromptPreviewForSettings(promptSettings: JournalPromptSettings): Promise<JournalPromptPreviewModel | null> {
+        const resolvedPrompt = await resolvePromptPreview(
+            normalizeJournalPromptSettings(promptSettings),
+            this.getPromptResolveContext(),
+        );
+        if (!resolvedPrompt) {
             return null;
         }
 
+        return {
+            deliveryMode: resolvedPrompt.deliveryMode,
+            output: createPromptOutputPreview(resolvedPrompt),
+            promptText: resolvedPrompt.prompt.text,
+            promptTitle: resolvedPrompt.prompt.title,
+            sourceLabel: resolvedPrompt.list.name,
+        };
+    }
+
+    async getPromptPreview(journalPath: string, limit = 3) {
         const resolvedList = await this.getResolvedPromptList(journalPath);
-        if (!resolvedList || resolvedList.prompts.length === 0) {
-            return 'No prompts are available from the selected source.';
-        }
-
-        if (promptSettings.deliveryMode === 'template-variables' && this.settings.templateEngine === 'templater') {
-            return 'Templater prompt variables are exposed as tp.frontmatter.journalyst_prompt and tp.frontmatter.journalyst_prompt_title.';
-        }
-
-        if (promptSettings.deliveryMode === 'template-variables' && !this.doesTemplateEngineSupportPromptContext(this.settings.templateEngine)) {
-            return 'This template engine cannot receive prompt variables directly. Journalyst will append the prompt to the note body instead.';
-        }
-
-        return null;
+        return resolvedList?.prompts.slice(0, limit) ?? [];
     }
 
     async getJournalSettingsViewModel(journalPath: string): Promise<JournalSettingsViewModel | null> {
@@ -1578,7 +1596,11 @@ export default class JournalystPlugin extends Plugin {
         }
 
         const templateEngine = this.settings.templateEngine;
-        const [templateAvailability, templateFiles, resolvedPromptList, promptStatus, templateStatus] = await Promise.all([
+        const builtInPromptLists = Object.values(this.getBuiltInPromptLists());
+        const customPromptLists = Object.values(this.getCustomPromptLists());
+        const promptFiles = this.app.vault.getMarkdownFiles();
+        const promptSettings = this.getJournalPromptSettings(journal.path);
+        const [templateAvailability, templateFiles, resolvedPromptList, templateStatus] = await Promise.all([
             templateEngine === 'none'
                 ? Promise.resolve('not-applicable' as const)
                 : this.getTemplateAvailability(templateEngine),
@@ -1586,9 +1608,18 @@ export default class JournalystPlugin extends Plugin {
                 ? Promise.resolve([])
                 : this.getTemplateFiles(templateEngine),
             this.getResolvedPromptList(journalPath),
-            this.getPromptSettingsStatus(journalPath),
             this.getJournalTemplateStatus(templateEngine, journal.path),
         ]);
+        const legacyWeekdayPromptLabels = Object.fromEntries(
+            await Promise.all(Object.entries(promptSettings.weekdayOverrides)
+                .map(async ([day, promptId]) => {
+                    const currentPrompt = resolvedPromptList?.prompts.find(prompt => prompt.id === promptId);
+                    const legacyPrompt = currentPrompt
+                        ? null
+                        : await resolvePromptOptionById(promptId, this.getPromptResolveContext());
+                    return [day, currentPrompt?.title ?? legacyPrompt?.prompt.title ?? 'Legacy fixed prompt'] as const;
+                })),
+        );
 
         return {
             journalPath: journal.path,
@@ -1602,16 +1633,31 @@ export default class JournalystPlugin extends Plugin {
             reminderSettings: this.getJournalReminderSettings(journal.path),
             reminderSummary: this.getJournalReminderSummary(journal.path),
             remindersEnabled: this.areRemindersEnabled(),
-            promptSettings: this.getJournalPromptSettings(journal.path),
-            promptStatus,
-            promptListOptions: {
-                builtIn: Object.values(this.getBuiltInPromptLists()).map(list => ({ label: list.name, value: list.id })),
-                custom: Object.values(this.getCustomPromptLists()).map(list => ({ label: list.name, value: list.id })),
-            },
-            promptFileOptions: this.app.vault.getMarkdownFiles().map(file => ({ label: file.path, value: file.path })),
+            promptSettings,
+            promptSourceOptions: [
+                ...builtInPromptLists.map(list => ({
+                    group: 'Built-in libraries' as const,
+                    label: list.name,
+                    promptCount: list.prompts.length,
+                    source: { sourceType: 'built-in' as const, selectedListId: list.id },
+                })),
+                ...customPromptLists.map(list => ({
+                    group: 'Custom libraries' as const,
+                    label: list.name,
+                    promptCount: list.prompts.length,
+                    source: { sourceType: 'custom' as const, selectedListId: list.id },
+                })),
+                ...promptFiles.map(file => ({
+                    group: 'Markdown notes' as const,
+                    label: file.path,
+                    source: { sourceType: 'file' as const, selectedFilePath: file.path },
+                })),
+            ],
             promptOptions: resolvedPromptList?.prompts ?? [],
+            legacyWeekdayPromptLabels,
             templateEngine,
             templateAvailability,
+            templateFailureBehavior: this.settings.templateFailureBehavior,
             templatePath: this.getJournalTemplatePath(templateEngine, journal.path) ?? null,
             templateStatus,
             templateOptions: templateFiles.map(file => ({ label: file.path, value: file.path })),
@@ -1640,8 +1686,7 @@ export default class JournalystPlugin extends Plugin {
             }
         }
         this.settings.journalPromptSettings[journalPath] = normalizedPromptSettings;
-        if (this.getPromptSourceKey(currentPromptSettings) !== this.getPromptSourceKey(normalizedPromptSettings)
-            || currentPromptSettings.selectionMode !== normalizedPromptSettings.selectionMode) {
+        if (this.getPromptHistoryIdentity(currentPromptSettings) !== this.getPromptHistoryIdentity(normalizedPromptSettings)) {
             delete this.settings.journalPromptHistory[journalPath];
         }
 
@@ -2731,8 +2776,20 @@ export default class JournalystPlugin extends Plugin {
         );
         this.settings.journalCadences = this.settings.journalCadences ?? {};
         this.settings.customPromptLists = this.settings.customPromptLists ?? {};
-        this.settings.journalPromptSettings = this.settings.journalPromptSettings ?? {};
-        this.settings.journalPromptHistory = this.settings.journalPromptHistory ?? {};
+        this.settings.journalPromptSettings = Object.fromEntries(
+            Object.entries(this.settings.journalPromptSettings ?? {})
+                .map(([journalPath, promptSettings]) => [
+                    journalPath,
+                    normalizeJournalPromptSettings(promptSettings),
+                ]),
+        );
+        this.settings.journalPromptHistory = Object.fromEntries(
+            Object.entries(this.settings.journalPromptHistory ?? {})
+                .map(([journalPath, promptHistory]) => [
+                    journalPath,
+                    normalizeJournalPromptHistory(promptHistory),
+                ]),
+        );
         this.settings.journalReminderSettings = this.settings.journalReminderSettings ?? {};
         this.settings.reminderHistory = this.settings.reminderHistory ?? {};
         this.settings.journalEntryBaselines = Object.fromEntries(
@@ -2769,12 +2826,15 @@ export default class JournalystPlugin extends Plugin {
         };
     }
 
-    private getPromptSourceKey(promptSettings: JournalPromptSettings) {
-        if (promptSettings.sourceType === 'file') {
-            return `file:${promptSettings.selectedFilePath ?? ''}`;
-        }
-
-        return `${promptSettings.sourceType}:${promptSettings.selectedListId ?? ''}`;
+    private getPromptHistoryIdentity(promptSettings: JournalPromptSettings) {
+        const normalized = normalizeJournalPromptSettings(promptSettings);
+        return JSON.stringify({
+            sourceKey: getPromptSourceKey(getPromptSourceSelection(normalized)),
+            selectionMode: normalized.selectionMode,
+            staticPromptId: normalized.staticPromptId,
+            weekdayOverrides: normalized.weekdayOverrides,
+            weekdaySourceOverrides: normalized.weekdaySourceOverrides,
+        });
     }
 
     private doesTemplateEngineSupportPromptContext(templateEngine: TemplateEngine) {

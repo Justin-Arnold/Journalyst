@@ -40,6 +40,7 @@ export interface JournalystPropertyContext {
     periodStart?: string;
     periodType?: SynthesisPeriodType;
     promptSettings?: JournalPromptSettings | null;
+    promptSource?: string | null;
     promptTitle?: string | null;
 }
 
@@ -70,7 +71,9 @@ export function buildJournalystNoteProperties(context: JournalystPropertyContext
         properties.journalyst_date = context.date;
     }
 
-    if (context.promptSettings?.enabled) {
+    if (context.promptSource) {
+        properties.journalyst_prompt_source = context.promptSource;
+    } else if (context.promptSettings?.enabled) {
         properties.journalyst_prompt_source = getPromptSourceLabel(context.promptSettings);
     }
 
