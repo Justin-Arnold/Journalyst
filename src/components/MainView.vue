@@ -64,7 +64,7 @@ const tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }> = [
     { id: 'analytics', label: 'Analytics', icon: 'chart-column' },
     { id: 'synthesis', label: 'Synthesis', icon: 'file-pen-line' },
     { id: 'reminders', label: 'Reminders', icon: 'bell' },
-    { id: 'journals', label: 'Journals', icon: 'notebooks' },
+    { id: 'journals', label: 'Journals', icon: 'notebook-pen' },
 ];
 
 const workspaceContext = computed(() => ({
