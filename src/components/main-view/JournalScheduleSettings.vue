@@ -7,21 +7,23 @@ import {
     type JournalCadenceType,
     type JournalSchedulePause,
 } from '../../../cadence';
-import type { JournalSettingsViewModel } from '../../../journalSettings';
+import type { JournalAutosaveFeedback, JournalSettingsViewModel } from '../../../journalSettings';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 
 const props = defineProps<{
     model: JournalSettingsViewModel;
     pauses: JournalSchedulePause[];
-    busy: boolean;
-    dirty: boolean;
+    autosave: JournalAutosaveFeedback;
     invalid: boolean;
 }>();
 
 const cadence = defineModel<JournalCadenceConfig>('cadence', { required: true });
 
-defineEmits<{
-    save: [];
+const emit = defineEmits<{
+    commit: [];
+    retry: [];
+    undo: [];
     editPause: [pause: JournalSchedulePause | null];
     removePause: [pause: JournalSchedulePause];
 }>();
@@ -72,6 +74,7 @@ function setCadenceType(type: JournalCadenceType) {
     } else {
         cadence.value = { type };
     }
+    emit('commit');
 }
 
 function toggleWeekday(day: number) {
@@ -79,6 +82,7 @@ function toggleWeekday(day: number) {
     if (weekdays.has(day)) weekdays.delete(day);
     else weekdays.add(day);
     cadence.value = { type: 'weekly-days', weekdays: [...weekdays].sort((left, right) => left - right) };
+    emit('commit');
 }
 
 function setIntervalDays(event: Event) {
@@ -157,7 +161,15 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                         <p>Set the number of days between expected entries.</p>
                     </div>
                     <div class="journalyst-input-suffix">
-                        <input type="number" min="1" :value="cadence.intervalDays" aria-label="Interval days" @input="setIntervalDays">
+                        <input
+                            type="number"
+                            min="1"
+                            :value="cadence.intervalDays"
+                            aria-label="Interval days"
+                            @input="setIntervalDays"
+                            @change="emit('commit')"
+                            @blur="emit('commit')"
+                        >
                         <span>days</span>
                     </div>
                 </div>
@@ -166,15 +178,18 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                         <h3>Anchor date</h3>
                         <p>The date used to calculate the repeating interval.</p>
                     </div>
-                    <input type="date" :value="cadence.startDate" aria-label="Interval anchor date" @input="setIntervalStart">
+                    <input
+                        type="date"
+                        :value="cadence.startDate"
+                        aria-label="Interval anchor date"
+                        @input="setIntervalStart"
+                        @change="emit('commit')"
+                        @blur="emit('commit')"
+                    >
                 </div>
             </template>
 
-            <div class="journalyst-schedule-save-row">
-                <button type="button" class="mod-cta" :disabled="busy || invalid || !dirty" @click="$emit('save')">
-                    Save schedule
-                </button>
-            </div>
+            <JournalAutosaveStatus :feedback="autosave" @retry="emit('retry')" @undo="emit('undo')" />
         </section>
 
         <section class="journalyst-schedule-block">
@@ -264,6 +279,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 
 .journalyst-schedule-settings {
     gap: var(--size-4-6);
+    container-type: inline-size;
 }
 
 .journalyst-settings-block-header {
@@ -370,12 +386,6 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 
 .journalyst-field-error {
     color: var(--text-error);
-}
-
-.journalyst-schedule-save-row {
-    display: flex;
-    justify-content: flex-end;
-    padding-top: var(--size-4-3);
 }
 
 .journalyst-schedule-info {

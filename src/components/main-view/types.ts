@@ -1,6 +1,8 @@
 import type { JournalCadenceConfig, JournalCadenceType, JournalSchedulePause } from "../../../cadence";
 import type { BasesGenerationTarget } from "../../../bases";
 import type {
+    JournalAutosaveResult,
+    JournalAutosaveUndoResult,
     JournalBasesBackfillActionResult,
     JournalEntrySetupUpdate,
     JournalSettingsActionResult,
@@ -39,18 +41,19 @@ export interface MainViewActions {
     loadJournalSettings(journalPath: string): Promise<JournalSettingsViewModel | null>;
     loadJournalPromptOptions(settings: JournalPromptSettings): Promise<PromptOption[]>;
     loadJournalPromptPreview(settings: JournalPromptSettings): Promise<JournalPromptPreviewModel | null>;
-    saveJournalCadence(journalPath: string, cadence: JournalCadenceConfig): Promise<JournalSettingsActionResult>;
+    saveJournalCadence(journalPath: string, cadence: JournalCadenceConfig): Promise<JournalAutosaveResult<JournalCadenceConfig>>;
     editJournalSchedulePause(journalPath: string, pause: JournalSchedulePause | null): Promise<JournalSchedulePauseActionResult | null>;
     removeJournalSchedulePause(journalPath: string, pause: JournalSchedulePause): Promise<JournalSchedulePauseActionResult | null>;
-    saveJournalEntrySetup(journalPath: string, update: JournalEntrySetupUpdate): Promise<JournalSettingsActionResult>;
-    saveJournalReminderSettings(journalPath: string, settings: JournalReminderSettings): Promise<JournalSettingsActionResult>;
+    saveJournalEntrySetup(journalPath: string, update: JournalEntrySetupUpdate): Promise<JournalAutosaveResult<JournalEntrySetupUpdate>>;
+    saveJournalReminderSettings(journalPath: string, settings: JournalReminderSettings): Promise<JournalAutosaveResult<JournalReminderSettings>>;
+    undoJournalSettingsChange(undoToken: string): Promise<JournalAutosaveUndoResult>;
     renameJournal(journalPath: string, name: string): Promise<JournalSettingsActionResult>;
     ensureJournalBase(journalPath: string, target: BasesGenerationTarget): Promise<JournalSettingsActionResult>;
     resetJournalBase(journalPath: string, target: BasesGenerationTarget): Promise<JournalSettingsActionResult | null>;
     previewJournalBasesBackfill(journalPath: string): Promise<JournalBasesBackfillActionResult>;
     openJournalBase(filePath: string): Promise<void>;
     openCorePluginsSettings(): Promise<void>;
-    confirmDiscardJournalChanges(): Promise<boolean>;
+    confirmDiscardJournalAutosave(): Promise<boolean>;
     createEntry(): Promise<void>;
     createJournal(): Promise<void>;
     createJournalEntry(journalPath: string, date?: string): Promise<void>;

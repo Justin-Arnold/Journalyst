@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { JournalCadenceConfig, JournalSchedulePause } from '../../../cadence';
 import type { BasesGenerationTarget } from '../../../bases';
 import type {
+    JournalAutosaveFeedback,
+    JournalAutosaveResult,
+    JournalAutosaveSection,
+    JournalAutosaveValue,
+    JournalEntrySetupUpdate,
     JournalSettingsSection,
     JournalSettingsSidebarItem,
     JournalSettingsViewModel,
@@ -28,7 +33,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-    dirtyChange: [dirty: boolean];
+    pendingChange: [pending: boolean];
     refresh: [];
 }>();
 
@@ -51,29 +56,80 @@ const promptDraft = ref<JournalPromptSettings>({
     weekdaySourceOverrides: {},
 });
 const reminderDraft = ref<JournalReminderSettings | null>(null);
+const scheduleBaseline = ref<JournalCadenceConfig>({ type: 'daily' });
+const entrySetupBaseline = ref<JournalEntrySetupUpdate>({
+    templatePath: null,
+    promptSettings: clone(promptDraft.value),
+});
+const reminderBaseline = ref<JournalReminderSettings | null>(null);
 const busy = ref(false);
 const error = ref('');
 const success = ref('');
 const renameOpen = ref(false);
 const renameDraft = ref('');
+const rootEl = ref<HTMLElement | null>(null);
+const autosave = ref<JournalAutosaveFeedback>({
+    status: 'idle',
+    message: 'Changes save automatically.',
+    canRetry: false,
+    canUndo: false,
+});
+
+type AutosaveRequest = {
+    journalPath: string;
+    section: 'schedule';
+    value: JournalCadenceConfig;
+} | {
+    journalPath: string;
+    section: 'entry-setup';
+    value: JournalEntrySetupUpdate;
+} | {
+    journalPath: string;
+    section: 'reminders';
+    value: JournalReminderSettings;
+};
+
+let hydratedJournalPath: string | null = null;
+let hydrating = false;
+let queuedSave: AutosaveRequest | null = null;
+let saveTask: Promise<void> | null = null;
+let failedRequest: AutosaveRequest | null = null;
+let undoToken: string | null = null;
 
 function clone<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function hydrate(model: JournalSettingsViewModel | null) {
+function hydrate(model: JournalSettingsViewModel | null, force = false) {
     if (!model) return;
-    scheduleDraft.value = clone(model.cadence);
-    schedulePauses.value = clone(model.schedulePauses);
-    templatePathDraft.value = model.templatePath;
-    promptDraft.value = clone(model.promptSettings);
-    reminderDraft.value = clone(model.reminderSettings);
-    renameDraft.value = model.journalName;
+    const journalChanged = hydratedJournalPath !== model.journalPath;
+    if (!force && !journalChanged && hasLocalChanges.value) return;
+
+    hydrating = true;
+    try {
+        scheduleDraft.value = clone(model.cadence);
+        scheduleBaseline.value = clone(model.cadence);
+        schedulePauses.value = clone(model.schedulePauses);
+        templatePathDraft.value = model.templatePath;
+        promptDraft.value = clone(model.promptSettings);
+        entrySetupBaseline.value = {
+            templatePath: model.templatePath,
+            promptSettings: clone(model.promptSettings),
+        };
+        reminderDraft.value = clone(model.reminderSettings);
+        reminderBaseline.value = clone(model.reminderSettings);
+        renameDraft.value = model.journalName;
+        hydratedJournalPath = model.journalPath;
+    } finally {
+        hydrating = false;
+    }
+
+    if (journalChanged || force) resetAutosaveFeedback();
 }
 
-watch(() => props.model, hydrate, { immediate: true });
+watch(() => props.model, model => hydrate(model), { immediate: true });
 watch(() => props.activeSection, value => {
-    if (!isDirty.value) section.value = value;
+    if (!hasLocalChanges.value) section.value = value;
 });
 
 const scheduleInvalid = computed(() => (
@@ -84,24 +140,24 @@ const scheduleInvalid = computed(() => (
 ));
 
 const scheduleDirty = computed(() => !!props.model
-    && JSON.stringify(scheduleDraft.value) !== JSON.stringify(props.model.cadence));
+    && !isEqual(scheduleDraft.value, scheduleBaseline.value));
 const entrySetupDirty = computed(() => !!props.model && (
-    templatePathDraft.value !== props.model.templatePath
-    || JSON.stringify(promptDraft.value) !== JSON.stringify(props.model.promptSettings)
+    templatePathDraft.value !== entrySetupBaseline.value.templatePath
+    || !isEqual(promptDraft.value, entrySetupBaseline.value.promptSettings)
 ));
 const remindersDirty = computed(() => !!props.model && !!reminderDraft.value
-    && JSON.stringify(reminderDraft.value) !== JSON.stringify(props.model.reminderSettings));
-const isDirty = computed(() => section.value === 'schedule'
-    ? scheduleDirty.value
-    : section.value === 'entry-setup'
-        ? entrySetupDirty.value
-        : section.value === 'reminders' && remindersDirty.value);
+    && !!reminderBaseline.value
+    && !isEqual(reminderDraft.value, reminderBaseline.value));
+const hasLocalChanges = computed(() => scheduleDirty.value || entrySetupDirty.value || remindersDirty.value);
 
-watch(isDirty, value => emit('dirtyChange', value), { immediate: true });
+watch(hasLocalChanges, value => emit('pendingChange', value), { immediate: true });
+watch(scheduleDraft, () => handleDraftEdit('schedule'), { deep: true, flush: 'sync' });
+watch([templatePathDraft, promptDraft], () => handleDraftEdit('entry-setup'), { deep: true, flush: 'sync' });
+watch(reminderDraft, () => handleDraftEdit('reminders'), { deep: true, flush: 'sync' });
 
 async function changeSection(nextSection: JournalSettingsSection) {
     if (nextSection === section.value) return;
-    if (!await discardIfNeeded()) return;
+    if (!await prepareToLeave()) return;
     section.value = nextSection;
     clearFeedback();
     if (props.model) {
@@ -120,7 +176,7 @@ async function changeJournal(event: Event) {
 
 async function selectJournal(journalPath: string) {
     if (!journalPath || journalPath === props.model?.journalPath) return false;
-    if (!await discardIfNeeded()) {
+    if (!await prepareToLeave()) {
         return false;
     }
     clearFeedback();
@@ -128,19 +184,8 @@ async function selectJournal(journalPath: string) {
     return true;
 }
 
-async function discardIfNeeded() {
-    if (!isDirty.value) return true;
-    const discard = await props.actions.confirmDiscardJournalChanges();
-    if (discard) hydrate(props.model);
-    return discard;
-}
-
-async function saveSchedule() {
-    if (!props.model || !scheduleDirty.value || scheduleInvalid.value || busy.value) return;
-    await runSave(
-        () => props.actions.saveJournalCadence(props.model!.journalPath, clone(scheduleDraft.value)),
-        'Schedule saved. Changes apply from today.',
-    );
+function commitSchedule() {
+    void commitSection('schedule');
 }
 
 async function editSchedulePause(pause: JournalSchedulePause | null) {
@@ -148,6 +193,8 @@ async function editSchedulePause(pause: JournalSchedulePause | null) {
     clearFeedback();
     const result = await props.actions.editJournalSchedulePause(props.model.journalPath, pause);
     if (!result) return;
+    clearUndo();
+    resetAutosaveFeedback();
     if (!result.ok) {
         error.value = result.error;
         return;
@@ -161,6 +208,8 @@ async function removeSchedulePause(pause: JournalSchedulePause) {
     clearFeedback();
     const result = await props.actions.removeJournalSchedulePause(props.model.journalPath, pause);
     if (!result) return;
+    clearUndo();
+    resetAutosaveFeedback();
     if (!result.ok) {
         error.value = result.error;
         return;
@@ -169,50 +218,247 @@ async function removeSchedulePause(pause: JournalSchedulePause) {
     success.value = 'Schedule pause removed.';
 }
 
-async function saveEntrySetup() {
-    if (!props.model || !entrySetupDirty.value || busy.value) return;
-    await runSave(
-        () => props.actions.saveJournalEntrySetup(props.model!.journalPath, {
-            templatePath: templatePathDraft.value,
-            promptSettings: clone(promptDraft.value),
-        }),
-        'Entry setup saved.',
-    );
+function commitEntrySetup() {
+    void commitSection('entry-setup');
 }
 
-async function saveReminders() {
-    if (!props.model || !reminderDraft.value || !remindersDirty.value || busy.value) return;
-    await runSave(
-        () => props.actions.saveJournalReminderSettings(props.model!.journalPath, clone(reminderDraft.value!)),
-        'Reminder rules saved.',
-    );
+function commitReminders() {
+    void commitSection('reminders');
 }
 
-async function runSave(
-    save: () => ReturnType<MainViewActions['saveJournalCadence']>,
-    message: string,
-) {
-    busy.value = true;
+async function commitSection(targetSection: JournalAutosaveSection) {
+    const request = buildAutosaveRequest(targetSection);
+    if (!request) return;
     clearFeedback();
-    try {
-        const result = await save();
-        if (!result.ok) {
-            error.value = result.error;
-            return;
+    clearUndo();
+
+    if (targetSection === 'schedule' && scheduleInvalid.value) {
+        failedRequest = null;
+        setAutosaveFeedback('invalid', 'Fix the highlighted schedule field to save this change.');
+        return;
+    }
+    if (requestMatchesBaseline(request)) {
+        failedRequest = null;
+        resetAutosaveFeedback();
+        return;
+    }
+
+    failedRequest = null;
+    queuedSave = request;
+    await runAutosaveQueue();
+}
+
+function buildAutosaveRequest(targetSection: JournalAutosaveSection): AutosaveRequest | null {
+    const journalPath = props.model?.journalPath;
+    if (!journalPath) return null;
+    if (targetSection === 'schedule') {
+        return { journalPath, section: targetSection, value: clone(scheduleDraft.value) };
+    }
+    if (targetSection === 'entry-setup') {
+        return {
+            journalPath,
+            section: targetSection,
+            value: {
+                templatePath: templatePathDraft.value,
+                promptSettings: clone(promptDraft.value),
+            },
+        };
+    }
+    if (!reminderDraft.value) return null;
+    return { journalPath, section: targetSection, value: clone(reminderDraft.value) };
+}
+
+async function runAutosaveQueue() {
+    if (saveTask) return saveTask;
+    saveTask = (async () => {
+        let savedAny = false;
+        while (queuedSave) {
+            const request = queuedSave;
+            queuedSave = null;
+            if (requestMatchesBaseline(request)) continue;
+
+            if (request.journalPath === hydratedJournalPath) {
+                setAutosaveFeedback('saving', 'Saving changes...');
+            }
+
+            let result: JournalAutosaveResult;
+            try {
+                result = await performAutosave(request);
+            } catch (saveError) {
+                result = {
+                    ok: false,
+                    error: saveError instanceof Error ? saveError.message : 'Journalyst could not save these settings.',
+                };
+            }
+
+            if (!result.ok) {
+                if (queuedSave) continue;
+                failedRequest = request;
+                if (request.journalPath === hydratedJournalPath) {
+                    setAutosaveFeedback('error', `Couldn't save. ${result.error}`, true);
+                }
+                break;
+            }
+
+            savedAny = true;
+            applyAutosaveResult(request, result.value);
+            if (request.journalPath === hydratedJournalPath) {
+                undoToken = result.undoToken;
+                setAutosaveFeedback('saved', 'Saved.', false, !!undoToken);
+            }
         }
-        success.value = message;
-        emit('dirtyChange', false);
-        emit('refresh');
-    } catch (saveError) {
-        error.value = saveError instanceof Error ? saveError.message : 'Journalyst could not save these settings.';
+
+        if (savedAny && !hasLocalChanges.value && !queuedSave) {
+            emit('refresh');
+        }
+    })().finally(() => {
+        saveTask = null;
+        if (queuedSave) void runAutosaveQueue();
+    });
+    return saveTask;
+}
+
+function performAutosave(request: AutosaveRequest): Promise<JournalAutosaveResult> {
+    if (request.section === 'schedule') {
+        return props.actions.saveJournalCadence(request.journalPath, request.value);
+    }
+    if (request.section === 'entry-setup') {
+        return props.actions.saveJournalEntrySetup(request.journalPath, request.value);
+    }
+    return props.actions.saveJournalReminderSettings(request.journalPath, request.value);
+}
+
+function applyAutosaveResult(request: AutosaveRequest, value: JournalAutosaveValue) {
+    hydrating = true;
+    try {
+        if (request.section === 'schedule') {
+            const canonical = clone(value as JournalCadenceConfig);
+            scheduleBaseline.value = canonical;
+            if (isEqual(scheduleDraft.value, request.value)) scheduleDraft.value = clone(canonical);
+        } else if (request.section === 'entry-setup') {
+            const canonical = clone(value as JournalEntrySetupUpdate);
+            entrySetupBaseline.value = canonical;
+            if (isEqual(getEntrySetupDraft(), request.value)) {
+                templatePathDraft.value = canonical.templatePath;
+                promptDraft.value = clone(canonical.promptSettings);
+            }
+        } else {
+            const canonical = clone(value as JournalReminderSettings);
+            reminderBaseline.value = canonical;
+            if (reminderDraft.value && isEqual(reminderDraft.value, request.value)) {
+                reminderDraft.value = clone(canonical);
+            }
+        }
     } finally {
-        busy.value = false;
+        hydrating = false;
+    }
+}
+
+function requestMatchesBaseline(request: AutosaveRequest) {
+    if (request.section === 'schedule') return isEqual(request.value, scheduleBaseline.value);
+    if (request.section === 'entry-setup') return isEqual(request.value, entrySetupBaseline.value);
+    return !!reminderBaseline.value && isEqual(request.value, reminderBaseline.value);
+}
+
+async function retryAutosave() {
+    const request = buildAutosaveRequest(failedRequest?.section ?? section.value as JournalAutosaveSection);
+    if (!request) return;
+    queuedSave = request;
+    failedRequest = null;
+    await runAutosaveQueue();
+}
+
+async function undoAutosave() {
+    const token = undoToken;
+    if (!token || saveTask) return;
+    setAutosaveFeedback('saving', 'Undoing change...');
+    const result = await props.actions.undoJournalSettingsChange(token);
+    if (!result.ok) {
+        if (!result.canRetry) undoToken = null;
+        setAutosaveFeedback('error', `Couldn't undo. ${result.error}`, false, result.canRetry);
+        return;
+    }
+
+    applyUndoResult(result.section, result.value);
+    clearUndo();
+    setAutosaveFeedback('saved', 'Change undone.');
+    emit('refresh');
+}
+
+function applyUndoResult(targetSection: JournalAutosaveSection, value: JournalAutosaveValue) {
+    hydrating = true;
+    try {
+        if (targetSection === 'schedule') {
+            const canonical = clone(value as JournalCadenceConfig);
+            scheduleDraft.value = clone(canonical);
+            scheduleBaseline.value = canonical;
+        } else if (targetSection === 'entry-setup') {
+            const canonical = clone(value as JournalEntrySetupUpdate);
+            templatePathDraft.value = canonical.templatePath;
+            promptDraft.value = clone(canonical.promptSettings);
+            entrySetupBaseline.value = canonical;
+        } else {
+            const canonical = clone(value as JournalReminderSettings);
+            reminderDraft.value = clone(canonical);
+            reminderBaseline.value = canonical;
+        }
+    } finally {
+        hydrating = false;
+    }
+}
+
+async function prepareToLeave(clearAutosave = true) {
+    const saved = await flushAutosave();
+    if (saved) {
+        if (clearAutosave) {
+            clearUndo();
+            resetAutosaveFeedback();
+        }
+        return true;
+    }
+
+    const discard = await props.actions.confirmDiscardJournalAutosave();
+    if (discard) hydrate(props.model, true);
+    return discard;
+}
+
+async function flushAutosave() {
+    const activeElement = rootEl.value?.ownerDocument.activeElement;
+    if (activeElement instanceof HTMLElement && rootEl.value?.contains(activeElement)) activeElement.blur();
+
+    if (section.value !== 'integrations' && hasSectionChanges(section.value)) {
+        await commitSection(section.value);
+    }
+    await waitForAutosave();
+    return !hasLocalChanges.value;
+}
+
+async function waitForAutosave() {
+    while (saveTask || queuedSave) {
+        if (!saveTask && queuedSave) void runAutosaveQueue();
+        await saveTask;
+    }
+}
+
+function hasSectionChanges(targetSection: JournalAutosaveSection) {
+    if (targetSection === 'schedule') return scheduleDirty.value;
+    if (targetSection === 'entry-setup') return entrySetupDirty.value;
+    return remindersDirty.value;
+}
+
+function handleDraftEdit(targetSection: JournalAutosaveSection) {
+    if (hydrating || targetSection !== section.value) return;
+    failedRequest = null;
+    if (autosave.value.status !== 'saving') {
+        setAutosaveFeedback('idle', 'Changes save when you leave the field.', false, !!undoToken);
     }
 }
 
 async function renameJournal() {
     if (!props.model || busy.value) return;
-    if (!await discardIfNeeded()) return;
+    if (!await prepareToLeave(false)) return;
+    clearUndo();
+    resetAutosaveFeedback();
     busy.value = true;
     clearFeedback();
     try {
@@ -279,18 +525,58 @@ async function previewBasesBackfill() {
 }
 
 async function openGlobalReminders() {
-    if (!props.model || !await discardIfNeeded()) return;
+    if (!props.model || !await prepareToLeave()) return;
     await props.actions.activateJournalTab(props.model.journalPath, 'reminders');
+}
+
+function getEntrySetupDraft(): JournalEntrySetupUpdate {
+    return {
+        templatePath: templatePathDraft.value,
+        promptSettings: promptDraft.value,
+    };
+}
+
+function setAutosaveFeedback(
+    status: JournalAutosaveFeedback['status'],
+    message: string,
+    canRetry = false,
+    canUndo = false,
+) {
+    autosave.value = { status, message, canRetry, canUndo };
+}
+
+function resetAutosaveFeedback() {
+    failedRequest = null;
+    setAutosaveFeedback('idle', 'Changes save automatically.');
+}
+
+function clearUndo() {
+    undoToken = null;
+    if (autosave.value.canUndo) autosave.value = { ...autosave.value, canUndo: false };
+}
+
+function isEqual(left: unknown, right: unknown) {
+    return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function clearFeedback() {
     error.value = '';
     success.value = '';
 }
+
+onBeforeUnmount(() => {
+    const canCommit = section.value !== 'schedule' || !scheduleInvalid.value;
+    if (section.value !== 'integrations' && hasSectionChanges(section.value) && canCommit) {
+        void commitSection(section.value);
+    }
+    clearUndo();
+});
+
+defineExpose({ flushAutosave, prepareToLeave });
 </script>
 
 <template>
-    <div class="journalyst-journal-settings-page">
+    <div ref="rootEl" class="journalyst-journal-settings-page">
         <header class="journalyst-journal-settings-page-header">
             <h1>Journal settings</h1>
             <p>Schedule, entry setup, reminders, and integrations for each journal.</p>
@@ -343,11 +629,11 @@ function clearFeedback() {
                     class="journalyst-journal-form-section"
                     :model="model"
                     :pauses="schedulePauses"
-                    :busy="busy"
-                    :dirty="scheduleDirty"
+                    :autosave="autosave"
                     :invalid="scheduleInvalid"
-                    @update:cadence="clearFeedback"
-                    @save="saveSchedule"
+                    @commit="commitSchedule"
+                    @retry="retryAutosave"
+                    @undo="undoAutosave"
                     @edit-pause="editSchedulePause"
                     @remove-pause="removeSchedulePause"
                 />
@@ -358,10 +644,10 @@ function clearFeedback() {
                     v-model:prompt-settings="promptDraft"
                     :model="model"
                     :actions="actions"
-                    :busy="busy"
-                    :dirty="entrySetupDirty"
-                    @change="clearFeedback"
-                    @save="saveEntrySetup"
+                    :autosave="autosave"
+                    @commit="commitEntrySetup"
+                    @retry="retryAutosave"
+                    @undo="undoAutosave"
                 />
 
                 <JournalReminderSettingsEditor
@@ -369,10 +655,10 @@ function clearFeedback() {
                     v-model:settings="reminderDraft"
                     class="journalyst-journal-form-section"
                     :model="model"
-                    :busy="busy"
-                    :dirty="remindersDirty"
-                    @change="clearFeedback"
-                    @save="saveReminders"
+                    :autosave="autosave"
+                    @commit="commitReminders"
+                    @retry="retryAutosave"
+                    @undo="undoAutosave"
                     @open-global-reminders="openGlobalReminders"
                 />
 

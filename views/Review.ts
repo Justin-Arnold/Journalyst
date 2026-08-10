@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 import moment from "moment";
 import { createApp, markRaw, reactive, type App as VueApp } from "vue";
 import MainView from "../src/components/MainView.vue";
@@ -10,7 +10,7 @@ import type { ReviewWorkspaceTab } from "../review/types";
 import JournalystPlugin from "../src/main";
 import { NewEntryJournalModal } from "./NewEntryJournalModal";
 import { NewJournalModal } from "./NewJournalModal";
-import { confirmDiscardJournalChanges } from "./ConfirmDiscardModal";
+import { confirmDiscardJournalAutosave } from "./ConfirmDiscardModal";
 import type { JournalSettingsSection } from "../journalSettings";
 import {
     confirmRemoveSchedulePause,
@@ -25,6 +25,7 @@ export const VIEW_TYPE_REVIEW = "journalyst-review-view";
 
 export class ReviewView extends ItemView {
     private vueApp: VueApp<Element> | null = null;
+    private vueRoot: { flushJournalSettings?: () => Promise<boolean> } | null = null;
     private rootContainer: HTMLElement | null = null;
     private readonly viewState = reactive<ReviewViewState>({
         journalPath: null,
@@ -64,7 +65,7 @@ export class ReviewView extends ItemView {
             state: this.viewState,
             actions: this.actions,
         });
-        this.vueApp.mount(mountTarget);
+        this.vueRoot = this.vueApp.mount(mountTarget) as unknown as { flushJournalSettings?: () => Promise<boolean> };
 
         this.registerEvent(this.app.vault.on('create', () => this.onReviewDataChanged()));
         this.registerEvent(this.app.vault.on('delete', () => this.onReviewDataChanged()));
@@ -73,8 +74,13 @@ export class ReviewView extends ItemView {
     }
 
     async onClose() {
+        const settingsSaved = await this.vueRoot?.flushJournalSettings?.();
+        if (settingsSaved === false) {
+            new Notice('Journalyst could not save the current journal setting before the view closed.');
+        }
         this.vueApp?.unmount();
         this.vueApp = null;
+        this.vueRoot = null;
         this.rootContainer?.empty();
         this.rootContainer = null;
     }
@@ -161,6 +167,11 @@ export class ReviewView extends ItemView {
                 this.invalidateData();
                 return result;
             },
+            undoJournalSettingsChange: async (undoToken) => {
+                const result = await this.plugin.undoJournalSettingsChange(undoToken);
+                this.invalidateData();
+                return result;
+            },
             renameJournal: async (journalPath, name) => {
                 const result = await this.plugin.renameJournal(journalPath, name);
                 if (result.ok && result.journalPath) {
@@ -213,7 +224,7 @@ export class ReviewView extends ItemView {
             openCorePluginsSettings: async () => {
                 this.plugin.openCorePluginsSettings();
             },
-            confirmDiscardJournalChanges: async () => confirmDiscardJournalChanges(this.app),
+            confirmDiscardJournalAutosave: async () => confirmDiscardJournalAutosave(this.app),
             createEntry: async () => {
                 const journals = [...this.plugin.journals];
                 if (journals.length === 0) {

@@ -48,7 +48,8 @@ const props = defineProps<{
 const onboardingBusy = ref(false);
 const onboardingError = ref('');
 const synthesisAttentionPeriod = ref<SynthesisPeriodType | null>(null);
-const journalEditorDirty = ref(false);
+const journalEditorHasLocalChanges = ref(false);
+const journalsTab = ref<InstanceType<typeof JournalsTab> | null>(null);
 const journalSettingsModel = ref<JournalSettingsViewModel | null>(null);
 const journalSettingsLoading = ref(false);
 const journalSettingsError = ref('');
@@ -115,10 +116,10 @@ const activeTab = computed<ReviewWorkspaceTab>({
 
 async function changeWorkspaceTab(value: ReviewWorkspaceTab) {
     if (value === props.state.activeTab) return;
-    if (props.state.activeTab === 'journals' && journalEditorDirty.value) {
-        const discard = await props.actions.confirmDiscardJournalChanges();
-        if (!discard) return;
-        journalEditorDirty.value = false;
+    if (props.state.activeTab === 'journals') {
+        const canLeave = await journalsTab.value?.prepareToLeave();
+        if (canLeave === false) return;
+        journalEditorHasLocalChanges.value = false;
     }
 
     synthesisAttentionPeriod.value = null;
@@ -266,14 +267,14 @@ async function loadJournalSettings() {
 watch(
     [() => props.state.activeTab, () => props.state.journalPath],
     () => {
-        journalEditorDirty.value = false;
+        journalEditorHasLocalChanges.value = false;
         void loadJournalSettings();
     },
     { immediate: true },
 );
 
 watch(() => props.state.revision, () => {
-    if (props.state.activeTab === 'journals' && !journalEditorDirty.value) {
+    if (props.state.activeTab === 'journals' && !journalEditorHasLocalChanges.value) {
         void loadJournalSettings();
     }
 });
@@ -323,6 +324,15 @@ async function resumeOnboarding() {
             : 'Journalyst could not resume setup. Try again.';
     }
 }
+
+async function flushJournalSettings() {
+    if (props.state.activeTab === 'journals') {
+        return await journalsTab.value?.flushAutosave() ?? true;
+    }
+    return true;
+}
+
+defineExpose({ flushJournalSettings });
 </script>
 
 <template>
@@ -388,13 +398,14 @@ async function resumeOnboarding() {
                 />
                 <JournalsTab
                     v-else-if="state.activeTab === 'journals'"
+                    ref="journalsTab"
                     :journals="journalSidebarItems"
                     :model="journalSettingsModel"
                     :loading="journalSettingsLoading"
                     :error="journalSettingsError"
                     :active-section="state.journalSettingsSection"
                     :actions="actions"
-                    @dirty-change="journalEditorDirty = $event"
+                    @pending-change="journalEditorHasLocalChanges = $event"
                     @refresh="loadJournalSettings"
                 />
                 <ReviewTab

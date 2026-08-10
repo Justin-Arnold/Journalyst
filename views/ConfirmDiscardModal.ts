@@ -8,17 +8,17 @@ export class ConfirmDiscardModal extends Modal {
     }
 
     onOpen() {
-        this.setTitle('Discard unsaved changes?');
+        this.setTitle('Leave without saving changes?');
         this.contentEl.createEl('p', {
-            text: 'This section has changes that have not been saved yet.',
+            text: 'The current value is invalid or could not be saved. Stay to fix or retry it, or discard the local change.',
         });
 
         const actions = this.contentEl.createDiv({ cls: 'modal-button-container' });
-        const stayButton = actions.createEl('button', { text: 'Keep editing' });
+        const stayButton = actions.createEl('button', { text: 'Stay' });
         stayButton.type = 'button';
         stayButton.addEventListener('click', () => this.finish(false));
 
-        const discardButton = actions.createEl('button', { text: 'Discard changes', cls: 'mod-warning' });
+        const discardButton = actions.createEl('button', { text: 'Discard local change', cls: 'mod-warning' });
         discardButton.type = 'button';
         discardButton.addEventListener('click', () => this.finish(true));
         stayButton.focus();
@@ -40,7 +40,7 @@ export class ConfirmDiscardModal extends Modal {
     }
 }
 
-export function confirmDiscardJournalChanges(app: App) {
+export function confirmDiscardJournalAutosave(app: App) {
     return new Promise<boolean>(resolve => {
         new ConfirmDiscardModal(app, resolve).open();
     });

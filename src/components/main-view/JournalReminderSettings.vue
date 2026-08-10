@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { JournalSettingsViewModel } from '../../../journalSettings';
+import type { JournalAutosaveFeedback, JournalSettingsViewModel } from '../../../journalSettings';
 import type { JournalReminderSettings, ReviewReminderPeriod } from '../../../reminders';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 import ReminderRuleEditor from './ReminderRuleEditor.vue';
 
 const props = defineProps<{
     model: JournalSettingsViewModel;
-    busy: boolean;
-    dirty: boolean;
+    autosave: JournalAutosaveFeedback;
 }>();
 
 const settings = defineModel<JournalReminderSettings>('settings', { required: true });
 
 const emit = defineEmits<{
-    change: [];
-    save: [];
+    commit: [];
+    retry: [];
+    undo: [];
     openGlobalReminders: [];
 }>();
 
@@ -33,7 +34,7 @@ const globalReminderMessage = computed(() => props.model.remindersEnabled
 
 function updateSettings(nextSettings: JournalReminderSettings) {
     settings.value = nextSettings;
-    emit('change');
+    emit('commit');
 }
 </script>
 
@@ -94,11 +95,7 @@ function updateSettings(nextSettings: JournalReminderSettings) {
             </button>
         </aside>
 
-        <footer class="journalyst-journal-reminder-save">
-            <button type="button" class="mod-cta" :disabled="busy || !dirty" @click="emit('save')">
-                Save reminders
-            </button>
-        </footer>
+        <JournalAutosaveStatus :feedback="autosave" @retry="emit('retry')" @undo="emit('undo')" />
     </div>
 </template>
 
@@ -213,11 +210,6 @@ function updateSettings(nextSettings: JournalReminderSettings) {
     color: var(--text-accent-hover);
 }
 
-.journalyst-journal-reminder-save {
-    display: flex;
-    justify-content: flex-end;
-}
-
 button:focus-visible {
     outline: 2px solid var(--interactive-accent);
     outline-offset: 2px;
@@ -229,8 +221,5 @@ button:focus-visible {
         flex-direction: column;
     }
 
-    .journalyst-journal-reminder-save button {
-        width: 100%;
-    }
 }
 </style>

@@ -30,6 +30,10 @@ import {
 } from "../cadence";
 import { hashJournalEntryBody } from "../entryCompletion";
 import {
+    type JournalAutosaveResult,
+    type JournalAutosaveSection,
+    type JournalAutosaveUndoResult,
+    type JournalAutosaveValue,
     type JournalEntrySetupUpdate,
     type JournalPromptPreviewModel,
     type JournalSettingsActionResult,
@@ -130,6 +134,53 @@ export interface JournalystPluginSettings {
     journalTemplates?: Record<string, string>;
 }
 
+interface JournalReminderHistorySnapshot {
+    records: Record<string, ReminderOccurrenceRecord>;
+}
+
+interface JournalScheduleUndoSnapshot extends JournalReminderHistorySnapshot {
+    hadTimeline: boolean;
+    timeline: JournalCadenceRevision[];
+}
+
+interface JournalEntrySetupUndoSnapshot {
+    templateEngine: TemplateEngine;
+    hadTemplatePath: boolean;
+    templatePath: string | null;
+    hadPromptSettings: boolean;
+    promptSettings: JournalPromptSettings;
+    hadPromptHistory: boolean;
+    promptHistory: JournalPromptHistory | null;
+}
+
+interface JournalReminderUndoSnapshot extends JournalReminderHistorySnapshot {
+    hadSettings: boolean;
+    settings: JournalReminderSettings;
+}
+
+type JournalSettingsUndoRecord = {
+    token: string;
+    journalPath: string;
+    section: 'schedule';
+    before: JournalScheduleUndoSnapshot;
+    after: JournalScheduleUndoSnapshot;
+} | {
+    token: string;
+    journalPath: string;
+    section: 'entry-setup';
+    before: JournalEntrySetupUndoSnapshot;
+    after: JournalEntrySetupUndoSnapshot;
+} | {
+    token: string;
+    journalPath: string;
+    section: 'reminders';
+    before: JournalReminderUndoSnapshot;
+    after: JournalReminderUndoSnapshot;
+};
+
+type WithoutUndoToken<T> = T extends unknown ? Omit<T, 'token'> : never;
+type JournalSettingsUndoInput = WithoutUndoToken<JournalSettingsUndoRecord>;
+
 const DEFAULT_SETTINGS: JournalystPluginSettings = {
 	rootDirectory: null,
     onboarding: createPendingOnboardingSettings(),
@@ -163,6 +214,7 @@ export default class JournalystPlugin extends Plugin {
     private lastReminderCheckMinute: string | null = null;
     private readonly entryCompletionByPath = new Map<string, boolean>();
     private readonly entryCompletionRevisions = new Map<string, number>();
+    private journalSettingsUndo: JournalSettingsUndoRecord | null = null;
     private onboardingNeedsMigration = false;
     private hadStoredRootDirectory = false;
     private reviewState: {
@@ -1346,7 +1398,10 @@ export default class JournalystPlugin extends Plugin {
         }
     }
 
-    async saveJournalCadence(journalPath: string, cadence: JournalCadenceConfig): Promise<CompleteOnboardingResult> {
+    async saveJournalCadence(
+        journalPath: string,
+        cadence: JournalCadenceConfig,
+    ): Promise<JournalAutosaveResult<JournalCadenceConfig>> {
         if (!this.getJournalByPath(journalPath)) {
             return { ok: false, error: 'Journalyst could not find that journal.' };
         }
@@ -1362,16 +1417,16 @@ export default class JournalystPlugin extends Plugin {
             return { ok: false, error: 'Choose a valid interval anchor date.' };
         }
         const normalized = normalizeJournalCadence(cadence);
+        this.journalSettingsUndo = null;
 
         const today = moment().format('YYYY-MM-DD');
         const timeline = this.getJournalCadenceTimeline(journalPath);
         const current = getCadenceForDate(timeline, today);
         if (current && JSON.stringify(current) === JSON.stringify(normalized)) {
-            return { ok: true };
+            return { ok: true, value: normalized, undoToken: null };
         }
 
-        const previousTimeline = this.settings.journalCadenceRevisions[journalPath];
-        const previousReminderHistory = { ...this.settings.reminderHistory };
+        const before = this.captureScheduleUndoSnapshot(journalPath);
         const nextTimeline = timeline.filter(revision => revision.effectiveFrom !== today);
         nextTimeline.push({ effectiveFrom: today, cadence: normalized });
         this.settings.journalCadenceRevisions[journalPath] = normalizeJournalCadenceTimeline(nextTimeline);
@@ -1380,12 +1435,7 @@ export default class JournalystPlugin extends Plugin {
         try {
             await this.saveSettings();
         } catch (error) {
-            if (previousTimeline) {
-                this.settings.journalCadenceRevisions[journalPath] = previousTimeline;
-            } else {
-                delete this.settings.journalCadenceRevisions[journalPath];
-            }
-            this.settings.reminderHistory = previousReminderHistory;
+            this.applyScheduleUndoSnapshot(journalPath, before);
             return {
                 ok: false,
                 error: error instanceof Error ? error.message : 'Journalyst could not save the journal schedule.',
@@ -1409,7 +1459,13 @@ export default class JournalystPlugin extends Plugin {
             console.error('Journalyst could not refresh reminders after saving the schedule.', error);
         }
         this.refreshCompletionViews();
-        return { ok: true };
+        const undoToken = this.registerJournalSettingsUndo({
+            journalPath,
+            section: 'schedule',
+            before,
+            after: this.captureScheduleUndoSnapshot(journalPath),
+        });
+        return { ok: true, value: this.getJournalCadence(journalPath), undoToken };
     }
 
     async saveJournalSchedulePause(
@@ -1480,6 +1536,7 @@ export default class JournalystPlugin extends Plugin {
         journalPath: string,
         pauses: JournalSchedulePause[],
     ): Promise<JournalSchedulePauseActionResult> {
+        this.journalSettingsUndo = null;
         const previousPauses = this.settings.journalSchedulePauses[journalPath];
         const previousReminderHistory = { ...this.settings.reminderHistory };
         this.settings.journalSchedulePauses[journalPath] = pauses;
@@ -1689,22 +1746,36 @@ export default class JournalystPlugin extends Plugin {
         };
     }
 
-    async saveJournalEntrySetup(journalPath: string, update: JournalEntrySetupUpdate): Promise<JournalSettingsActionResult> {
+    async saveJournalEntrySetup(
+        journalPath: string,
+        update: JournalEntrySetupUpdate,
+    ): Promise<JournalAutosaveResult<JournalEntrySetupUpdate>> {
         if (!this.getJournalByPath(journalPath)) {
             return { ok: false, error: 'Journalyst could not find that journal.' };
         }
 
         const templateEngine = this.settings.templateEngine;
         const templateMap = this.getJournalTemplateMap(templateEngine);
-        const previousTemplateMap = templateMap ? { ...templateMap } : null;
-        const previousPromptSettings = this.settings.journalPromptSettings[journalPath];
-        const previousPromptHistory = this.settings.journalPromptHistory[journalPath];
         const normalizedPromptSettings = normalizeJournalPromptSettings(update.promptSettings);
         const currentPromptSettings = this.getJournalPromptSettings(journalPath);
+        const normalizedUpdate: JournalEntrySetupUpdate = {
+            templatePath: templateMap ? update.templatePath : null,
+            promptSettings: normalizedPromptSettings,
+        };
+        const currentUpdate: JournalEntrySetupUpdate = {
+            templatePath: this.getJournalTemplatePath(templateEngine, journalPath) ?? null,
+            promptSettings: currentPromptSettings,
+        };
+        this.journalSettingsUndo = null;
+        if (JSON.stringify(currentUpdate) === JSON.stringify(normalizedUpdate)) {
+            return { ok: true, value: normalizedUpdate, undoToken: null };
+        }
+
+        const before = this.captureEntrySetupUndoSnapshot(journalPath);
 
         if (templateMap) {
-            if (update.templatePath) {
-                templateMap[journalPath] = update.templatePath;
+            if (normalizedUpdate.templatePath) {
+                templateMap[journalPath] = normalizedUpdate.templatePath;
             } else {
                 delete templateMap[journalPath];
             }
@@ -1717,27 +1788,21 @@ export default class JournalystPlugin extends Plugin {
         try {
             await this.saveSettings();
             this.refreshCompletionViews();
-            return { ok: true };
         } catch (error) {
-            if (templateMap && previousTemplateMap) {
-                Object.keys(templateMap).forEach(path => delete templateMap[path]);
-                Object.assign(templateMap, previousTemplateMap);
-            }
-            if (previousPromptSettings) {
-                this.settings.journalPromptSettings[journalPath] = previousPromptSettings;
-            } else {
-                delete this.settings.journalPromptSettings[journalPath];
-            }
-            if (previousPromptHistory) {
-                this.settings.journalPromptHistory[journalPath] = previousPromptHistory;
-            } else {
-                delete this.settings.journalPromptHistory[journalPath];
-            }
+            this.applyEntrySetupUndoSnapshot(journalPath, before);
             return {
                 ok: false,
                 error: error instanceof Error ? error.message : 'Journalyst could not save the entry setup.',
             };
         }
+
+        const undoToken = this.registerJournalSettingsUndo({
+            journalPath,
+            section: 'entry-setup',
+            before,
+            after: this.captureEntrySetupUndoSnapshot(journalPath),
+        });
+        return { ok: true, value: this.getJournalEntrySetupValue(journalPath), undoToken };
     }
 
     async renameJournal(journalPath: string, nextName: string): Promise<JournalSettingsActionResult> {
@@ -1765,6 +1830,7 @@ export default class JournalystPlugin extends Plugin {
 
         const oldPath = journal.path;
         const targetPath = this.getChildPath(journal.parent, normalizedName);
+        this.journalSettingsUndo = null;
         try {
             await this.app.fileManager.renameFile(journal, targetPath);
             if (this.settings.journalCadenceRevisions[oldPath]) {
@@ -1937,25 +2003,28 @@ export default class JournalystPlugin extends Plugin {
         }
     }
 
-    async saveJournalReminderSettings(journalPath: string, reminderSettings: JournalReminderSettings): Promise<JournalSettingsActionResult> {
+    async saveJournalReminderSettings(
+        journalPath: string,
+        reminderSettings: JournalReminderSettings,
+    ): Promise<JournalAutosaveResult<JournalReminderSettings>> {
         if (!this.getJournalByPath(journalPath)) {
             return { ok: false, error: 'Journalyst could not find that journal.' };
         }
 
-        const previousSettings = this.settings.journalReminderSettings[journalPath];
-        const previousHistory = { ...this.settings.reminderHistory };
-        this.settings.journalReminderSettings[journalPath] = normalizeJournalReminderSettings(reminderSettings);
+        const normalized = normalizeJournalReminderSettings(reminderSettings);
+        this.journalSettingsUndo = null;
+        if (JSON.stringify(this.getJournalReminderSettings(journalPath)) === JSON.stringify(normalized)) {
+            return { ok: true, value: normalized, undoToken: null };
+        }
+
+        const before = this.captureReminderUndoSnapshot(journalPath);
+        this.settings.journalReminderSettings[journalPath] = normalized;
         this.clearReminderHistoryForJournal(journalPath);
 
         try {
             await this.saveSettings();
         } catch (error) {
-            if (previousSettings) {
-                this.settings.journalReminderSettings[journalPath] = previousSettings;
-            } else {
-                delete this.settings.journalReminderSettings[journalPath];
-            }
-            this.settings.reminderHistory = previousHistory;
+            this.applyReminderUndoSnapshot(journalPath, before);
             return {
                 ok: false,
                 error: error instanceof Error ? error.message : 'Journalyst could not save the reminder rules.',
@@ -1968,7 +2037,53 @@ export default class JournalystPlugin extends Plugin {
             console.error('Journalyst could not refresh reminders after saving journal rules.', error);
         }
         this.refreshCompletionViews();
-        return { ok: true };
+        const undoToken = this.registerJournalSettingsUndo({
+            journalPath,
+            section: 'reminders',
+            before,
+            after: this.captureReminderUndoSnapshot(journalPath),
+        });
+        return { ok: true, value: this.getJournalReminderSettings(journalPath), undoToken };
+    }
+
+    async undoJournalSettingsChange(undoToken: string): Promise<JournalAutosaveUndoResult> {
+        const record = this.journalSettingsUndo;
+        if (!record || record.token !== undoToken) {
+            return { ok: false, error: 'That settings change can no longer be undone.', canRetry: false };
+        }
+        if (!this.getJournalByPath(record.journalPath)) {
+            this.journalSettingsUndo = null;
+            return { ok: false, error: 'Journalyst could not find that journal.', canRetry: false };
+        }
+
+        if (!this.isJournalSettingsUndoCurrent(record)) {
+            this.journalSettingsUndo = null;
+            return {
+                ok: false,
+                error: 'These settings changed again, so the previous save can no longer be undone.',
+                canRetry: false,
+            };
+        }
+
+        this.applyJournalSettingsUndoSnapshot(record, 'before');
+        try {
+            await this.saveSettings();
+        } catch (error) {
+            this.applyJournalSettingsUndoSnapshot(record, 'after');
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Journalyst could not undo that settings change.',
+                canRetry: true,
+            };
+        }
+
+        this.journalSettingsUndo = null;
+        await this.refreshJournalAutosaveEffects(record.section, record.journalPath);
+        return {
+            ok: true,
+            section: record.section,
+            value: this.getJournalAutosaveValue(record.section, record.journalPath),
+        };
     }
 
     getJournalReminderSummary(journalPath: string) {
@@ -3061,6 +3176,163 @@ export default class JournalystPlugin extends Plugin {
         });
     }
 
+    private registerJournalSettingsUndo(input: JournalSettingsUndoInput) {
+        const token = crypto.randomUUID();
+        this.journalSettingsUndo = { ...input, token } as JournalSettingsUndoRecord;
+        return token;
+    }
+
+    private captureScheduleUndoSnapshot(journalPath: string): JournalScheduleUndoSnapshot {
+        const timeline = this.settings.journalCadenceRevisions[journalPath];
+        return {
+            hadTimeline: Object.hasOwn(this.settings.journalCadenceRevisions, journalPath),
+            timeline: cloneSettingsValue(timeline ?? []),
+            records: this.captureReminderHistoryForJournal(journalPath),
+        };
+    }
+
+    private applyScheduleUndoSnapshot(journalPath: string, snapshot: JournalScheduleUndoSnapshot) {
+        if (snapshot.hadTimeline) {
+            this.settings.journalCadenceRevisions[journalPath] = cloneSettingsValue(snapshot.timeline);
+        } else {
+            delete this.settings.journalCadenceRevisions[journalPath];
+        }
+        this.applyReminderHistoryForJournal(journalPath, snapshot.records);
+    }
+
+    private captureEntrySetupUndoSnapshot(journalPath: string): JournalEntrySetupUndoSnapshot {
+        const templateEngine = this.settings.templateEngine;
+        const templateMap = this.getJournalTemplateMap(templateEngine);
+        const promptSettings = this.settings.journalPromptSettings[journalPath];
+        const promptHistory = this.settings.journalPromptHistory[journalPath];
+        return {
+            templateEngine,
+            hadTemplatePath: !!templateMap && Object.hasOwn(templateMap, journalPath),
+            templatePath: templateMap?.[journalPath] ?? null,
+            hadPromptSettings: Object.hasOwn(this.settings.journalPromptSettings, journalPath),
+            promptSettings: cloneSettingsValue(promptSettings ?? this.getJournalPromptSettings(journalPath)),
+            hadPromptHistory: Object.hasOwn(this.settings.journalPromptHistory, journalPath),
+            promptHistory: promptHistory ? cloneSettingsValue(promptHistory) : null,
+        };
+    }
+
+    private applyEntrySetupUndoSnapshot(journalPath: string, snapshot: JournalEntrySetupUndoSnapshot) {
+        const templateMap = this.getJournalTemplateMap(snapshot.templateEngine);
+        if (templateMap) {
+            if (snapshot.hadTemplatePath && snapshot.templatePath) {
+                templateMap[journalPath] = snapshot.templatePath;
+            } else {
+                delete templateMap[journalPath];
+            }
+        }
+
+        if (snapshot.hadPromptSettings) {
+            this.settings.journalPromptSettings[journalPath] = cloneSettingsValue(snapshot.promptSettings);
+        } else {
+            delete this.settings.journalPromptSettings[journalPath];
+        }
+        if (snapshot.hadPromptHistory && snapshot.promptHistory) {
+            this.settings.journalPromptHistory[journalPath] = cloneSettingsValue(snapshot.promptHistory);
+        } else {
+            delete this.settings.journalPromptHistory[journalPath];
+        }
+    }
+
+    private captureReminderUndoSnapshot(journalPath: string): JournalReminderUndoSnapshot {
+        const settings = this.settings.journalReminderSettings[journalPath];
+        return {
+            hadSettings: Object.hasOwn(this.settings.journalReminderSettings, journalPath),
+            settings: cloneSettingsValue(settings ?? this.getJournalReminderSettings(journalPath)),
+            records: this.captureReminderHistoryForJournal(journalPath),
+        };
+    }
+
+    private applyReminderUndoSnapshot(journalPath: string, snapshot: JournalReminderUndoSnapshot) {
+        if (snapshot.hadSettings) {
+            this.settings.journalReminderSettings[journalPath] = cloneSettingsValue(snapshot.settings);
+        } else {
+            delete this.settings.journalReminderSettings[journalPath];
+        }
+        this.applyReminderHistoryForJournal(journalPath, snapshot.records);
+    }
+
+    private captureReminderHistoryForJournal(journalPath: string) {
+        return cloneSettingsValue(Object.fromEntries(
+            Object.entries(this.settings.reminderHistory)
+                .filter(([, record]) => record.journalPath === journalPath),
+        ));
+    }
+
+    private applyReminderHistoryForJournal(
+        journalPath: string,
+        records: Record<string, ReminderOccurrenceRecord>,
+    ) {
+        this.clearReminderHistoryForJournal(journalPath);
+        Object.assign(this.settings.reminderHistory, cloneSettingsValue(records));
+    }
+
+    private isJournalSettingsUndoCurrent(record: JournalSettingsUndoRecord) {
+        if (record.section === 'schedule') {
+            return JSON.stringify(this.captureScheduleUndoSnapshot(record.journalPath)) === JSON.stringify(record.after);
+        }
+        if (record.section === 'entry-setup') {
+            return JSON.stringify(this.captureEntrySetupUndoSnapshot(record.journalPath)) === JSON.stringify(record.after);
+        }
+        return JSON.stringify(this.captureReminderUndoSnapshot(record.journalPath)) === JSON.stringify(record.after);
+    }
+
+    private applyJournalSettingsUndoSnapshot(
+        record: JournalSettingsUndoRecord,
+        position: 'before' | 'after',
+    ) {
+        if (record.section === 'schedule') {
+            this.applyScheduleUndoSnapshot(record.journalPath, record[position]);
+        } else if (record.section === 'entry-setup') {
+            this.applyEntrySetupUndoSnapshot(record.journalPath, record[position]);
+        } else {
+            this.applyReminderUndoSnapshot(record.journalPath, record[position]);
+        }
+    }
+
+    private getJournalEntrySetupValue(journalPath: string): JournalEntrySetupUpdate {
+        const templateEngine = this.settings.templateEngine;
+        return {
+            templatePath: this.getJournalTemplatePath(templateEngine, journalPath) ?? null,
+            promptSettings: this.getJournalPromptSettings(journalPath),
+        };
+    }
+
+    private getJournalAutosaveValue(
+        section: JournalAutosaveSection,
+        journalPath: string,
+    ): JournalAutosaveValue {
+        if (section === 'schedule') return this.getJournalCadence(journalPath);
+        if (section === 'entry-setup') return this.getJournalEntrySetupValue(journalPath);
+        return this.getJournalReminderSettings(journalPath);
+    }
+
+    private async refreshJournalAutosaveEffects(section: JournalAutosaveSection, journalPath: string) {
+        if (section === 'schedule' && this.isBasesIntegrationEnabled()) {
+            const journal = this.getJournalByPath(journalPath);
+            if (journal) {
+                try {
+                    await this.applyJournalNotePropertyBackfill(await this.getJournalBackfillItems(journal));
+                } catch (error) {
+                    console.error('Journalyst could not refresh cadence properties after undoing the schedule.', error);
+                    new Notice('The schedule was restored, but some managed Bases properties could not be refreshed.');
+                }
+            }
+        }
+        if (section === 'schedule' || section === 'reminders') {
+            try {
+                await this.checkReminderNotifications(true);
+            } catch (error) {
+                console.error('Journalyst could not refresh reminders after undoing journal settings.', error);
+            }
+        }
+        this.refreshCompletionViews();
+    }
+
     private doesTemplateEngineSupportPromptContext(templateEngine: TemplateEngine) {
         return templateEngine === 'core' || templateEngine === 'templater';
     }
@@ -3072,4 +3344,8 @@ export default class JournalystPlugin extends Plugin {
             }
         });
     }
+}
+
+function cloneSettingsValue<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
 }

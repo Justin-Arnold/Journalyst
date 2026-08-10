@@ -10,6 +10,8 @@ import type { TemplateAvailability, TemplateEngine, TemplateFailureBehavior } fr
 import type { JournalBasesIntegrationModel } from './bases';
 
 export type JournalSettingsSection = 'schedule' | 'entry-setup' | 'reminders' | 'integrations';
+export type JournalAutosaveSection = Exclude<JournalSettingsSection, 'integrations'>;
+export type JournalAutosaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'invalid';
 
 export interface JournalSettingsOption {
     label: string;
@@ -65,6 +67,40 @@ export interface JournalEntrySetupUpdate {
     templatePath: string | null;
     promptSettings: JournalPromptSettings;
 }
+
+export interface JournalAutosaveFeedback {
+    status: JournalAutosaveStatus;
+    message: string;
+    canRetry: boolean;
+    canUndo: boolean;
+}
+
+export interface JournalAutosaveValueMap {
+    schedule: JournalCadenceConfig;
+    'entry-setup': JournalEntrySetupUpdate;
+    reminders: JournalReminderSettings;
+}
+
+export type JournalAutosaveValue = JournalAutosaveValueMap[JournalAutosaveSection];
+
+export type JournalAutosaveResult<T extends JournalAutosaveValue = JournalAutosaveValue> = {
+    ok: true;
+    value: T;
+    undoToken: string | null;
+} | {
+    ok: false;
+    error: string;
+};
+
+export type JournalAutosaveUndoResult = {
+    ok: true;
+    section: JournalAutosaveSection;
+    value: JournalAutosaveValue;
+} | {
+    ok: false;
+    error: string;
+    canRetry: boolean;
+};
 
 export interface JournalSchedulePauseUpdate {
     id?: string;

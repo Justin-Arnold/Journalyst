@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type {
+    JournalAutosaveFeedback,
     JournalPromptPreviewModel,
     JournalPromptSourceOption,
     JournalSettingsViewModel,
@@ -14,21 +15,22 @@ import type {
     PromptSourceType,
 } from '../../../prompts';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 import type { MainViewActions } from './types';
 
 const props = defineProps<{
     model: JournalSettingsViewModel;
     actions: MainViewActions;
-    busy: boolean;
-    dirty: boolean;
+    autosave: JournalAutosaveFeedback;
 }>();
 
 const templatePath = defineModel<string | null>('templatePath', { required: true });
 const promptSettings = defineModel<JournalPromptSettings>('promptSettings', { required: true });
 
 const emit = defineEmits<{
-    change: [];
-    save: [];
+    commit: [];
+    retry: [];
+    undo: [];
 }>();
 
 const weekdayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -147,7 +149,6 @@ watch(
 watch(
     promptSettings,
     () => {
-        emit('change');
         void refreshPromptData();
     },
     { deep: true },
@@ -213,7 +214,7 @@ function setSourceMode(mode: 'off' | 'library' | 'note') {
 }
 
 function setDefaultSource(source: PromptSourceSelection) {
-    promptSettings.value = {
+    const nextSettings: JournalPromptSettings = {
         ...promptSettings.value,
         enabled: true,
         sourceType: source.sourceType,
@@ -221,6 +222,9 @@ function setDefaultSource(source: PromptSourceSelection) {
         selectedFilePath: source.sourceType === 'file' ? source.selectedFilePath : undefined,
         staticPromptId: undefined,
     };
+    if (JSON.stringify(nextSettings) === JSON.stringify(promptSettings.value)) return;
+    promptSettings.value = nextSettings;
+    emit('commit');
 }
 
 function setDefaultSourceFromValue(value: string) {
@@ -264,7 +268,10 @@ async function copyPromptVariable(variable: PromptTemplateVariable) {
 }
 
 function updatePrompt(patch: Partial<JournalPromptSettings>) {
-    promptSettings.value = { ...promptSettings.value, ...patch };
+    const nextSettings = { ...promptSettings.value, ...patch };
+    if (JSON.stringify(nextSettings) === JSON.stringify(promptSettings.value)) return;
+    promptSettings.value = nextSettings;
+    emit('commit');
 }
 
 function getWeekdayValue(day: number) {
@@ -354,7 +361,7 @@ function clone<T>(value: T): T {
                         v-model="templatePath"
                         :disabled="model.templateEngine === 'none' || model.templateAvailability !== 'ready'"
                         aria-label="Journal template"
-                        @change="emit('change')"
+                        @change="emit('commit')"
                     >
                         <option :value="null">Journalyst default</option>
                         <option
@@ -590,11 +597,7 @@ function clone<T>(value: T): T {
             </div>
         </section>
 
-        <footer class="journalyst-entry-setup-save">
-            <button type="button" class="mod-cta" :disabled="busy || !dirty" @click="emit('save')">
-                Save entry setup
-            </button>
-        </footer>
+        <JournalAutosaveStatus :feedback="autosave" @retry="emit('retry')" @undo="emit('undo')" />
     </div>
 </template>
 
@@ -608,6 +611,7 @@ function clone<T>(value: T): T {
 
 .journalyst-entry-setup-settings {
     gap: var(--size-4-6);
+    container-type: inline-size;
 }
 
 .journalyst-entry-setup-header,
@@ -836,12 +840,6 @@ function clone<T>(value: T): T {
     color: inherit;
 }
 
-.journalyst-entry-setup-save {
-    display: flex;
-    justify-content: flex-end;
-    padding-top: var(--size-4-2);
-}
-
 button:focus-visible,
 select:focus-visible {
     outline: 2px solid var(--interactive-accent);
@@ -881,8 +879,5 @@ select:focus-visible {
         grid-column: 1 / -1;
     }
 
-    .journalyst-entry-setup-save button {
-        width: 100%;
-    }
 }
 </style>
