@@ -87,36 +87,73 @@ export interface ReviewConfigurationInsights {
     templateLabel: string;
 }
 
-export interface DistributionDatum {
+export type AnalyticsSummaryMetricTone = 'neutral' | 'success' | 'warning';
+
+export interface AnalyticsSummaryMetric {
+    id: string;
+    label: string;
+    value: string;
+    supportingText: string;
+    comparisonText: string | null;
+    comparisonTone: AnalyticsSummaryMetricTone;
+}
+
+export type AnalyticsInsightTone = 'neutral' | 'accent' | 'success' | 'warning';
+
+export interface AnalyticsInsight {
+    id: string;
+    tone: AnalyticsInsightTone;
+    icon: string;
+    title: string;
+    description: string;
+}
+
+export interface AnalyticsChartDatum {
+    key: string;
     label: string;
     value: number;
+    valueLabel: string;
+    description: string;
+    completedCount: number;
+    totalCount: number;
+    isHighlight: boolean;
+    isEmpty: boolean;
 }
 
-export interface RankedPeriod {
-    label: string;
-    startDate: string;
-    endDate: string;
-    completedDays: number;
-    totalDays: number;
-    completionRate: number;
-}
-
-export interface RollingComparison {
-    label: string;
-    current: PeriodSummary;
-    previous: PeriodSummary;
-    rateDelta: number;
-}
-
-export interface AnalyticsCallout {
+export interface AnalyticsChartSeries {
+    id: 'weekday' | 'monthly';
     title: string;
-    body: string;
+    description: string;
+    totalLabel: string;
+    data: AnalyticsChartDatum[];
 }
+
+export interface AnalyticsRankedWeek extends PeriodSummary {
+    reviewAnchorDate: string;
+}
+
+export interface AnalyticsPerformanceMetric {
+    id: 'expected-hit-rate' | 'finished-entry-rate';
+    label: string;
+    description: string;
+    completed: number;
+    total: number;
+    percentage: number;
+    tracked: boolean;
+}
+
+export type AnalyticsYearCellState =
+    | 'complete'
+    | 'draft'
+    | 'missing-expected'
+    | 'skipped'
+    | 'future';
 
 export interface YearActivityCell extends ActivityCell {
+    filePath: string | null;
     monthLabel: string;
     dayLabel: string;
-    isFuture: boolean;
+    state: AnalyticsYearCellState;
 }
 
 export interface JournalReviewSnapshot {
@@ -138,16 +175,19 @@ export interface JournalAnalyticsSnapshot {
     journalPath: string;
     journalName: string;
     anchor: ReviewAnchor;
-    insights: ReviewInsights;
+    effectiveAnchorDate: string;
+    summaryMetrics: AnalyticsSummaryMetric[];
+    patternInsights: AnalyticsInsight[];
+    weekdayRhythm: AnalyticsChartSeries;
+    monthlyVolume: AnalyticsChartSeries;
     yearActivity: YearActivityCell[];
-    weekdayDistribution: DistributionDatum[];
-    monthlyActivity: DistributionDatum[];
-    rollingComparisons: RollingComparison[];
-    rankedPeriods: {
-        best: RankedPeriod | null;
-        worst: RankedPeriod | null;
+    rankedWeeks: {
+        strongest: AnalyticsRankedWeek | null;
+        lowest: AnalyticsRankedWeek | null;
     };
-    callouts: AnalyticsCallout[];
+    cadencePerformance: AnalyticsPerformanceMetric[];
+    cadencePerformanceDescription: string;
+    isAdHoc: boolean;
 }
 
 export interface SynthesisNotePayload {

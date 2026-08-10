@@ -500,6 +500,8 @@ defineExpose({ flushJournalSettings });
                 <AnalyticsTab
                     v-else-if="state.activeTab === 'analytics' && analyticsSnapshot"
                     :snapshot="analyticsSnapshot"
+                    @open-note="actions.openNote"
+                    @review-week="actions.setReviewState(analyticsSnapshot.journalPath, $event, 'review')"
                 />
                 <SynthesisTab
                     v-else-if="state.activeTab === 'synthesis'"

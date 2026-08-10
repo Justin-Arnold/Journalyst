@@ -1,84 +1,63 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { JournalAnalyticsSnapshot } from "../../../review/types";
-import BarChart from "./BarChart.vue";
-import CalloutGrid from "./CalloutGrid.vue";
-import WorkspaceOverview from "./WorkspaceOverview.vue";
-import WorkspaceSection from "./WorkspaceSection.vue";
-import YearCalendar from "./YearCalendar.vue";
+import type { JournalAnalyticsSnapshot } from '../../../review/types';
+import AnalyticsCadencePerformance from './AnalyticsCadencePerformance.vue';
+import AnalyticsChartPanel from './AnalyticsChartPanel.vue';
+import AnalyticsInsights from './AnalyticsInsights.vue';
+import AnalyticsRankedWeeks from './AnalyticsRankedWeeks.vue';
+import AnalyticsSummaryStrip from './AnalyticsSummaryStrip.vue';
+import WorkspaceSection from './WorkspaceSection.vue';
+import YearCalendar from './YearCalendar.vue';
 
-const props = defineProps<{
+defineProps<{
     snapshot: JournalAnalyticsSnapshot;
 }>();
 
-const overviewStats = computed(() => [
-    { label: 'Cadence', value: props.snapshot.insights.cadenceLabel },
-    { label: 'Longest streak', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.longestStreak}` : 'Off' },
-    { label: 'Longest miss', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.longestMissStretch}` : 'Off' },
-    { label: 'Total entries', value: `${props.snapshot.insights.totalEntries}` },
-]);
+const emit = defineEmits<{
+    openNote: [filePath: string];
+    reviewWeek: [anchorDate: string];
+}>();
 </script>
 
 <template>
-    <WorkspaceOverview
-        :title="snapshot.journalName"
-        :description="`Analytics anchored to ${snapshot.anchor.date}. Compare cadence-aware consistency and writing volume.`"
-        :stats="overviewStats"
+    <AnalyticsSummaryStrip :metrics="snapshot.summaryMetrics" />
+
+    <AnalyticsInsights :insights="snapshot.patternInsights" />
+
+    <section class="journalyst-analytics-chart-grid" aria-label="Journal patterns">
+        <AnalyticsChartPanel :series="snapshot.weekdayRhythm" />
+        <AnalyticsChartPanel :series="snapshot.monthlyVolume" />
+    </section>
+
+    <AnalyticsRankedWeeks
+        :strongest="snapshot.rankedWeeks.strongest"
+        :lowest="snapshot.rankedWeeks.lowest"
+        @review-week="emit('reviewWeek', $event)"
     />
 
-    <CalloutGrid title="Pattern callouts" :callouts="snapshot.callouts" />
-
-    <WorkspaceSection title="Yearly consistency" description="Expected, completed, and missed days across the current year.">
-        <div class="journalyst-review-calendar-surface">
-            <YearCalendar :cells="snapshot.yearActivity" />
-        </div>
+    <WorkspaceSection
+        :title="`${snapshot.anchor.date.slice(0, 4)} at a glance`"
+        description="One square per day, using the same completion and schedule states as Home and Review."
+    >
+        <YearCalendar :cells="snapshot.yearActivity" @open-note="emit('openNote', $event)" />
     </WorkspaceSection>
 
-    <WorkspaceSection title="Visuals" description="Consistency and volume over time.">
-        <div class="journalyst-review-visual-grid">
-            <article class="journalyst-review-visual-card">
-                <h3>Weekday rhythm</h3>
-                <p class="journalyst-review-meta">Which days you most naturally write on.</p>
-                <BarChart :data="snapshot.weekdayDistribution" variant="weekday" />
-            </article>
-            <article class="journalyst-review-visual-card">
-                <h3>Monthly volume</h3>
-                <p class="journalyst-review-meta">Entries per month across the last year.</p>
-                <BarChart :data="snapshot.monthlyActivity" variant="month" />
-            </article>
-            <article class="journalyst-review-visual-card journalyst-review-ranked-card">
-                <h3>Best and worst periods</h3>
-                <p class="journalyst-review-meta">Recent months ranked by cadence-aware completion.</p>
-                <dl class="journalyst-ranked-periods">
-                    <div>
-                        <dt>Best</dt>
-                        <dd v-if="snapshot.rankedPeriods.best">
-                            {{ snapshot.rankedPeriods.best.label }} ({{ snapshot.rankedPeriods.best.completionRate }}%)
-                        </dd>
-                        <dd v-else>Not enough history yet</dd>
-                    </div>
-                    <div>
-                        <dt>Worst</dt>
-                        <dd v-if="snapshot.rankedPeriods.worst">
-                            {{ snapshot.rankedPeriods.worst.label }} ({{ snapshot.rankedPeriods.worst.completionRate }}%)
-                        </dd>
-                        <dd v-else>Not enough history yet</dd>
-                    </div>
-                </dl>
-            </article>
-        </div>
-    </WorkspaceSection>
-
-    <WorkspaceSection title="Momentum" description="Compare your current pace with the immediately previous period.">
-        <div class="journalyst-review-grid">
-            <article v-for="comparison in snapshot.rollingComparisons" :key="comparison.label" class="journalyst-review-card">
-                <span class="journalyst-review-label">{{ comparison.label }}</span>
-                <strong>{{ comparison.current.completionRate }}%</strong>
-                <span class="journalyst-review-meta">Previous: {{ comparison.previous.completionRate }}%</span>
-                <span class="journalyst-review-meta">
-                    {{ comparison.rateDelta >= 0 ? '+' : '' }}{{ comparison.rateDelta }}% change
-                </span>
-            </article>
-        </div>
-    </WorkspaceSection>
+    <AnalyticsCadencePerformance
+        :metrics="snapshot.cadencePerformance"
+        :description="snapshot.cadencePerformanceDescription"
+    />
 </template>
+
+<style scoped>
+.journalyst-analytics-chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--size-4-4);
+    margin-bottom: var(--size-4-6);
+}
+
+@container (max-width: 58rem) {
+    .journalyst-analytics-chart-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>

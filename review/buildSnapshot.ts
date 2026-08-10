@@ -18,18 +18,19 @@ import {
 } from '../cadence';
 import { type JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
-    type AnalyticsCallout,
-    type DistributionDatum,
+    type AnalyticsChartSeries,
+    type AnalyticsInsight,
+    type AnalyticsPerformanceMetric,
+    type AnalyticsRankedWeek,
+    type AnalyticsSummaryMetric,
     type JournalAnalyticsSnapshot,
     type JournalEntryRecord,
     type JournalReviewSnapshot,
     type LookbackResult,
     type PeriodSummary,
-    type RankedPeriod,
     type ReviewActivityCell,
     type ReviewInsights,
     type ReviewTodayAction,
-    type RollingComparison,
     type SynthesisNotePreview,
     type SynthesisPeriodType,
     type YearActivityCell,
@@ -48,6 +49,13 @@ interface SnapshotContext {
     cadence: JournalCadenceSource;
     trackingStartDate: string;
     insights: ReviewInsights;
+}
+
+interface AnalyticsContext extends SnapshotContext {
+    effectiveAnchor: moment.Moment;
+    effectiveAnchorDate: string;
+    entriesThroughAnchor: JournalEntryRecord[];
+    completedEntriesThroughAnchor: JournalEntryRecord[];
 }
 
 export interface SnapshotBuildOptions {
@@ -95,18 +103,40 @@ export function buildJournalAnalyticsSnapshot(
     options: SnapshotBuildOptions = {},
 ): JournalAnalyticsSnapshot {
     const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
+    const effectiveAnchor = moment.min(context.anchor, moment().startOf('day'));
+    const effectiveAnchorDate = effectiveAnchor.format('YYYY-MM-DD');
+    const isAdHoc = !hasTrackedCadenceInRange(
+        context.cadence,
+        context.trackingStartDate,
+        effectiveAnchorDate,
+    );
+    const analyticsContext: AnalyticsContext = {
+        ...context,
+        effectiveAnchor,
+        effectiveAnchorDate,
+        entriesThroughAnchor: context.entries.filter(entry => entry.date <= effectiveAnchorDate),
+        completedEntriesThroughAnchor: context.completedEntries.filter(entry => entry.date <= effectiveAnchorDate),
+    };
+    const summaryMetrics = buildAnalyticsSummaryMetrics(analyticsContext, isAdHoc);
+    const weekdayRhythm = buildWeekdayRhythm(analyticsContext, isAdHoc);
+    const monthlyVolume = buildMonthlyVolume(analyticsContext);
 
     return {
         journalPath: context.journal.path,
         journalName: context.journal.name,
         anchor: { date: context.anchorDate },
-        insights: context.insights,
-        yearActivity: buildYearActivity(context.anchor, context.entryByDate, context.completedEntryByDate, context.cadence),
-        weekdayDistribution: buildWeekdayDistribution(context.completedEntries),
-        monthlyActivity: buildMonthlyActivity(context.completedEntries, context.anchor),
-        rollingComparisons: buildRollingComparisons(context.anchor, context.completedEntryByDate, context.cadence),
-        rankedPeriods: buildRankedPeriods(context.anchor, context.completedEntryByDate, context.cadence),
-        callouts: buildAnalyticsCallouts(context),
+        effectiveAnchorDate,
+        summaryMetrics,
+        patternInsights: buildAnalyticsInsights(analyticsContext, weekdayRhythm, isAdHoc),
+        weekdayRhythm,
+        monthlyVolume,
+        yearActivity: buildYearActivity(analyticsContext),
+        rankedWeeks: buildRankedWeeks(analyticsContext),
+        cadencePerformance: buildCadencePerformance(analyticsContext, isAdHoc),
+        cadencePerformanceDescription: isAdHoc
+            ? 'Entry completion over the last 90 days. Ad-hoc journals do not have expected-day scores.'
+            : 'Completion across the latest expected dates and the entries written during the same span.',
+        isAdHoc,
     };
 }
 
@@ -407,27 +437,493 @@ function buildTodayAction(context: SnapshotContext): ReviewTodayAction {
     return { kind: 'go-to', label: 'Go to today', date };
 }
 
-function buildYearActivity(
-    anchor: moment.Moment,
-    entryByDate: Map<string, JournalEntryRecord>,
-    completedEntryByDate: Map<string, JournalEntryRecord>,
+function buildAnalyticsSummaryMetrics(context: AnalyticsContext, isAdHoc: boolean): AnalyticsSummaryMetric[] {
+    if (isAdHoc) {
+        return [
+            buildEntryVolumeMetric(context, '30-day-volume', 'Entries in 30 days', 30),
+            buildEntryVolumeMetric(context, '90-day-volume', 'Entries in 90 days', 90),
+            {
+                id: 'lifetime-volume',
+                label: 'Lifetime entries',
+                value: `${context.entriesThroughAnchor.length}`,
+                supportingText: `${context.completedEntriesThroughAnchor.length} finished`,
+                comparisonText: null,
+                comparisonTone: 'neutral',
+            },
+        ];
+    }
+
+    const thirtyDayComparison = createAnalyticsPeriodComparison(30, context);
+    const ninetyDayComparison = createAnalyticsPeriodComparison(90, context);
+    const currentStreakWindow = getAverageStreak(
+        context.cadence,
+        context.completedEntryByDate,
+        context.effectiveAnchor.clone().subtract(89, 'days'),
+        context.effectiveAnchor,
+    );
+    const previousStreakWindow = getAverageStreak(
+        context.cadence,
+        context.completedEntryByDate,
+        context.effectiveAnchor.clone().subtract(179, 'days'),
+        context.effectiveAnchor.clone().subtract(90, 'days'),
+    );
+    const averageDelta = currentStreakWindow.average - previousStreakWindow.average;
+
+    return [
+        buildCompletionMetric('30-day-completion', '30-day completion', thirtyDayComparison),
+        buildCompletionMetric('90-day-completion', '90-day completion', ninetyDayComparison),
+        {
+            id: 'average-streak',
+            label: 'Average streak',
+            value: currentStreakWindow.expectedCount > 0
+                ? `${currentStreakWindow.average.toFixed(1)} days`
+                : 'Not scored',
+            supportingText: currentStreakWindow.runCount > 0
+                ? `${currentStreakWindow.runCount} completed run${currentStreakWindow.runCount === 1 ? '' : 's'} in 90 days`
+                : 'No completed runs in 90 days',
+            comparisonText: currentStreakWindow.expectedCount > 0 && previousStreakWindow.expectedCount > 0
+                ? formatDecimalComparison(averageDelta)
+                : null,
+            comparisonTone: getComparisonTone(Math.abs(averageDelta) < 0.05 ? 0 : averageDelta),
+        },
+    ];
+}
+
+function buildEntryVolumeMetric(
+    context: AnalyticsContext,
+    id: string,
+    label: string,
+    durationDays: number,
+): AnalyticsSummaryMetric {
+    const currentStart = context.effectiveAnchor.clone().subtract(durationDays - 1, 'days');
+    const previousEnd = currentStart.clone().subtract(1, 'day');
+    const previousStart = previousEnd.clone().subtract(durationDays - 1, 'days');
+    const currentEntries = getEntriesInRange(context.entriesThroughAnchor, currentStart, context.effectiveAnchor);
+    const previousEntries = getEntriesInRange(context.entriesThroughAnchor, previousStart, previousEnd);
+    const finishedCount = currentEntries.filter(entry => entry.isComplete).length;
+    const delta = currentEntries.length - previousEntries.length;
+
+    return {
+        id,
+        label,
+        value: `${currentEntries.length}`,
+        supportingText: `${finishedCount} finished`,
+        comparisonText: formatCountComparison(delta),
+        comparisonTone: getComparisonTone(delta),
+    };
+}
+
+interface AnalyticsPeriodComparison {
+    current: PeriodSummary;
+    previous: PeriodSummary;
+    delta: number;
+}
+
+function createAnalyticsPeriodComparison(durationDays: number, context: AnalyticsContext): AnalyticsPeriodComparison {
+    const current = createRollingSummary(
+        `Last ${durationDays} days`,
+        durationDays,
+        context.effectiveAnchor,
+        context.completedEntryByDate,
+        context.cadence,
+    );
+    const previous = createRollingSummary(
+        `Previous ${durationDays} days`,
+        durationDays,
+        context.effectiveAnchor.clone().subtract(durationDays, 'days'),
+        context.completedEntryByDate,
+        context.cadence,
+    );
+
+    return {
+        current,
+        previous,
+        delta: current.completionRate - previous.completionRate,
+    };
+}
+
+function buildCompletionMetric(
+    id: string,
+    label: string,
+    comparison: AnalyticsPeriodComparison,
+): AnalyticsSummaryMetric {
+    const scored = comparison.current.totalDays > 0;
+    const comparable = scored && comparison.previous.totalDays > 0;
+
+    return {
+        id,
+        label,
+        value: scored ? `${comparison.current.completionRate}%` : 'Not scored',
+        supportingText: scored
+            ? `${comparison.current.completedDays} of ${comparison.current.totalDays} expected`
+            : 'No expected days in this window',
+        comparisonText: comparable ? formatPointComparison(comparison.delta) : null,
+        comparisonTone: getComparisonTone(comparison.delta),
+    };
+}
+
+function getAverageStreak(
     cadence: JournalCadenceSource,
-): YearActivityCell[] {
-    const start = anchor.clone().startOf('year');
-    const end = anchor.clone().endOf('year');
+    entryByDate: Map<string, JournalEntryRecord>,
+    start: moment.Moment,
+    end: moment.Moment,
+) {
+    const expectedDates = getExpectedDatesInRange(
+        cadence,
+        start.format('YYYY-MM-DD'),
+        end.format('YYYY-MM-DD'),
+    );
+    const runs: number[] = [];
+    let currentRun = 0;
+
+    expectedDates.forEach(date => {
+        if (entryByDate.has(date)) {
+            currentRun += 1;
+            return;
+        }
+
+        if (currentRun > 0) {
+            runs.push(currentRun);
+            currentRun = 0;
+        }
+    });
+
+    if (currentRun > 0) {
+        runs.push(currentRun);
+    }
+
+    return {
+        average: runs.length > 0 ? runs.reduce((sum, run) => sum + run, 0) / runs.length : 0,
+        runCount: runs.length,
+        expectedCount: expectedDates.length,
+    };
+}
+
+function buildWeekdayRhythm(context: AnalyticsContext, isAdHoc: boolean): AnalyticsChartSeries {
+    const start = context.effectiveAnchor.clone().subtract(83, 'days');
+    const entries = getEntriesInRange(context.entriesThroughAnchor, start, context.effectiveAnchor);
+    const completedEntries = entries.filter(entry => entry.isComplete);
+
+    if (isAdHoc) {
+        const counts = new Map<number, { total: number; completed: number }>();
+        entries.forEach(entry => {
+            const weekday = moment(entry.date, 'YYYY-MM-DD', true).day();
+            const current = counts.get(weekday) ?? { total: 0, completed: 0 };
+            current.total += 1;
+            if (entry.isComplete) current.completed += 1;
+            counts.set(weekday, current);
+        });
+
+        const rawData = WEEKDAY_LABELS.map((label, index) => {
+            const count = counts.get(index) ?? { total: 0, completed: 0 };
+            return {
+                key: `${index}`,
+                label: label.slice(0, 3),
+                value: count.total,
+                valueLabel: `${count.total}`,
+                description: `${count.total} entr${count.total === 1 ? 'y' : 'ies'}, ${count.completed} finished`,
+                completedCount: count.completed,
+                totalCount: count.total,
+                isHighlight: false,
+                isEmpty: count.total === 0,
+            };
+        });
+
+        return {
+            id: 'weekday',
+            title: 'Weekday rhythm',
+            description: 'Entry volume by weekday over the last 12 weeks.',
+            totalLabel: `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} in 12 weeks`,
+            data: highlightStrongestDatum(rawData),
+        };
+    }
+
+    const expectedDates = getExpectedDatesInRange(
+        context.cadence,
+        start.format('YYYY-MM-DD'),
+        context.effectiveAnchorDate,
+    );
+    const expectedCounts = new Map<number, number>();
+    const completedCounts = new Map<number, number>();
+    expectedDates.forEach(date => {
+        const weekday = moment(date, 'YYYY-MM-DD', true).day();
+        expectedCounts.set(weekday, (expectedCounts.get(weekday) ?? 0) + 1);
+        if (context.completedEntryByDate.has(date)) {
+            completedCounts.set(weekday, (completedCounts.get(weekday) ?? 0) + 1);
+        }
+    });
+
+    const rawData = WEEKDAY_LABELS.map((label, index) => {
+        const expected = expectedCounts.get(index) ?? 0;
+        const completed = completedCounts.get(index) ?? 0;
+        const rate = expected > 0 ? Math.round((completed / expected) * 100) : 0;
+        return {
+            key: `${index}`,
+            label: label.slice(0, 3),
+            value: rate,
+            valueLabel: expected > 0 ? `${rate}%` : 'Off',
+            description: expected > 0
+                ? `${completed} of ${expected} expected entries completed`
+                : 'Not scheduled on this weekday',
+            completedCount: completed,
+            totalCount: expected,
+            isHighlight: false,
+            isEmpty: expected === 0,
+        };
+    });
+
+    return {
+        id: 'weekday',
+        title: 'Weekday rhythm',
+        description: 'Completion rate on expected weekdays over the last 12 weeks.',
+        totalLabel: `${completedEntries.length} finished entr${completedEntries.length === 1 ? 'y' : 'ies'} in 12 weeks`,
+        data: highlightStrongestDatum(rawData),
+    };
+}
+
+function buildMonthlyVolume(context: AnalyticsContext): AnalyticsChartSeries {
+    const start = context.effectiveAnchor.clone().subtract(11, 'months').startOf('month');
+    const entries = getEntriesInRange(context.entriesThroughAnchor, start, context.effectiveAnchor);
+    const counts = new Map<string, { total: number; completed: number }>();
+    entries.forEach(entry => {
+        const month = moment(entry.date, 'YYYY-MM-DD', true).format('YYYY-MM');
+        const current = counts.get(month) ?? { total: 0, completed: 0 };
+        current.total += 1;
+        if (entry.isComplete) current.completed += 1;
+        counts.set(month, current);
+    });
+
+    const rawData = Array.from({ length: 12 }, (_, index) => {
+        const month = context.effectiveAnchor.clone().subtract(11 - index, 'months');
+        const key = month.format('YYYY-MM');
+        const count = counts.get(key) ?? { total: 0, completed: 0 };
+        return {
+            key,
+            label: month.format('MMM'),
+            value: count.total,
+            valueLabel: `${count.total}`,
+            description: `${count.total} entr${count.total === 1 ? 'y' : 'ies'}, ${count.completed} finished`,
+            completedCount: count.completed,
+            totalCount: count.total,
+            isHighlight: false,
+            isEmpty: count.total === 0,
+        };
+    });
+
+    return {
+        id: 'monthly',
+        title: 'Monthly volume',
+        description: 'Recognized entries per month across the trailing year.',
+        totalLabel: `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} in 12 months`,
+        data: highlightStrongestDatum(rawData),
+    };
+}
+
+function highlightStrongestDatum(data: AnalyticsChartSeries['data']) {
+    const strongest = data
+        .filter(item => !item.isEmpty)
+        .sort((left, right) => right.value - left.value || right.totalCount - left.totalCount)[0];
+
+    return data.map(item => ({
+        ...item,
+        isHighlight: !!strongest && item.key === strongest.key,
+    }));
+}
+
+function buildAnalyticsInsights(
+    context: AnalyticsContext,
+    weekdayRhythm: AnalyticsChartSeries,
+    isAdHoc: boolean,
+): AnalyticsInsight[] {
+    const insights: AnalyticsInsight[] = [];
+    const strongestWeekday = weekdayRhythm.data
+        .filter(item => isAdHoc ? item.totalCount > 0 : item.totalCount >= 3)
+        .sort((left, right) => right.value - left.value || right.totalCount - left.totalCount)[0];
+
+    if (strongestWeekday) {
+        const weekday = WEEKDAY_LABELS[Number.parseInt(strongestWeekday.key, 10)];
+        insights.push(isAdHoc
+            ? {
+                id: 'strongest-weekday',
+                tone: 'accent',
+                icon: 'calendar-days',
+                title: `${weekday}s are your busiest`,
+                description: `${strongestWeekday.totalCount} entries landed on ${weekday}s over the last 12 weeks.`,
+            }
+            : {
+                id: 'strongest-weekday',
+                tone: 'success',
+                icon: 'trending-up',
+                title: `${weekday}s are your strongest`,
+                description: `${strongestWeekday.value}% completion across ${strongestWeekday.totalCount} expected ${weekday}s in the last 12 weeks.`,
+            });
+    }
+
+    if (isAdHoc) {
+        const busiestMonth = context.entriesThroughAnchor.length >= 3
+            ? buildMonthlyVolume(context).data
+                .filter(item => item.totalCount > 0)
+                .sort((left, right) => right.totalCount - left.totalCount)[0]
+            : null;
+        if (busiestMonth) {
+            insights.push({
+                id: 'busiest-month',
+                tone: 'accent',
+                icon: 'chart-no-axes-column-increasing',
+                title: `${moment(busiestMonth.key, 'YYYY-MM').format('MMMM')} carried the most activity`,
+                description: `${busiestMonth.totalCount} entries were created during that month.`,
+            });
+        }
+    } else {
+        const comparison = createAnalyticsPeriodComparison(90, context);
+        const comparable = comparison.current.totalDays >= 4 && comparison.previous.totalDays >= 4;
+        if (comparable && Math.abs(comparison.delta) >= 5) {
+            insights.push(comparison.delta > 0
+                ? {
+                    id: 'ninety-day-momentum',
+                    tone: 'success',
+                    icon: 'trending-up',
+                    title: 'Your 90-day rhythm is improving',
+                    description: `Completion rose ${comparison.delta} points compared with the preceding 90 days.`,
+                }
+                : {
+                    id: 'ninety-day-momentum',
+                    tone: 'warning',
+                    icon: 'trending-down',
+                    title: 'Your 90-day rhythm has eased',
+                    description: `Completion is ${Math.abs(comparison.delta)} points lower than the preceding 90 days.`,
+                });
+        } else {
+            const monthlyInsight = buildMonthlyCompletionInsight(context);
+            if (monthlyInsight) insights.push(monthlyInsight);
+        }
+    }
+
+    if (insights.length === 0) {
+        return [{
+            id: 'building-patterns',
+            tone: 'neutral',
+            icon: 'sparkles',
+            title: 'Patterns are still taking shape',
+            description: 'Keep writing and Journalyst will surface reliable weekday and momentum signals here.',
+        }];
+    }
+
+    return insights.slice(0, 2);
+}
+
+function buildMonthlyCompletionInsight(context: AnalyticsContext): AnalyticsInsight | null {
+    const start = context.effectiveAnchor.clone().subtract(11, 'months').startOf('month');
+    const overall = createPeriodSummary(
+        'Trailing year',
+        start,
+        context.effectiveAnchor,
+        context.completedEntryByDate,
+        context.cadence,
+    );
+    const months = Array.from({ length: 12 }, (_, index) => {
+        const month = context.effectiveAnchor.clone().subtract(11 - index, 'months');
+        const end = moment.min(month.clone().endOf('month'), context.effectiveAnchor);
+        return createPeriodSummary(
+            month.format('MMMM YYYY'),
+            month.clone().startOf('month'),
+            end,
+            context.completedEntryByDate,
+            context.cadence,
+        );
+    }).filter(month => month.totalDays >= 2);
+
+    if (overall.totalDays === 0 || months.length === 0) return null;
+
+    const softest = [...months].sort((left, right) => left.completionRate - right.completionRate)[0];
+    if (softest.completionRate <= overall.completionRate - 10) {
+        return {
+            id: 'softest-month',
+            tone: 'warning',
+            icon: 'calendar-clock',
+            title: `${softest.label} was a softer month`,
+            description: `${softest.completionRate}% completion compared with ${overall.completionRate}% across the trailing year.`,
+        };
+    }
+
+    const strongest = [...months].sort((left, right) => right.completionRate - left.completionRate)[0];
+    if (strongest.completionRate >= overall.completionRate + 10) {
+        return {
+            id: 'strongest-month',
+            tone: 'success',
+            icon: 'calendar-check-2',
+            title: `${strongest.label} stood out`,
+            description: `${strongest.completionRate}% completion compared with ${overall.completionRate}% across the trailing year.`,
+        };
+    }
+
+    return null;
+}
+
+function buildRankedWeeks(context: AnalyticsContext) {
+    const currentWeekStart = context.effectiveAnchor.clone().startOf('week');
+    const weeks: AnalyticsRankedWeek[] = [];
+
+    for (let index = 12; index >= 1; index -= 1) {
+        const start = currentWeekStart.clone().subtract(index, 'weeks');
+        const end = start.clone().endOf('week');
+        const summary = createPeriodSummary(
+            `Week of ${start.format('MMM D')} - ${end.format('MMM D')}`,
+            start,
+            end,
+            context.completedEntryByDate,
+            context.cadence,
+        );
+        if (summary.totalDays > 0) {
+            weeks.push({
+                ...summary,
+                reviewAnchorDate: summary.endDate,
+            });
+        }
+    }
+
+    const strongest = [...weeks].sort((left, right) => (
+        right.completionRate - left.completionRate
+        || right.completedDays - left.completedDays
+        || right.startDate.localeCompare(left.startDate)
+    ))[0] ?? null;
+    const lowest = weeks.length >= 2
+        ? [...weeks].sort((left, right) => (
+            left.completionRate - right.completionRate
+            || left.completedDays - right.completedDays
+            || right.startDate.localeCompare(left.startDate)
+        ))[0] ?? null
+        : null;
+
+    return { strongest, lowest };
+}
+
+function buildYearActivity(context: AnalyticsContext): YearActivityCell[] {
+    const start = context.anchor.clone().startOf('year');
+    const end = context.anchor.clone().endOf('year');
     const cells: YearActivityCell[] = [];
     let cursor = start.clone();
 
     while (cursor.isSameOrBefore(end, 'day')) {
         const date = cursor.format('YYYY-MM-DD');
+        const entry = context.entryByDate.get(date) ?? null;
+        const isFuture = date > context.effectiveAnchorDate;
+        const isExpected = !isFuture && isExpectedOnDate(context.cadence, date);
+        const state = isFuture
+            ? 'future'
+            : entry
+                ? entry.isComplete ? 'complete' : 'draft'
+                : date < context.trackingStartDate || !isExpected ? 'skipped' : 'missing-expected';
+
         cells.push({
             date,
-            hasEntry: entryByDate.has(date),
-            isComplete: completedEntryByDate.has(date),
-            isExpected: isExpectedOnDate(cadence, date),
-            isFuture: cursor.isAfter(anchor, 'day'),
+            hasEntry: !!entry,
+            isComplete: entry?.isComplete ?? false,
+            isExpected,
+            filePath: entry?.filePath ?? null,
             monthLabel: cursor.format('MMM'),
             dayLabel: cursor.format('D'),
+            state,
         });
         cursor.add(1, 'day');
     }
@@ -435,130 +931,91 @@ function buildYearActivity(
     return cells;
 }
 
-function buildWeekdayDistribution(entries: JournalEntryRecord[]): DistributionDatum[] {
-    const counts = new Map<number, number>();
-
-    entries.forEach(entry => {
-        const weekday = moment(entry.date, 'YYYY-MM-DD', true).day();
-        counts.set(weekday, (counts.get(weekday) ?? 0) + 1);
-    });
-
-    return WEEKDAY_LABELS.map((label, index) => ({
-        label: label.slice(0, 3),
-        value: counts.get(index) ?? 0,
-    }));
-}
-
-function buildMonthlyActivity(entries: JournalEntryRecord[], anchor: moment.Moment): DistributionDatum[] {
-    const counts = new Map<string, number>();
-
-    entries.forEach(entry => {
-        const month = moment(entry.date, 'YYYY-MM-DD', true).format('YYYY-MM');
-        counts.set(month, (counts.get(month) ?? 0) + 1);
-    });
-
-    const data: DistributionDatum[] = [];
-
-    for (let index = 11; index >= 0; index -= 1) {
-        const month = anchor.clone().subtract(index, 'months').format('YYYY-MM');
-        data.push({
-            label: anchor.clone().subtract(index, 'months').format('MMM'),
-            value: counts.get(month) ?? 0,
-        });
+function buildCadencePerformance(
+    context: AnalyticsContext,
+    isAdHoc: boolean,
+): AnalyticsPerformanceMetric[] {
+    if (isAdHoc) {
+        const start = context.effectiveAnchor.clone().subtract(89, 'days');
+        const entries = getEntriesInRange(context.entriesThroughAnchor, start, context.effectiveAnchor);
+        return [buildFinishedEntryMetric(entries, 'Recognized entries from the last 90 days.')];
     }
 
-    return data;
-}
+    const expectedDates = getExpectedDatesInRange(
+        context.cadence,
+        context.trackingStartDate,
+        context.effectiveAnchorDate,
+    ).slice(-120);
+    const completedExpected = expectedDates.filter(date => context.completedEntryByDate.has(date)).length;
+    const expectedMetric: AnalyticsPerformanceMetric = {
+        id: 'expected-hit-rate',
+        label: 'Expected-day hit rate',
+        description: expectedDates.length > 0
+            ? `Latest ${expectedDates.length} expected day${expectedDates.length === 1 ? '' : 's'}.`
+            : 'No expected days are available yet.',
+        completed: completedExpected,
+        total: expectedDates.length,
+        percentage: expectedDates.length > 0
+            ? Math.round((completedExpected / expectedDates.length) * 100)
+            : 0,
+        tracked: expectedDates.length > 0,
+    };
+    const performanceStart = expectedDates[0]
+        ? moment(expectedDates[0], 'YYYY-MM-DD', true)
+        : context.effectiveAnchor.clone().subtract(89, 'days');
+    const entries = getEntriesInRange(context.entriesThroughAnchor, performanceStart, context.effectiveAnchor);
 
-function buildRollingComparisons(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: JournalCadenceSource): RollingComparison[] {
     return [
-        createRollingComparison('30-day momentum', 30, anchor, entryByDate, cadence),
-        createRollingComparison('90-day momentum', 90, anchor, entryByDate, cadence),
+        expectedMetric,
+        buildFinishedEntryMetric(entries, 'Recognized entries across the same calendar span.'),
     ];
 }
 
-function createRollingComparison(
-    label: string,
-    durationDays: number,
-    anchor: moment.Moment,
-    entryByDate: Map<string, JournalEntryRecord>,
-    cadence: JournalCadenceSource,
-): RollingComparison {
-    const current = createRollingSummary(`Current ${durationDays} days`, durationDays, anchor, entryByDate, cadence);
-    const previousEnd = anchor.clone().subtract(durationDays, 'days');
-    const previous = createRollingSummary(`Previous ${durationDays} days`, durationDays, previousEnd, entryByDate, cadence);
-
+function buildFinishedEntryMetric(
+    entries: JournalEntryRecord[],
+    description: string,
+): AnalyticsPerformanceMetric {
+    const completed = entries.filter(entry => entry.isComplete).length;
     return {
-        label,
-        current,
-        previous,
-        rateDelta: current.completionRate - previous.completionRate,
+        id: 'finished-entry-rate',
+        label: 'Finished-entry rate',
+        description,
+        completed,
+        total: entries.length,
+        percentage: entries.length > 0 ? Math.round((completed / entries.length) * 100) : 0,
+        tracked: entries.length > 0,
     };
 }
 
-function buildRankedPeriods(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>, cadence: JournalCadenceSource) {
-    const periods: RankedPeriod[] = [];
-    for (let index = 5; index >= 0; index -= 1) {
-        const month = anchor.clone().subtract(index, 'months');
-        const summary = createPeriodSummary(month.format('MMM YYYY'), month.clone().startOf('month'), month.clone().endOf('month'), entryByDate, cadence);
-        if (summary.totalDays > 0) {
-            periods.push(summary);
-        }
-    }
-
-    const sorted = [...periods].sort((left, right) => right.completionRate - left.completionRate || left.startDate.localeCompare(right.startDate));
-
-    return {
-        best: sorted[0] ?? null,
-        worst: sorted[sorted.length - 1] ?? null,
-    };
+function getEntriesInRange(
+    entries: JournalEntryRecord[],
+    start: moment.Moment,
+    end: moment.Moment,
+) {
+    const startDate = start.format('YYYY-MM-DD');
+    const endDate = end.format('YYYY-MM-DD');
+    return entries.filter(entry => entry.date >= startDate && entry.date <= endDate);
 }
 
-function buildAnalyticsCallouts(context: SnapshotContext): AnalyticsCallout[] {
-    const comparisons = buildRollingComparisons(context.anchor, context.completedEntryByDate, context.cadence);
-    const ranked = buildRankedPeriods(context.anchor, context.completedEntryByDate, context.cadence);
-    const callouts: AnalyticsCallout[] = [];
+function formatPointComparison(delta: number) {
+    if (delta === 0) return 'No change vs prior';
+    return `${delta > 0 ? '+' : ''}${delta} points vs prior`;
+}
 
-    comparisons.forEach(comparison => {
-        if (!comparison.current.tracked) {
-            return;
-        }
+function formatDecimalComparison(delta: number) {
+    if (Math.abs(delta) < 0.05) return 'No change vs prior';
+    return `${delta > 0 ? '+' : ''}${delta.toFixed(1)} vs prior`;
+}
 
-        if (comparison.rateDelta > 0) {
-            callouts.push({
-                title: comparison.label,
-                body: `You are up ${comparison.rateDelta}% compared with the prior period.`,
-            });
-        } else if (comparison.rateDelta < 0) {
-            callouts.push({
-                title: comparison.label,
-                body: `You are down ${Math.abs(comparison.rateDelta)}% compared with the prior period.`,
-            });
-        }
-    });
+function formatCountComparison(delta: number) {
+    if (delta === 0) return 'No change vs prior';
+    return delta > 0 ? `+${delta} vs prior` : `${Math.abs(delta)} fewer vs prior`;
+}
 
-    if (ranked.best) {
-        callouts.push({
-            title: 'Best recent period',
-            body: `${ranked.best.label} was your strongest recent stretch at ${ranked.best.completionRate}% completion.`,
-        });
-    }
-
-    if (ranked.worst && ranked.worst !== ranked.best) {
-        callouts.push({
-            title: 'Weakest recent period',
-            body: `${ranked.worst.label} was your softest recent stretch at ${ranked.worst.completionRate}% completion.`,
-        });
-    }
-
-    if (context.insights.busiestWeekday) {
-        callouts.push({
-            title: 'Weekly bias',
-            body: `You tend to write most on ${context.insights.busiestWeekday}s.`,
-        });
-    }
-
-    return callouts.slice(0, 4);
+function getComparisonTone(delta: number): AnalyticsSummaryMetric['comparisonTone'] {
+    if (delta > 0) return 'success';
+    if (delta < 0) return 'warning';
+    return 'neutral';
 }
 
 function buildStrongestPatterns(context: SnapshotContext, summary: PeriodSummary) {
