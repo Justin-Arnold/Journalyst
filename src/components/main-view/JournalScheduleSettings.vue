@@ -8,6 +8,7 @@ import {
     type JournalSchedulePause,
 } from '../../../cadence';
 import type { JournalAutosaveFeedback, JournalSettingsViewModel } from '../../../journalSettings';
+import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
 import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 
@@ -201,13 +202,14 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                 <span>{{ model.cadenceHistory.length }} {{ model.cadenceHistory.length === 1 ? 'revision' : 'revisions' }}</span>
             </header>
 
-            <div class="journalyst-schedule-info">
-                <ObsidianIcon name="info" />
-                <div>
-                    <strong>Dates keep their original schedule</strong>
-                    <p>Each day uses the rule active on that date, so a cadence change never creates backdated misses.</p>
-                </div>
-            </div>
+            <AlertCard
+                class="journalyst-schedule-guidance"
+                tone="accent"
+                density="compact"
+                icon="info"
+                title="Dates keep their original schedule"
+                description="Each day uses the rule active on that date, so a cadence change never creates backdated misses."
+            />
 
             <ol class="journalyst-schedule-history">
                 <li v-for="revision in changeLog" :key="revision.effectiveFrom" :class="{ 'is-current': revision.isCurrent }">
@@ -331,8 +333,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 }
 
 .journalyst-schedule-setting-row h3,
-.journalyst-schedule-setting-row p,
-.journalyst-schedule-info p {
+.journalyst-schedule-setting-row p {
     margin: 0;
 }
 
@@ -341,7 +342,6 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 }
 
 .journalyst-schedule-setting-row p,
-.journalyst-schedule-info p,
 .journalyst-schedule-history-range,
 .journalyst-schedule-pause-copy span,
 .journalyst-schedule-empty-state {
@@ -388,22 +388,8 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
     color: var(--text-error);
 }
 
-.journalyst-schedule-info {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: var(--size-4-3);
+.journalyst-schedule-guidance {
     margin-top: var(--size-4-3);
-    padding: var(--size-4-3);
-    border-left: 3px solid var(--interactive-accent);
-    background: var(--background-secondary);
-}
-
-.journalyst-schedule-info > :first-child {
-    color: var(--text-accent);
-}
-
-.journalyst-schedule-info p {
-    margin-top: var(--size-4-1);
 }
 
 .journalyst-schedule-history,

@@ -5,6 +5,7 @@ import type {
     JournalBaseResource,
     JournalBasesIntegrationModel,
 } from '../../../bases';
+import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
 
 const props = defineProps<{
@@ -63,22 +64,32 @@ function resourceStatusLabel(resource: JournalBaseResource) {
                 </span>
             </header>
 
-            <div v-if="!model.globalEnabled" class="journalyst-bases-guidance is-warning">
-                <ObsidianIcon name="circle-alert" />
-                <div>
-                    <strong>Bases integration is off</strong>
-                    <p>Enable it globally before Journalyst creates Base files or adds metadata to new entries.</p>
-                </div>
-                <button type="button" @click="emit('openPluginSettings')">Open settings</button>
-            </div>
-            <div v-else-if="!model.corePluginAvailable" class="journalyst-bases-guidance is-warning">
-                <ObsidianIcon name="circle-alert" />
-                <div>
-                    <strong>The Bases core plugin is unavailable</strong>
-                    <p>Enable Bases in Obsidian before creating or opening Journalyst's starter views.</p>
-                </div>
-                <button type="button" @click="emit('openCorePlugins')">Open Core plugins</button>
-            </div>
+            <AlertCard
+                v-if="!model.globalEnabled"
+                class="journalyst-bases-guidance"
+                tone="warning"
+                density="compact"
+                icon="circle-alert"
+                title="Bases integration is off"
+                description="Enable it globally before Journalyst creates Base files or adds metadata to new entries."
+            >
+                <template #actions>
+                    <button type="button" @click="emit('openPluginSettings')">Open settings</button>
+                </template>
+            </AlertCard>
+            <AlertCard
+                v-else-if="!model.corePluginAvailable"
+                class="journalyst-bases-guidance"
+                tone="warning"
+                density="compact"
+                icon="circle-alert"
+                title="The Bases core plugin is unavailable"
+                description="Enable Bases in Obsidian before creating or opening Journalyst's starter views."
+            >
+                <template #actions>
+                    <button type="button" @click="emit('openCorePlugins')">Open Core plugins</button>
+                </template>
+            </AlertCard>
             <p v-else class="journalyst-bases-intro">
                 Journalyst supplies starter views over local journal properties. Once created, each Base is yours to customize.
             </p>
@@ -209,7 +220,6 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 .journalyst-bases-subheader,
 .journalyst-bases-title,
 .journalyst-bases-subheader > span,
-.journalyst-bases-guidance,
 .journalyst-bases-resource,
 .journalyst-bases-resource-heading,
 .journalyst-bases-resource-actions,
@@ -274,36 +284,14 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 }
 
 .journalyst-bases-guidance {
-    align-items: flex-start;
-    gap: var(--size-4-3);
-    padding: var(--size-4-3) var(--size-4-1) 0;
-    color: var(--text-muted);
-    flex-wrap: wrap;
+    margin-top: var(--size-4-3);
 }
 
-.journalyst-bases-guidance > :first-child {
-    margin-top: var(--size-2-1);
-}
-
-.journalyst-bases-guidance.is-warning > :first-child {
-    color: var(--text-warning);
-}
-
-.journalyst-bases-guidance div {
-    min-width: 0;
-    flex: 1 1 20rem;
-}
-
-.journalyst-bases-guidance p,
 .journalyst-bases-resource-copy p,
 .journalyst-bases-property-row p,
 .journalyst-bases-backfill-row p {
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
-}
-
-.journalyst-bases-guidance button {
-    margin-left: auto;
 }
 
 .journalyst-bases-subheader > span:last-child:not(:first-child) {
@@ -445,13 +433,11 @@ button:focus-visible {
 
 @container (max-width: 24rem) {
     .journalyst-bases-header,
-    .journalyst-bases-subheader,
-    .journalyst-bases-guidance {
+    .journalyst-bases-subheader {
         align-items: flex-start;
         flex-direction: column;
     }
 
-    .journalyst-bases-guidance button,
     .journalyst-bases-resource-actions button:not(.journalyst-bases-reset),
     .journalyst-bases-backfill-row button {
         width: 100%;

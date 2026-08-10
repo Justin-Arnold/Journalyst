@@ -14,6 +14,7 @@ import type {
     PromptSourceSelection,
     PromptSourceType,
 } from '../../../prompts';
+import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
 import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 import type { MainViewActions } from './types';
@@ -398,10 +399,15 @@ function clone<T>(value: T): T {
                 </button>
             </div>
 
-            <p v-if="templateAvailabilityText" class="journalyst-entry-setup-warning" role="status">
-                <ObsidianIcon name="triangle-alert" />
-                <span>{{ templateAvailabilityText }}</span>
-            </p>
+            <AlertCard
+                v-if="templateAvailabilityText"
+                class="journalyst-entry-setup-guidance"
+                tone="warning"
+                density="compact"
+                icon="triangle-alert"
+                :title="templateAvailabilityText"
+                role="status"
+            />
         </section>
 
         <section class="journalyst-entry-setup-block">
@@ -509,15 +515,23 @@ function clone<T>(value: T): T {
                 </div>
             </template>
 
-            <p v-if="promptStatusText" class="journalyst-entry-setup-warning" role="status">
-                <ObsidianIcon name="triangle-alert" />
-                <span>{{ promptStatusText }}</span>
-            </p>
-            <div v-else-if="promptInfoText" class="journalyst-prompt-variable-help">
-                <p class="journalyst-entry-setup-info">
-                    <ObsidianIcon name="info" />
-                    <span>{{ promptInfoText }}</span>
-                </p>
+            <AlertCard
+                v-if="promptStatusText"
+                class="journalyst-entry-setup-guidance"
+                tone="warning"
+                density="compact"
+                icon="triangle-alert"
+                :title="promptStatusText"
+                role="status"
+            />
+            <AlertCard
+                v-else-if="promptInfoText"
+                class="journalyst-entry-setup-guidance"
+                tone="accent"
+                density="compact"
+                icon="info"
+                :title="promptInfoText"
+            >
                 <div class="journalyst-prompt-variable-list" aria-label="Template prompt variables">
                     <div v-for="variable in promptTemplateVariables" :key="variable.key" class="journalyst-prompt-variable-row">
                         <span>{{ variable.label }}</span>
@@ -534,7 +548,7 @@ function clone<T>(value: T): T {
                     </div>
                 </div>
                 <span class="journalyst-prompt-copy-status" aria-live="polite">{{ copyStatus }}</span>
-            </div>
+            </AlertCard>
         </section>
 
         <section v-if="sourceMode !== 'off'" class="journalyst-entry-setup-block">
@@ -618,9 +632,7 @@ function clone<T>(value: T): T {
 .journalyst-entry-setup-title,
 .journalyst-entry-setup-context,
 .journalyst-entry-setup-control,
-.journalyst-entry-setup-policy,
-.journalyst-entry-setup-warning,
-.journalyst-entry-setup-info {
+.journalyst-entry-setup-policy {
     display: flex;
     align-items: center;
 }
@@ -669,7 +681,6 @@ function clone<T>(value: T): T {
 
 .journalyst-entry-setup-row h3,
 .journalyst-entry-setup-row p,
-.journalyst-entry-setup-warning,
 .journalyst-prompt-output-preview pre {
     margin: 0;
 }
@@ -728,29 +739,8 @@ function clone<T>(value: T): T {
     color: var(--text-on-accent);
 }
 
-.journalyst-entry-setup-warning {
-    gap: var(--size-4-2);
-    padding: var(--size-4-3);
+.journalyst-entry-setup-guidance {
     margin-top: var(--size-4-3);
-    border-left: 2px solid var(--text-warning);
-    background: var(--background-secondary);
-    color: var(--text-warning);
-}
-
-.journalyst-entry-setup-info {
-    gap: var(--size-4-2);
-    color: var(--text-muted);
-}
-
-.journalyst-prompt-variable-help {
-    padding: var(--size-4-3);
-    margin-top: var(--size-4-3);
-    border-left: 2px solid var(--interactive-accent);
-    background: var(--background-secondary);
-}
-
-.journalyst-prompt-variable-help p {
-    margin: 0;
 }
 
 .journalyst-prompt-variable-list {

@@ -14,6 +14,7 @@ import type {
 } from '../../../journalSettings';
 import type { JournalPromptSettings } from '../../../prompts';
 import type { JournalReminderSettings } from '../../../reminders';
+import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
 import JournalEntrySetupSettings from './JournalEntrySetupSettings.vue';
 import JournalEditorHeader from './JournalEditorHeader.vue';
@@ -620,8 +621,24 @@ defineExpose({ flushAutosave, prepareToLeave });
                     @select-section="changeSection"
                 />
 
-                <p v-if="error" class="journalyst-journal-feedback is-error" role="alert">{{ error }}</p>
-                <p v-else-if="success" class="journalyst-journal-feedback is-success" role="status">{{ success }}</p>
+                <AlertCard
+                    v-if="error"
+                    class="journalyst-journal-feedback"
+                    tone="error"
+                    density="compact"
+                    icon="circle-alert"
+                    :title="error"
+                    role="alert"
+                />
+                <AlertCard
+                    v-else-if="success"
+                    class="journalyst-journal-feedback"
+                    tone="success"
+                    density="compact"
+                    icon="circle-check"
+                    :title="success"
+                    role="status"
+                />
 
                 <JournalScheduleSettings
                     v-if="section === 'schedule'"
@@ -737,27 +754,8 @@ defineExpose({ flushAutosave, prepareToLeave });
     padding: var(--size-4-5) 0;
 }
 
-.journalyst-journal-feedback,
-.journalyst-journal-notice {
-    padding: var(--size-4-2) var(--size-4-3);
+.journalyst-journal-feedback {
     margin: var(--size-4-3) 0 0;
-    border-left: 2px solid var(--background-modifier-border);
-    background: var(--background-secondary);
-}
-
-.journalyst-journal-feedback.is-error {
-    color: var(--text-error);
-}
-
-.journalyst-journal-feedback.is-success {
-    color: var(--text-success);
-}
-
-.journalyst-journal-notice {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--size-4-3);
 }
 
 .journalyst-journal-mobile-selector {
@@ -806,8 +804,7 @@ summary:focus-visible {
 }
 
 @media (max-width: 520px) {
-    .journalyst-journal-section-heading,
-    .journalyst-journal-notice {
+    .journalyst-journal-section-heading {
         align-items: flex-start;
         flex-direction: column;
     }

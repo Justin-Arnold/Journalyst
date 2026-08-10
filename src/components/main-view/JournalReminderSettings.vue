@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { JournalAutosaveFeedback, JournalSettingsViewModel } from '../../../journalSettings';
 import type { JournalReminderSettings, ReviewReminderPeriod } from '../../../reminders';
+import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
 import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 import ReminderRuleEditor from './ReminderRuleEditor.vue';
@@ -57,13 +58,14 @@ function updateSettings(nextSettings: JournalReminderSettings) {
                 :settings="settings"
                 @update="updateSettings"
             />
-            <div v-else class="journalyst-entry-reminder-unavailable">
-                <ObsidianIcon name="calendar-off" />
-                <div>
-                    <strong>Entry reminders are unavailable</strong>
-                    <p>Ad-hoc journals do not have scheduled entry days. Any saved rule will remain available if this journal receives a schedule later.</p>
-                </div>
-            </div>
+            <AlertCard
+                v-else
+                class="journalyst-journal-reminder-guidance"
+                density="compact"
+                icon="calendar-off"
+                title="Entry reminders are unavailable"
+                description="Ad-hoc journals do not have scheduled entry days. Any saved rule will remain available if this journal receives a schedule later."
+            />
         </section>
 
         <section class="journalyst-journal-reminder-block">
@@ -84,16 +86,19 @@ function updateSettings(nextSettings: JournalReminderSettings) {
             />
         </section>
 
-        <aside class="journalyst-journal-reminder-global" :class="{ 'is-disabled': !model.remindersEnabled }">
-            <div class="journalyst-journal-reminder-global-copy">
-                <ObsidianIcon :name="model.remindersEnabled ? 'settings-2' : 'circle-alert'" />
-                <span>{{ globalReminderMessage }}</span>
-            </div>
-            <button type="button" @click="emit('openGlobalReminders')">
-                Open Reminders
-                <ObsidianIcon name="arrow-right" />
-            </button>
-        </aside>
+        <AlertCard
+            density="compact"
+            :tone="model.remindersEnabled ? 'accent' : 'warning'"
+            :icon="model.remindersEnabled ? 'settings-2' : 'circle-alert'"
+            :description="globalReminderMessage"
+        >
+            <template #actions>
+                <button type="button" @click="emit('openGlobalReminders')">
+                    Open Reminders
+                    <ObsidianIcon name="arrow-right" />
+                </button>
+            </template>
+        </AlertCard>
 
         <JournalAutosaveStatus :feedback="autosave" @retry="emit('retry')" @undo="emit('undo')" />
     </div>
@@ -125,11 +130,7 @@ function updateSettings(nextSettings: JournalReminderSettings) {
     flex-wrap: wrap;
 }
 
-.journalyst-journal-reminder-title,
-.journalyst-journal-reminder-global,
-.journalyst-journal-reminder-global-copy,
-.journalyst-journal-reminder-global button,
-.journalyst-entry-reminder-unavailable {
+.journalyst-journal-reminder-title {
     display: flex;
     align-items: center;
 }
@@ -157,57 +158,8 @@ function updateSettings(nextSettings: JournalReminderSettings) {
     color: var(--text-warning);
 }
 
-.journalyst-entry-reminder-unavailable {
-    align-items: flex-start;
-    gap: var(--size-4-3);
-    padding: var(--size-4-4) var(--size-4-1);
-    border-bottom: var(--border-width) solid var(--background-modifier-border);
-    color: var(--text-muted);
-}
-
-.journalyst-entry-reminder-unavailable p {
-    margin: var(--size-4-1) 0 0;
-}
-
-.journalyst-journal-reminder-global {
-    min-width: 0;
-    gap: var(--size-4-3);
-    padding: 0 var(--size-4-1);
-    color: var(--text-muted);
-    flex-wrap: wrap;
-}
-
-.journalyst-journal-reminder-global-copy {
-    min-width: 0;
-    flex: 1 1 22rem;
-    align-items: flex-start;
-    gap: var(--size-4-2);
-}
-
-.journalyst-journal-reminder-global.is-disabled .journalyst-journal-reminder-global-copy > :first-child {
-    color: var(--text-warning);
-}
-
-.journalyst-journal-reminder-global-copy > span {
-    min-width: 0;
-    flex: 1 1 auto;
-}
-
-.journalyst-journal-reminder-global button {
-    width: auto;
-    flex: 0 0 auto;
-    gap: var(--size-4-1);
-    padding: var(--size-4-1) var(--size-4-2);
-    border: 0;
-    box-shadow: none;
-    background: transparent;
-    color: var(--text-accent);
-    margin-left: auto;
-}
-
-.journalyst-journal-reminder-global button:hover {
-    background: transparent;
-    color: var(--text-accent-hover);
+.journalyst-journal-reminder-guidance {
+    margin-top: var(--size-4-3);
 }
 
 button:focus-visible {
