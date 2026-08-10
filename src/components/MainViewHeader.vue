@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, ref } from "vue";
 import { Menu } from "obsidian";
 import type { ReviewWorkspaceTab } from "../../review/types";
 import MainViewNavigationTabs from "./MainViewNavigationTabs.vue";
@@ -11,18 +11,12 @@ const props = defineProps<{
 }>();
 
 const activeTab = defineModel<ReviewWorkspaceTab>('activeTab', { required: true });
-const journalPath = defineModel<string>('journalPath', { required: true });
-const anchorDate = defineModel<string>('anchorDate', { required: true });
 
 const emit = defineEmits<{
     createEntry: [];
     createJournal: [];
     openSettings: [];
 }>();
-
-const showContextControls = computed(() => (
-    ['review', 'analytics', 'synthesis'] as ReviewWorkspaceTab[]
-).includes(activeTab.value));
 
 let newMenu: Menu | null = null;
 const newMenuOpen = ref(false);
@@ -69,22 +63,9 @@ onBeforeUnmount(() => newMenu?.hide());
             :tabs="tabs"
         />
 
-        <div v-if="showContextControls" class="journalyst-review-controls">
-            <label class="journalyst-review-control">
-                <span>Journal</span>
-                <select v-model="journalPath">
-                    <option v-for="journal in journals" :key="journal.path" :value="journal.path">
-                        {{ journal.name }}
-                    </option>
-                </select>
-            </label>
-            <label class="journalyst-review-control">
-                <span>Anchor date</span>
-                <input v-model="anchorDate" type="date">
-            </label>
-        </div>
-        <div v-if="activeTab === 'home'" class="journalyst-review-header-actions">
+        <div class="journalyst-review-header-actions">
             <button
+                v-if="activeTab === 'home'"
                 type="button"
                 class="journalyst-new-button"
                 aria-haspopup="menu"
@@ -115,7 +96,7 @@ onBeforeUnmount(() => newMenu?.hide());
     justify-content: space-between;
     align-items: center;
     gap: 1.25rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     border-bottom: var(--border-width) solid var(--background-modifier-border);
     margin-bottom: 1rem;
 }
@@ -125,31 +106,6 @@ onBeforeUnmount(() => newMenu?.hide());
     min-width: 0;
 }
 
-.journalyst-review-controls {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    margin-left: auto;
-}
-
-.journalyst-review-control {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 220px;
-    flex: 1 1 220px;
-}
-
-.journalyst-review-control span {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-.journalyst-review-control select,
-.journalyst-review-control input {
-    width: 100%;
-}
-
 .journalyst-review-header-actions {
     display: flex;
     align-items: center;
@@ -157,6 +113,7 @@ onBeforeUnmount(() => newMenu?.hide());
     flex-wrap: wrap;
     justify-content: flex-end;
     margin-left: auto;
+    flex: 0 0 auto;
 }
 
 .journalyst-review-header-actions button {
@@ -182,23 +139,4 @@ onBeforeUnmount(() => newMenu?.hide());
     outline-offset: var(--size-2-1);
 }
 
-@media (max-width: 700px) {
-    .journalyst-review-controls {
-        width: 100%;
-        margin-left: 0;
-    }
-
-    .journalyst-review-control {
-        min-width: 0;
-        flex: 1 1 100%;
-    }
-}
-
-@media (max-width: 430px) {
-    .journalyst-review-header-actions {
-        width: 100%;
-        justify-content: flex-start;
-        margin-left: 0;
-    }
-}
 </style>

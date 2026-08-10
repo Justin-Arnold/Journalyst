@@ -17,11 +17,13 @@ import {
     type SnapshotBuildOptions,
 } from "../../review/buildSnapshot";
 import type {
+    ReviewLookbackPreview,
     ReviewWorkspaceTab,
     SynthesisPeriodType,
 } from "../../review/types";
 import { hasAnyEnabledReminder } from "../../reminders";
 import type JournalystPlugin from "../main";
+import MainViewContextControls from "./MainViewContextControls.vue";
 import MainViewHeader from "./MainViewHeader.vue";
 import ObsidianIcon from "./ObsidianIcon.vue";
 import AnalyticsTab from "./main-view/AnalyticsTab.vue";
@@ -53,7 +55,10 @@ const journalsTab = ref<InstanceType<typeof JournalsTab> | null>(null);
 const journalSettingsModel = ref<JournalSettingsViewModel | null>(null);
 const journalSettingsLoading = ref(false);
 const journalSettingsError = ref('');
+const reviewLookbackPreviews = ref<ReviewLookbackPreview[]>([]);
+const reviewLookbacksLoading = ref(false);
 let journalSettingsRequestRevision = 0;
+let reviewLookbackRequestRevision = 0;
 const snapshotBuildOptions: SnapshotBuildOptions = {
     isEntryComplete: file => props.plugin.isJournalEntryComplete(file),
 };
@@ -175,9 +180,69 @@ function activateHomeAttention(target: JournalHomeAttentionTarget) {
 const reviewSnapshot = computed(() => {
     const journal = workspaceContext.value.selectedJournal;
     return journal
-        ? buildJournalReviewSnapshot(journal, props.state.anchorDate, props.plugin.settings, snapshotBuildOptions)
+        ? buildJournalReviewSnapshot(
+            journal,
+            props.state.anchorDate,
+            props.plugin.settings,
+            {
+                ...snapshotBuildOptions,
+                promptSourceLabel: getReviewPromptSourceLabel(journal.path),
+                templateLabel: getReviewTemplateLabel(journal.path),
+            },
+        )
         : null;
 });
+
+function getReviewPromptSourceLabel(journalPath: string) {
+    const settings = props.plugin.getJournalPromptSettings(journalPath);
+    if (!settings.enabled) return 'Off';
+
+    if (settings.sourceType === 'file') {
+        return getPathLabel(settings.selectedFilePath) || 'Missing note';
+    }
+
+    const lists = settings.sourceType === 'built-in'
+        ? Object.values(props.plugin.getBuiltInPromptLists())
+        : Object.values(props.plugin.getCustomPromptLists());
+    return lists.find(list => list.id === settings.selectedListId)?.name ?? 'Missing library';
+}
+
+function getReviewTemplateLabel(journalPath: string) {
+    const templatePath = props.plugin.getJournalTemplatePath(props.plugin.settings.templateEngine, journalPath);
+    return templatePath ? getPathLabel(templatePath) : 'Journalyst default';
+}
+
+function getPathLabel(path?: string) {
+    return path?.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+}
+
+async function loadReviewLookbacks() {
+    const requestRevision = ++reviewLookbackRequestRevision;
+    const snapshot = reviewSnapshot.value;
+
+    if (props.state.activeTab !== 'review' || !snapshot) {
+        reviewLookbackPreviews.value = [];
+        reviewLookbacksLoading.value = false;
+        return;
+    }
+
+    reviewLookbackPreviews.value = [];
+    reviewLookbacksLoading.value = true;
+    try {
+        const previews = await props.actions.loadReviewLookbackPreviews(snapshot.lookbacks);
+        if (requestRevision === reviewLookbackRequestRevision) {
+            reviewLookbackPreviews.value = previews;
+        }
+    } catch {
+        if (requestRevision === reviewLookbackRequestRevision) {
+            reviewLookbackPreviews.value = [];
+        }
+    } finally {
+        if (requestRevision === reviewLookbackRequestRevision) {
+            reviewLookbacksLoading.value = false;
+        }
+    }
+}
 
 const analyticsSnapshot = computed(() => {
     const journal = workspaceContext.value.selectedJournal;
@@ -279,6 +344,17 @@ watch(() => props.state.revision, () => {
     }
 });
 
+watch(
+    [
+        () => props.state.activeTab,
+        () => props.state.journalPath,
+        () => props.state.anchorDate,
+        () => props.state.revision,
+    ],
+    () => void loadReviewLookbacks(),
+    { immediate: true },
+);
+
 async function completeOnboarding(request: CompleteOnboardingRequest) {
     if (onboardingBusy.value) return;
 
@@ -367,8 +443,6 @@ defineExpose({ flushJournalSettings });
         <template v-else>
             <MainViewHeader
                 v-model:active-tab="activeTab"
-                v-model:journal-path="journalPath"
-                v-model:anchor-date="anchorDate"
                 :journals="journals"
                 :tabs="tabs"
                 @create-entry="actions.createEntry"
@@ -386,6 +460,13 @@ defineExpose({ flushJournalSettings });
             </div>
 
             <main v-else class="journalyst-workspace-content" role="tabpanel">
+                <MainViewContextControls
+                    v-if="selectedJournalRequired"
+                    v-model:journal-path="journalPath"
+                    v-model:anchor-date="anchorDate"
+                    :journals="journals"
+                />
+
                 <HomeTab
                     v-if="state.activeTab === 'home'"
                     :summary="homeSummary"
@@ -411,7 +492,10 @@ defineExpose({ flushJournalSettings });
                 <ReviewTab
                     v-else-if="state.activeTab === 'review' && reviewSnapshot"
                     :snapshot="reviewSnapshot"
+                    :lookback-previews="reviewLookbackPreviews"
+                    :lookbacks-loading="reviewLookbacksLoading"
                     @open-note="actions.openNote"
+                    @create-today="actions.createJournalEntry($event.journalPath, $event.date)"
                 />
                 <AnalyticsTab
                     v-else-if="state.activeTab === 'analytics' && analyticsSnapshot"

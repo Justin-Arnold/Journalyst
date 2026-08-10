@@ -7,6 +7,7 @@ import type {
     ReviewViewState,
 } from "../src/components/main-view/types";
 import type { ReviewWorkspaceTab } from "../review/types";
+import { loadReviewLookbackPreviews } from "../review/loadLookbackPreviews";
 import JournalystPlugin from "../src/main";
 import { NewEntryJournalModal } from "./NewEntryJournalModal";
 import { NewJournalModal } from "./NewJournalModal";
@@ -129,6 +130,7 @@ export class ReviewView extends ItemView {
                 await this.plugin.activateJournalSettings(journalPath, section);
             },
             loadJournalSettings: async (journalPath) => this.plugin.getJournalSettingsViewModel(journalPath),
+            loadReviewLookbackPreviews: async (lookbacks) => loadReviewLookbackPreviews(this.app, lookbacks),
             loadJournalPromptOptions: async (settings) => this.plugin.getPromptOptionsForSettings(settings),
             loadJournalPromptPreview: async (settings) => this.plugin.getPromptPreviewForSettings(settings),
             saveJournalCadence: async (journalPath, cadence) => {

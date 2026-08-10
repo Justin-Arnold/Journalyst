@@ -18,6 +18,8 @@ import type {
 import type { JournalReminderSettings } from "../../../reminders";
 import type { JournalPromptSettings, PromptOption } from "../../../prompts";
 import type {
+    LookbackResult,
+    ReviewLookbackPreview,
     ReviewWorkspaceTab,
     SynthesisNotePreview,
     SynthesisPeriodType,
@@ -39,6 +41,7 @@ export interface MainViewActions {
     activateJournalTab(journalPath: string, activeTab: ReviewWorkspaceTab): Promise<void>;
     activateJournalSettings(journalPath: string, section?: JournalSettingsSection): Promise<void>;
     loadJournalSettings(journalPath: string): Promise<JournalSettingsViewModel | null>;
+    loadReviewLookbackPreviews(lookbacks: LookbackResult[]): Promise<ReviewLookbackPreview[]>;
     loadJournalPromptOptions(settings: JournalPromptSettings): Promise<PromptOption[]>;
     loadJournalPromptPreview(settings: JournalPromptSettings): Promise<JournalPromptPreviewModel | null>;
     saveJournalCadence(journalPath: string, cadence: JournalCadenceConfig): Promise<JournalAutosaveResult<JournalCadenceConfig>>;

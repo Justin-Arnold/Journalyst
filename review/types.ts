@@ -20,6 +20,15 @@ export interface LookbackResult {
     entry: JournalEntryRecord | null;
 }
 
+export interface ReviewLookbackPreview {
+    label: string;
+    targetDate: string;
+    filePath: string | null;
+    isComplete: boolean | null;
+    title: string;
+    excerpt: string | null;
+}
+
 export interface PeriodSummary {
     label: string;
     startDate: string;
@@ -49,6 +58,33 @@ export interface ActivityCell {
     hasEntry: boolean;
     isComplete: boolean;
     isExpected: boolean;
+}
+
+export type ReviewActivityCellState =
+    | 'complete'
+    | 'draft'
+    | 'due'
+    | 'missing-expected'
+    | 'skipped'
+    | 'future';
+
+export interface ReviewActivityCell extends ActivityCell {
+    filePath: string | null;
+    isAnchor: boolean;
+    state: ReviewActivityCellState;
+}
+
+export type ReviewTodayActionKind = 'write' | 'continue' | 'open' | 'go-to';
+
+export interface ReviewTodayAction {
+    kind: ReviewTodayActionKind;
+    label: string;
+    date: string;
+}
+
+export interface ReviewConfigurationInsights {
+    promptSourceLabel: string;
+    templateLabel: string;
 }
 
 export interface DistributionDatum {
@@ -89,11 +125,13 @@ export interface JournalReviewSnapshot {
     anchor: ReviewAnchor;
     lookbacks: LookbackResult[];
     calendarSummaries: PeriodSummary[];
+    currentMonthSummary: PeriodSummary;
     rollingSummaries: PeriodSummary[];
     insights: ReviewInsights;
     entryCount: number;
-    recentActivity: ActivityCell[];
-    reviewCallouts: AnalyticsCallout[];
+    recentActivity: ReviewActivityCell[];
+    todayAction: ReviewTodayAction;
+    configurationInsights: ReviewConfigurationInsights;
 }
 
 export interface JournalAnalyticsSnapshot {

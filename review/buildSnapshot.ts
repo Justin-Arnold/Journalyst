@@ -5,6 +5,7 @@ import {
     getCadenceForDate,
     getCadenceLabel,
     getCadenceStatus,
+    getCadenceTimelineStartDate,
     getCurrentCadenceStreak,
     getExpectedDatesInRange,
     getLongestCadenceStreak,
@@ -17,7 +18,6 @@ import {
 } from '../cadence';
 import { type JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
-    type ActivityCell,
     type AnalyticsCallout,
     type DistributionDatum,
     type JournalAnalyticsSnapshot,
@@ -26,7 +26,9 @@ import {
     type LookbackResult,
     type PeriodSummary,
     type RankedPeriod,
+    type ReviewActivityCell,
     type ReviewInsights,
+    type ReviewTodayAction,
     type RollingComparison,
     type SynthesisNotePreview,
     type SynthesisPeriodType,
@@ -44,11 +46,14 @@ interface SnapshotContext {
     entryByDate: Map<string, JournalEntryRecord>;
     completedEntryByDate: Map<string, JournalEntryRecord>;
     cadence: JournalCadenceSource;
+    trackingStartDate: string;
     insights: ReviewInsights;
 }
 
 export interface SnapshotBuildOptions {
     isEntryComplete?: (file: TFile) => boolean;
+    promptSourceLabel?: string;
+    templateLabel?: string;
 }
 
 export function buildJournalReviewSnapshot(
@@ -58,18 +63,28 @@ export function buildJournalReviewSnapshot(
     options: SnapshotBuildOptions = {},
 ): JournalReviewSnapshot {
     const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
+    const calendarSummaries = buildCalendarSummaries(
+        context.anchor,
+        context.completedEntryByDate,
+        context.cadence,
+    );
 
     return {
         journalPath: context.journal.path,
         journalName: context.journal.name,
         anchor: { date: context.anchorDate },
         lookbacks: buildLookbacks(context.anchor, context.entryByDate),
-        calendarSummaries: buildCalendarSummaries(context.anchor, context.completedEntryByDate, context.cadence),
+        calendarSummaries,
+        currentMonthSummary: calendarSummaries[1]!,
         rollingSummaries: buildRollingSummaries(context.anchor, context.completedEntryByDate, context.cadence),
         insights: context.insights,
         entryCount: context.entries.length,
-        recentActivity: buildRecentActivity(context.anchor, context.entryByDate, context.completedEntryByDate, context.cadence),
-        reviewCallouts: buildReviewCallouts(context),
+        recentActivity: buildRecentActivity(context),
+        todayAction: buildTodayAction(context),
+        configurationInsights: {
+            promptSourceLabel: options.promptSourceLabel ?? 'Off',
+            templateLabel: options.templateLabel ?? 'Journalyst default',
+        },
     };
 }
 
@@ -165,6 +180,9 @@ function buildSnapshotContext(
             }],
         cadenceSettings.journalSchedulePauses?.[journal.path],
     );
+    const trackingStartDate = getCadenceTimelineStartDate(cadence)
+        ?? entries[0]?.date
+        ?? normalizedAnchorDate;
     const insights = buildInsights(entries, completedEntries, normalizedAnchorDate, cadence);
 
     return {
@@ -176,6 +194,7 @@ function buildSnapshotContext(
         entryByDate,
         completedEntryByDate,
         cadence,
+        trackingStartDate,
         insights,
     };
 }
@@ -211,10 +230,10 @@ function getJournalEntries(
 
 function buildLookbacks(anchor: moment.Moment, entryByDate: Map<string, JournalEntryRecord>): LookbackResult[] {
     return [
-        { label: 'Last week', targetDate: anchor.clone().subtract(1, 'week').format('YYYY-MM-DD') },
-        { label: 'Last month', targetDate: anchor.clone().subtract(1, 'month').format('YYYY-MM-DD') },
-        { label: 'Last quarter', targetDate: anchor.clone().subtract(1, 'quarter').format('YYYY-MM-DD') },
-        { label: 'Last year', targetDate: anchor.clone().subtract(1, 'year').format('YYYY-MM-DD') },
+        { label: 'Yesterday', targetDate: anchor.clone().subtract(1, 'day').format('YYYY-MM-DD') },
+        { label: '1 week ago', targetDate: anchor.clone().subtract(1, 'week').format('YYYY-MM-DD') },
+        { label: '1 month ago', targetDate: anchor.clone().subtract(1, 'month').format('YYYY-MM-DD') },
+        { label: '1 year ago', targetDate: anchor.clone().subtract(1, 'year').format('YYYY-MM-DD') },
     ].map(lookback => ({
         ...lookback,
         entry: entryByDate.get(lookback.targetDate) ?? null,
@@ -337,28 +356,55 @@ function buildInsights(
     };
 }
 
-function buildRecentActivity(
-    anchor: moment.Moment,
-    entryByDate: Map<string, JournalEntryRecord>,
-    completedEntryByDate: Map<string, JournalEntryRecord>,
-    cadence: JournalCadenceSource,
-): ActivityCell[] {
-    const cells: ActivityCell[] = [];
-    const start = anchor.clone().subtract(34, 'days');
+function buildRecentActivity(context: SnapshotContext): ReviewActivityCell[] {
+    const cells: ReviewActivityCell[] = [];
+    const start = context.anchor.clone().subtract(83, 'days');
+    const todayDate = moment().format('YYYY-MM-DD');
     let cursor = start.clone();
 
-    while (cursor.isSameOrBefore(anchor, 'day')) {
+    while (cursor.isSameOrBefore(context.anchor, 'day')) {
         const date = cursor.format('YYYY-MM-DD');
+        const entry = context.entryByDate.get(date) ?? null;
+        const isExpected = isExpectedOnDate(context.cadence, date);
+        const state = entry
+            ? entry.isComplete ? 'complete' : 'draft'
+            : date > todayDate ? 'future'
+                : date < context.trackingStartDate || !isExpected ? 'skipped'
+                    : date === todayDate ? 'due'
+                        : 'missing-expected';
+
         cells.push({
             date,
-            hasEntry: entryByDate.has(date),
-            isComplete: completedEntryByDate.has(date),
-            isExpected: isExpectedOnDate(cadence, date),
+            hasEntry: !!entry,
+            isComplete: entry?.isComplete ?? false,
+            isExpected,
+            filePath: entry?.filePath ?? null,
+            isAnchor: date === context.anchorDate,
+            state,
         });
         cursor.add(1, 'day');
     }
 
     return cells;
+}
+
+function buildTodayAction(context: SnapshotContext): ReviewTodayAction {
+    const date = moment().format('YYYY-MM-DD');
+    const entry = context.entryByDate.get(date);
+
+    if (entry?.isComplete) {
+        return { kind: 'open', label: 'Open today', date };
+    }
+
+    if (entry) {
+        return { kind: 'continue', label: 'Continue today', date };
+    }
+
+    if (isExpectedOnDate(context.cadence, date)) {
+        return { kind: 'write', label: 'Write today', date };
+    }
+
+    return { kind: 'go-to', label: 'Go to today', date };
 }
 
 function buildYearActivity(
@@ -466,33 +512,6 @@ function buildRankedPeriods(anchor: moment.Moment, entryByDate: Map<string, Jour
         best: sorted[0] ?? null,
         worst: sorted[sorted.length - 1] ?? null,
     };
-}
-
-function buildReviewCallouts(context: SnapshotContext): AnalyticsCallout[] {
-    const callouts: AnalyticsCallout[] = [];
-
-    if (context.insights.longestStreak > 0) {
-        callouts.push({
-            title: 'Best streak',
-            body: `Your longest consistency run is ${context.insights.longestStreak} expected entries.`,
-        });
-    }
-
-    if (context.insights.isTracked && context.insights.outstandingMisses > 0) {
-        callouts.push({
-            title: 'Hardest stretch',
-            body: `You have ${context.insights.outstandingMisses} outstanding missed entries right now.`,
-        });
-    }
-
-    if (context.insights.busiestWeekday) {
-        callouts.push({
-            title: 'Natural rhythm',
-            body: `You tend to show up most on ${context.insights.busiestWeekday}s.`,
-        });
-    }
-
-    return callouts.slice(0, 3);
 }
 
 function buildAnalyticsCallouts(context: SnapshotContext): AnalyticsCallout[] {

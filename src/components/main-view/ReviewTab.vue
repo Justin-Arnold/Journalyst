@@ -1,81 +1,118 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { JournalReviewSnapshot } from "../../../review/types";
-import ActivityStrip from "./ActivityStrip.vue";
-import CalloutGrid from "./CalloutGrid.vue";
-import PeriodSummaryGrid from "./PeriodSummaryGrid.vue";
-import WorkspaceOverview from "./WorkspaceOverview.vue";
-import WorkspaceSection from "./WorkspaceSection.vue";
+import { computed } from 'vue';
+import type {
+    JournalReviewSnapshot,
+    ReviewLookbackPreview,
+} from '../../../review/types';
+import AlertCard from '../AlertCard.vue';
+import ObsidianIcon from '../ObsidianIcon.vue';
+import ReviewActivity from './ReviewActivity.vue';
+import ReviewInsightsStrip from './ReviewInsightsStrip.vue';
+import ReviewLookbacks from './ReviewLookbacks.vue';
+import ReviewPeriodSummaries from './ReviewPeriodSummaries.vue';
+import ReviewSummaryStrip from './ReviewSummaryStrip.vue';
 
 const props = defineProps<{
     snapshot: JournalReviewSnapshot;
+    lookbackPreviews: ReviewLookbackPreview[];
+    lookbacksLoading: boolean;
 }>();
 
 const emit = defineEmits<{
     openNote: [filePath: string];
+    createToday: [target: { journalPath: string; date: string }];
 }>();
 
-const overviewStats = computed(() => [
-    { label: 'Cadence', value: props.snapshot.insights.cadenceLabel },
-    { label: 'Current streak', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.currentStreak}` : 'Off' },
-    { label: 'Missed now', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.outstandingMisses}` : 'Off' },
-    { label: 'Next expected', value: props.snapshot.insights.nextExpectedDate ?? 'Flexible' },
-]);
+const showTodayAction = computed(() => (
+    props.snapshot.todayAction.kind === 'write'
+    || props.snapshot.todayAction.kind === 'continue'
+));
 
-const insightCards = computed(() => [
-    { label: 'Current streak', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.currentStreak} expected hits` : 'Not tracked' },
-    { label: 'Longest streak', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.longestStreak} expected hits` : 'Not tracked' },
-    { label: 'Longest miss stretch', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.longestMissStretch} misses` : 'Not tracked' },
-    { label: 'Total entries', value: `${props.snapshot.insights.totalEntries}` },
-    { label: 'Expected today', value: props.snapshot.insights.isTracked ? (props.snapshot.insights.expectedToday ? 'Yes' : 'No') : 'Flexible' },
-    { label: 'Outstanding misses', value: props.snapshot.insights.isTracked ? `${props.snapshot.insights.outstandingMisses}` : 'Flexible' },
-]);
+const todayActionIcon = computed(() => props.snapshot.todayAction.kind === 'continue'
+    ? 'file-pen-line'
+    : 'plus');
+
+const highlight = computed(() => {
+    const { insights, currentMonthSummary, entryCount, anchor } = props.snapshot;
+    if (insights.currentStreak > 0) {
+        return {
+            tone: 'success' as const,
+            icon: 'trending-up',
+            title: `${insights.currentStreak}-entry streak going`,
+            description: `Your longest consistency run in this journal is ${insights.longestStreak} expected ${insights.longestStreak === 1 ? 'entry' : 'entries'}.`,
+        };
+    }
+
+    if (currentMonthSummary.tracked && currentMonthSummary.totalDays > 0) {
+        return {
+            tone: currentMonthSummary.completionRate === 100 ? 'success' as const : 'accent' as const,
+            icon: currentMonthSummary.completionRate === 100 ? 'circle-check' : 'chart-no-axes-column-increasing',
+            title: `${currentMonthSummary.completionRate}% complete this month`,
+            description: `${currentMonthSummary.completedDays} of ${currentMonthSummary.totalDays} expected entries are complete through ${anchor.date}.`,
+        };
+    }
+
+    return {
+        tone: 'neutral' as const,
+        icon: 'history',
+        title: entryCount > 0
+            ? `${entryCount} ${entryCount === 1 ? 'entry is' : 'entries are'} ready to revisit`
+            : 'Your review starts with the first entry',
+        description: entryCount > 0
+            ? 'Use the activity and lookback sections below to return to what you wrote.'
+            : 'Once you begin writing, Journalyst will surface your activity and patterns here.',
+    };
+});
+
 </script>
 
 <template>
-    <WorkspaceOverview
-        :title="snapshot.journalName"
-        :description="`Review anchored to ${snapshot.anchor.date}. Track consistency, revisit old notes, and turn patterns into reflection.`"
-        :stats="overviewStats"
+    <ReviewSummaryStrip :snapshot="snapshot" />
+
+    <div class="journalyst-review-highlight">
+        <AlertCard
+            :tone="highlight.tone"
+            :icon="highlight.icon"
+            :title="highlight.title"
+            :description="highlight.description"
+        >
+            <template v-if="showTodayAction" #actions>
+                <button
+                    type="button"
+                    @click="emit('createToday', {
+                        journalPath: snapshot.journalPath,
+                        date: snapshot.todayAction.date,
+                    })"
+                >
+                    <ObsidianIcon :name="todayActionIcon" />
+                    {{ snapshot.todayAction.label }}
+                </button>
+            </template>
+        </AlertCard>
+    </div>
+
+    <ReviewActivity
+        :cells="snapshot.recentActivity"
+        @open-note="emit('openNote', $event)"
     />
 
-    <CalloutGrid title="Highlights" :callouts="snapshot.reviewCallouts" />
+    <ReviewLookbacks
+        :lookbacks="snapshot.lookbacks"
+        :previews="lookbackPreviews"
+        :loading="lookbacksLoading"
+        @open-note="emit('openNote', $event)"
+    />
 
-    <WorkspaceSection title="Lookbacks" description="See what you wrote around this same point in prior periods.">
-        <div class="journalyst-review-list">
-            <button
-                v-for="lookback in snapshot.lookbacks"
-                :key="lookback.label"
-                type="button"
-                class="journalyst-review-lookback"
-                :disabled="!lookback.entry"
-                @click="lookback.entry && emit('openNote', lookback.entry.filePath)"
-            >
-                <span class="journalyst-review-label">{{ lookback.label }}</span>
-                <strong>{{ lookback.targetDate }}</strong>
-                <span v-if="lookback.entry" class="journalyst-review-meta">
-                    {{ lookback.entry.isComplete ? 'Open entry' : 'Open unfinished entry' }}
-                </span>
-                <span v-else class="journalyst-review-empty-text">No note for this date yet</span>
-            </button>
-        </div>
-    </WorkspaceSection>
+    <ReviewPeriodSummaries
+        :calendar-summaries="snapshot.calendarSummaries"
+        :rolling-summaries="snapshot.rollingSummaries"
+    />
 
-    <WorkspaceSection title="Recent activity" description="A quick read on the last 35 days.">
-        <div class="journalyst-review-activity-surface">
-            <ActivityStrip :cells="snapshot.recentActivity" />
-        </div>
-    </WorkspaceSection>
-
-    <PeriodSummaryGrid title="Calendar summary" :summaries="snapshot.calendarSummaries" />
-    <PeriodSummaryGrid title="Rolling summary" :summaries="snapshot.rollingSummaries" />
-
-    <WorkspaceSection title="Insights">
-        <div class="journalyst-review-grid">
-            <article v-for="insight in insightCards" :key="insight.label" class="journalyst-review-card">
-                <span class="journalyst-review-label">{{ insight.label }}</span>
-                <strong>{{ insight.value }}</strong>
-            </article>
-        </div>
-    </WorkspaceSection>
+    <ReviewInsightsStrip :snapshot="snapshot" />
 </template>
+
+<style scoped>
+.journalyst-review-highlight {
+    margin-bottom: var(--size-4-6);
+}
+</style>
