@@ -312,6 +312,10 @@ export class ReviewView extends ItemView {
                 await this.plugin.updateOsNotificationsEnabled(enabled);
                 this.invalidateData();
             },
+            updateReminderQuietHours: async (settings) => {
+                await this.plugin.updateReminderQuietHours(settings);
+                this.invalidateData();
+            },
             requestNotificationPermission: async () => {
                 await this.plugin.requestNotificationPermission();
                 this.invalidateData();

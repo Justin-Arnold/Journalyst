@@ -1,4 +1,4 @@
-import type { JournalCadenceConfig, JournalCadenceType, JournalSchedulePause } from "../../../cadence";
+import type { JournalCadenceConfig, JournalSchedulePause } from "../../../cadence";
 import type { BasesGenerationTarget } from "../../../bases";
 import type {
     JournalAutosaveResult,
@@ -15,7 +15,10 @@ import type {
     CompleteOnboardingRequest,
     CompleteOnboardingResult,
 } from "../../../onboarding";
-import type { JournalReminderSettings } from "../../../reminders";
+import type {
+    JournalReminderSettings,
+    ReminderQuietHoursSettings,
+} from "../../../reminders";
 import type { JournalPromptSettings, PromptOption } from "../../../prompts";
 import type {
     LookbackResult,
@@ -66,6 +69,7 @@ export interface MainViewActions {
     previewSynthesisNote(request: SynthesisPreviewRequest): Promise<void>;
     updateRemindersEnabled(enabled: boolean): Promise<void>;
     updateOsNotificationsEnabled(enabled: boolean): Promise<void>;
+    updateReminderQuietHours(settings: ReminderQuietHoursSettings): Promise<void>;
     requestNotificationPermission(): Promise<void>;
     sendTestReminderNotification(): Promise<void>;
 }
@@ -73,17 +77,29 @@ export interface MainViewActions {
 export interface ReminderJournalModel {
     journalPath: string;
     journalName: string;
-    cadenceType: JournalCadenceType;
     cadenceLabel: string;
-    reminderSummary: string;
-    entryReminderEnabled: boolean;
-    reviewReminderCount: number;
+    status: 'active' | 'global-off' | 'off';
+    enabledRuleCount: number;
+    rules: ReminderRuleSummaryModel[];
+}
+
+export interface ReminderRuleSummaryModel {
+    id: 'entry' | 'weekly' | 'monthly' | 'quarterly';
+    label: string;
+    enabled: boolean;
+    available: boolean;
+    scheduleLabel: string;
+    deliveryLabel: string;
 }
 
 export interface ReminderWorkspaceModel {
     remindersEnabled: boolean;
     osNotificationsEnabled: boolean;
+    quietHours: ReminderQuietHoursSettings;
     permissionStatus: NotificationPermission | 'unsupported';
     activeJournalCount: number;
+    configuredJournalCount: number;
+    enabledRuleCount: number;
+    osPreferredRuleCount: number;
     journals: ReminderJournalModel[];
 }

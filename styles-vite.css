@@ -254,17 +254,6 @@
     flex: 1 1 auto;
 }
 
-.journalyst-reminder-journal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.75rem;
-}
-
-.journalyst-reminder-journal-header h3 {
-    margin: 0;
-}
-
 .journalyst-review-card {
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
@@ -291,49 +280,6 @@
 .journalyst-review-meta {
     font-size: 0.85rem;
     color: var(--text-faint);
-}
-
-.journalyst-reminder-global-list {
-    border-top: 1px solid var(--background-modifier-border);
-}
-
-.journalyst-reminder-global-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.9rem 0;
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.journalyst-reminder-global-row h3 {
-    margin: 0 0 0.2rem;
-    font-size: 1rem;
-}
-
-.journalyst-reminder-global-row p {
-    margin-bottom: 0;
-}
-
-.journalyst-reminder-journal-list {
-    display: grid;
-    gap: 1rem;
-}
-
-.journalyst-reminder-journal-card {
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    background: var(--background-secondary);
-    overflow: hidden;
-}
-
-.journalyst-reminder-journal-header {
-    padding: 0.9rem 1rem;
-    background: var(--background-primary-alt, var(--background-primary));
-}
-
-.journalyst-reminder-journal-header p {
-    margin: 0.2rem 0 0;
 }
 
 .journalyst-toggle {
@@ -868,14 +814,6 @@
         grid-template-columns: 1fr;
     }
 
-    .journalyst-reminder-global-row {
-        grid-template-columns: 1fr auto;
-    }
-
-    .journalyst-reminder-permission-row {
-        grid-template-columns: 1fr;
-    }
-
     .journalyst-onboarding-starters {
         grid-template-columns: 1fr;
     }
@@ -889,10 +827,6 @@
     .journalyst-review-stat {
         border-left: 0;
         border-top: 1px solid var(--background-modifier-border);
-    }
-
-    .journalyst-reminder-global-row {
-        grid-template-columns: 1fr;
     }
 
     .journalyst-onboarding-actions,

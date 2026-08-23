@@ -77,8 +77,11 @@ import {
     buildSynthesisReminderFileName,
     getReminderEventsForJournal,
     hasAnyEnabledReminder,
+    isWithinReminderQuietHours,
     type JournalReminderSettings,
     normalizeJournalReminderSettings,
+    normalizeReminderQuietHours,
+    type ReminderQuietHoursSettings,
     type ReminderOccurrenceRecord,
     type ResolvedReminderEvent,
     type ReviewReminderPeriod,
@@ -115,6 +118,7 @@ export interface JournalystPluginSettings {
     basesIntegrationEnabled: boolean;
     remindersEnabled: boolean;
     osNotificationsEnabled: boolean;
+    reminderQuietHours: ReminderQuietHoursSettings;
     sidebarMode: SidebarMode;
     noteDateFormat: string;
     noteDateFormatHistory: string[];
@@ -187,6 +191,7 @@ const DEFAULT_SETTINGS: JournalystPluginSettings = {
     basesIntegrationEnabled: false,
     remindersEnabled: false,
     osNotificationsEnabled: false,
+    reminderQuietHours: normalizeReminderQuietHours(),
     sidebarMode: 'journals-mini',
     noteDateFormat: 'YYYY-MM-DD',
     noteDateFormatHistory: [],
@@ -1950,6 +1955,17 @@ export default class JournalystPlugin extends Plugin {
         await this.saveSettings();
     }
 
+    getReminderQuietHours() {
+        return this.settings.reminderQuietHours;
+    }
+
+    async updateReminderQuietHours(settings: ReminderQuietHoursSettings) {
+        this.settings.reminderQuietHours = normalizeReminderQuietHours(settings);
+        await this.saveSettings();
+        await this.checkReminderNotifications(true);
+        this.refreshReviewViews();
+    }
+
     getSidebarMode() {
         return this.settings.sidebarMode;
     }
@@ -2135,6 +2151,10 @@ export default class JournalystPlugin extends Plugin {
         }
 
         const now = moment();
+        if (isWithinReminderQuietHours(now, this.settings.reminderQuietHours)) {
+            return;
+        }
+
         const currentMinute = now.format('YYYY-MM-DD HH:mm');
         if (!force && this.lastReminderCheckMinute === currentMinute) {
             return;
@@ -3138,6 +3158,7 @@ export default class JournalystPlugin extends Plugin {
         this.settings.basesIntegrationEnabled = this.settings.basesIntegrationEnabled ?? false;
         this.settings.remindersEnabled = this.settings.remindersEnabled ?? false;
         this.settings.osNotificationsEnabled = this.settings.osNotificationsEnabled ?? false;
+        this.settings.reminderQuietHours = normalizeReminderQuietHours(this.settings.reminderQuietHours);
         this.settings.sidebarMode = this.settings.sidebarMode ?? 'journals-mini';
         this.settings.coreJournalTemplates = this.settings.coreJournalTemplates ?? {};
         this.settings.noteDateFormat = this.settings.noteDateFormat ?? 'YYYY-MM-DD';

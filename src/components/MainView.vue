@@ -262,28 +262,103 @@ const synthesisSnapshot = computed(() => {
         : null;
 });
 
+function formatReminderTime(time: string) {
+    const parsed = moment(time, 'HH:mm', true);
+    return parsed.isValid() ? parsed.format('LT') : time;
+}
+
+function getOrdinal(value: number) {
+    const remainder = value % 100;
+    if (remainder >= 11 && remainder <= 13) return `${value}th`;
+    if (value % 10 === 1) return `${value}st`;
+    if (value % 10 === 2) return `${value}nd`;
+    if (value % 10 === 3) return `${value}rd`;
+    return `${value}th`;
+}
+
+function getQuarterlyReminderLabel(daysAfterQuarterEnd: number) {
+    if (daysAfterQuarterEnd === 0) return 'Quarter end';
+    if (daysAfterQuarterEnd === 1) return 'Start of next quarter';
+    return `${daysAfterQuarterEnd} days after quarter end`;
+}
+
 const remindersModel = computed<ReminderWorkspaceModel>(() => {
+    const remindersEnabled = props.plugin.areRemindersEnabled();
     const journalsWithRules = workspaceContext.value.journalFolders.map(journal => {
         const cadence = props.plugin.getJournalCadence(journal.path);
         const settings = props.plugin.getJournalReminderSettings(journal.path);
-        const reviewReminderCount = Object.values(settings.reviewReminders)
-            .filter(rule => rule.enabled).length;
+        const entryAvailable = cadence.type !== 'adhoc';
+        const rules = [
+            {
+                id: 'entry' as const,
+                label: 'Entry',
+                enabled: entryAvailable && settings.entryReminder.enabled,
+                available: entryAvailable,
+                scheduleLabel: entryAvailable
+                    ? `At ${formatReminderTime(settings.entryReminder.time)}`
+                    : 'Scheduled journals only',
+                deliveryLabel: settings.entryReminder.deliveryMode === 'os-preferred'
+                    ? 'OS preferred'
+                    : 'In-app',
+            },
+            {
+                id: 'weekly' as const,
+                label: 'Weekly',
+                enabled: settings.reviewReminders.weekly.enabled,
+                available: true,
+                scheduleLabel: `${moment().day(settings.reviewReminders.weekly.weekday).format('ddd')} at ${formatReminderTime(settings.reviewReminders.weekly.time)}`,
+                deliveryLabel: settings.reviewReminders.weekly.deliveryMode === 'os-preferred'
+                    ? 'OS preferred'
+                    : 'In-app',
+            },
+            {
+                id: 'monthly' as const,
+                label: 'Monthly',
+                enabled: settings.reviewReminders.monthly.enabled,
+                available: true,
+                scheduleLabel: `${getOrdinal(settings.reviewReminders.monthly.dayOfMonth)} at ${formatReminderTime(settings.reviewReminders.monthly.time)}`,
+                deliveryLabel: settings.reviewReminders.monthly.deliveryMode === 'os-preferred'
+                    ? 'OS preferred'
+                    : 'In-app',
+            },
+            {
+                id: 'quarterly' as const,
+                label: 'Quarterly',
+                enabled: settings.reviewReminders.quarterly.enabled,
+                available: true,
+                scheduleLabel: `${getQuarterlyReminderLabel(settings.reviewReminders.quarterly.daysAfterQuarterEnd)} at ${formatReminderTime(settings.reviewReminders.quarterly.time)}`,
+                deliveryLabel: settings.reviewReminders.quarterly.deliveryMode === 'os-preferred'
+                    ? 'OS preferred'
+                    : 'In-app',
+            },
+        ];
+        const enabledRuleCount = rules.filter(rule => rule.enabled).length;
+
         return {
             journalPath: journal.path,
             journalName: journal.name,
-            cadenceType: cadence.type,
             cadenceLabel: getCadenceLabel(cadence),
-            reminderSummary: props.plugin.getJournalReminderSummary(journal.path),
-            entryReminderEnabled: settings.entryReminder.enabled,
-            reviewReminderCount,
+            status: enabledRuleCount === 0
+                ? 'off' as const
+                : remindersEnabled
+                    ? 'active' as const
+                    : 'global-off' as const,
+            enabledRuleCount,
+            rules,
         };
     });
+    const configuredJournals = journalsWithRules.filter(journal => journal.enabledRuleCount > 0);
+    const enabledRules = journalsWithRules.flatMap(journal => journal.rules).filter(rule => rule.enabled);
 
     return {
-        remindersEnabled: props.plugin.areRemindersEnabled(),
+        remindersEnabled,
         osNotificationsEnabled: props.plugin.areOsNotificationsEnabled(),
+        quietHours: props.plugin.getReminderQuietHours(),
         permissionStatus: props.plugin.getNotificationPermissionStatus(),
-        activeJournalCount: journalsWithRules.filter(journal => journal.reminderSummary === 'Reminders active').length,
+        activeJournalCount: remindersEnabled ? configuredJournals.length : 0,
+        configuredJournalCount: configuredJournals.length,
+        enabledRuleCount: enabledRules.length,
+        osPreferredRuleCount: enabledRules.filter(rule => rule.deliveryLabel === 'OS preferred').length,
         journals: journalsWithRules,
     };
 });
@@ -507,6 +582,7 @@ defineExpose({ flushJournalSettings });
                     :model="remindersModel"
                     @update-reminders-enabled="actions.updateRemindersEnabled"
                     @update-os-notifications-enabled="actions.updateOsNotificationsEnabled"
+                    @update-quiet-hours="actions.updateReminderQuietHours"
                     @request-permission="actions.requestNotificationPermission"
                     @test-notification="actions.sendTestReminderNotification"
                     @edit-journal="actions.activateJournalSettings($event, 'reminders')"

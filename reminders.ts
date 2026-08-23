@@ -10,6 +10,12 @@ import {
 export type ReminderDeliveryMode = 'in-app' | 'os-preferred';
 export type ReviewReminderPeriod = 'weekly' | 'monthly' | 'quarterly';
 
+export interface ReminderQuietHoursSettings {
+    enabled: boolean;
+    startTime: string;
+    endTime: string;
+}
+
 export interface JournalEntryReminderSettings {
     enabled: boolean;
     time: string;
@@ -96,6 +102,12 @@ const DEFAULT_TIME = '20:00';
 const DEFAULT_REVIEW_TIME = '18:00';
 const MAX_EXPECTATION_SCAN_DAYS = 730;
 
+const DEFAULT_QUIET_HOURS: ReminderQuietHoursSettings = {
+    enabled: false,
+    startTime: '22:00',
+    endTime: '07:00',
+};
+
 const DEFAULT_REMINDER_SETTINGS: JournalReminderSettings = {
     entryReminder: {
         enabled: false,
@@ -155,6 +167,33 @@ export function normalizeJournalReminderSettings(settings?: Partial<JournalRemin
             },
         },
     };
+}
+
+export function normalizeReminderQuietHours(
+    settings?: Partial<ReminderQuietHoursSettings> | null,
+): ReminderQuietHoursSettings {
+    return {
+        enabled: settings?.enabled ?? DEFAULT_QUIET_HOURS.enabled,
+        startTime: normalizeTime(settings?.startTime, DEFAULT_QUIET_HOURS.startTime),
+        endTime: normalizeTime(settings?.endTime, DEFAULT_QUIET_HOURS.endTime),
+    };
+}
+
+export function isWithinReminderQuietHours(
+    now: moment.Moment,
+    settings?: Partial<ReminderQuietHoursSettings> | null,
+) {
+    const normalized = normalizeReminderQuietHours(settings);
+    if (!normalized.enabled || normalized.startTime === normalized.endTime) {
+        return false;
+    }
+
+    const currentTime = now.format('HH:mm');
+    if (normalized.startTime < normalized.endTime) {
+        return currentTime >= normalized.startTime && currentTime < normalized.endTime;
+    }
+
+    return currentTime >= normalized.startTime || currentTime < normalized.endTime;
 }
 
 export function hasAnyEnabledReminder(settings?: Partial<JournalReminderSettings> | null, cadence?: JournalCadenceSource) {
