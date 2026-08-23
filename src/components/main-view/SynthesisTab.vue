@@ -1,107 +1,92 @@
 <script setup lang="ts">
-import { nextTick, watch, type ComponentPublicInstance } from "vue";
-import type { SynthesisPeriodType } from "../../../review/types";
-import type { SynthesisPreviewModel } from "./types";
-import WorkspaceSection from "./WorkspaceSection.vue";
+import { computed, nextTick, ref, watch } from 'vue';
+import type {
+    SynthesisPeriodType,
+    SynthesisPreviewRequest,
+    SynthesisWorkspaceSnapshot,
+} from '../../../review/types';
+import AlertCard from '../AlertCard.vue';
+import SynthesisHistory from './SynthesisHistory.vue';
+import SynthesisPeriodCard from './SynthesisPeriodCard.vue';
 
 const props = defineProps<{
-    previews: SynthesisPreviewModel[];
+    snapshot: SynthesisWorkspaceSnapshot;
     focusedPeriod?: SynthesisPeriodType | null;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
     openNote: [filePath: string];
     createNote: [periodType: SynthesisPeriodType];
+    previewNote: [request: SynthesisPreviewRequest];
 }>();
 
-const periodCards = new Map<SynthesisPeriodType, HTMLElement>();
+const root = ref<HTMLElement | null>(null);
+const savedDescription = computed(() => {
+    const count = props.snapshot.savedCurrentCount;
+    return `${count} of 3 selected-period ${count === 1 ? 'notes is' : 'notes are'} already saved.`;
+});
 
-function registerPeriodCard(
-    periodType: SynthesisPeriodType,
-    element: Element | ComponentPublicInstance | null,
-) {
-    if (element instanceof HTMLElement) {
-        periodCards.set(periodType, element);
-        return;
-    }
+function previewPeriod(periodType: SynthesisPeriodType) {
+    const preview = props.snapshot.periods.find(period => period.periodType === periodType);
+    if (!preview) return;
 
-    periodCards.delete(periodType);
+    emit('previewNote', {
+        journalPath: props.snapshot.journalPath,
+        anchorDate: props.snapshot.anchorDate,
+        periodType,
+        title: preview.title,
+        generatedBody: preview.payload.body,
+        existingFilePath: preview.existingFilePath,
+    });
 }
 
 watch(() => props.focusedPeriod, async periodType => {
-    if (!periodType) {
-        return;
-    }
+    if (!periodType) return;
 
     await nextTick();
-    const card = periodCards.get(periodType);
+    const card = root.value?.querySelector<HTMLElement>(`[data-synthesis-period="${periodType}"]`);
     card?.focus({ preventScroll: true });
     card?.scrollIntoView({ block: 'nearest' });
 }, { immediate: true });
 </script>
 
 <template>
-    <WorkspaceSection title="Synthesis" description="Turn the current review period into a structured reflection note.">
-        <div class="journalyst-review-grid journalyst-synthesis-grid">
-            <article
-                v-for="item in previews"
-                :key="item.preview.periodType"
-                :ref="element => registerPeriodCard(item.preview.periodType, element)"
-                class="journalyst-review-card journalyst-synthesis-card"
-                :class="{ 'is-attention-target': item.preview.periodType === focusedPeriod }"
-                tabindex="-1"
-            >
-                <div class="journalyst-synthesis-heading">
-                    <span class="journalyst-review-label">{{ item.preview.periodType }}</span>
-                    <span class="journalyst-home-status-badge">{{ item.exists ? 'Note exists' : 'Ready to create' }}</span>
-                </div>
-                <h3>{{ item.preview.title }}</h3>
-                <span class="journalyst-review-meta">{{ item.preview.startDate }} to {{ item.preview.endDate }}</span>
-                <span class="journalyst-review-meta">
-                    <template v-if="item.preview.summary.tracked">
-                        {{ item.preview.summary.completedDays }}/{{ item.preview.summary.totalDays }} expected entries
-                        ({{ item.preview.summary.completionRate }}%)
-                    </template>
-                    <template v-else>Ad hoc journal; completion is not scored.</template>
-                </span>
+    <div ref="root" class="journalyst-synthesis-workspace">
+        <AlertCard
+            tone="accent"
+            icon="sparkles"
+            title="What synthesis does"
+            :description="`Pulls completed entries from each period, summarizes factual patterns, and prepares reflection prompts. ${savedDescription}`"
+        />
 
-                <div class="journalyst-synthesis-list">
-                    <span class="journalyst-review-label">Notable entries</span>
-                    <template v-if="!item.preview.notableEntries.length">
-                        <span class="journalyst-review-meta">No entries in this period yet.</span>
-                    </template>
-                    <template v-else>
-                        <button
-                            v-for="entry in item.preview.notableEntries"
-                            :key="entry.filePath"
-                            type="button"
-                            class="journalyst-synthesis-link"
-                            @click="$emit('openNote', entry.filePath)"
-                        >
-                            {{ entry.displayLabel }}
-                        </button>
-                    </template>
-                </div>
+        <section class="journalyst-synthesis-period-list" aria-label="Synthesis periods">
+            <SynthesisPeriodCard
+                v-for="preview in snapshot.periods"
+                :key="preview.periodType"
+                :journal-path="snapshot.journalPath"
+                :preview="preview"
+                :focused="preview.periodType === focusedPeriod"
+                @open-note="emit('openNote', $event)"
+                @create-note="emit('createNote', preview.periodType)"
+                @preview-note="previewPeriod(preview.periodType)"
+            />
+        </section>
 
-                <div class="journalyst-synthesis-list">
-                    <span class="journalyst-review-label">Reflection prompts</span>
-                    <p v-for="prompt in item.preview.reflectionPrompts" :key="prompt" class="journalyst-review-meta">
-                        {{ prompt }}
-                    </p>
-                </div>
-
-                <button type="button" class="mod-cta journalyst-synthesis-action" @click="$emit('createNote', item.preview.periodType)">
-                    {{ item.exists ? 'Open note' : 'Create note' }}
-                </button>
-            </article>
-        </div>
-    </WorkspaceSection>
+        <SynthesisHistory :items="snapshot.history" @open-note="emit('openNote', $event)" />
+    </div>
 </template>
 
 <style scoped>
-.journalyst-synthesis-card.is-attention-target,
-.journalyst-synthesis-card:focus {
-    outline: var(--border-width) solid var(--color-accent);
-    outline-offset: var(--size-2-1);
+.journalyst-synthesis-workspace {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--size-4-6);
+}
+
+.journalyst-synthesis-period-list {
+    display: grid;
+    min-width: 0;
+    gap: var(--size-4-4);
 }
 </style>

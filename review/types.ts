@@ -202,12 +202,51 @@ export interface SynthesisNotePreview {
     periodType: SynthesisPeriodType;
     title: string;
     fileName: string;
+    existingFilePath: string | null;
+    markerLabel: string;
+    markerValue: string;
+    periodLabel: string;
+    dateRangeLabel: string;
     startDate: string;
     endDate: string;
+    coverageEndDate: string | null;
+    isPartial: boolean;
+    isFuturePeriod: boolean;
     summary: PeriodSummary;
-    notableEntries: JournalEntryRecord[];
-    strongestPatterns: string[];
-    weakestPatterns: string[];
+    sourceEntries: JournalEntryRecord[];
+    unfinishedEntryCount: number;
+    summaryText: string;
+    patterns: string[];
     reflectionPrompts: string[];
     payload: SynthesisNotePayload;
+}
+
+export interface SynthesisHistoryItem {
+    periodType: SynthesisPeriodType;
+    title: string;
+    filePath: string;
+    pathLabel: string;
+    startDate: string;
+    endDate: string;
+    completedEntryCount: number;
+    createdAt: number;
+    createdDateLabel: string;
+}
+
+export interface SynthesisWorkspaceSnapshot {
+    journalPath: string;
+    journalName: string;
+    anchorDate: string;
+    savedCurrentCount: number;
+    periods: SynthesisNotePreview[];
+    history: SynthesisHistoryItem[];
+}
+
+export interface SynthesisPreviewRequest {
+    journalPath: string;
+    anchorDate: string;
+    periodType: SynthesisPeriodType;
+    title: string;
+    generatedBody: string;
+    existingFilePath: string | null;
 }

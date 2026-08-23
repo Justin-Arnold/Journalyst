@@ -21,7 +21,7 @@ import type {
     LookbackResult,
     ReviewLookbackPreview,
     ReviewWorkspaceTab,
-    SynthesisNotePreview,
+    SynthesisPreviewRequest,
     SynthesisPeriodType,
 } from "../../../review/types";
 
@@ -63,6 +63,7 @@ export interface MainViewActions {
     openSettings(): Promise<void>;
     openNote(filePath: string): Promise<void>;
     createSynthesisNote(journalPath: string, anchorDate: string, periodType: SynthesisPeriodType): Promise<void>;
+    previewSynthesisNote(request: SynthesisPreviewRequest): Promise<void>;
     updateRemindersEnabled(enabled: boolean): Promise<void>;
     updateOsNotificationsEnabled(enabled: boolean): Promise<void>;
     requestNotificationPermission(): Promise<void>;
@@ -85,9 +86,4 @@ export interface ReminderWorkspaceModel {
     permissionStatus: NotificationPermission | 'unsupported';
     activeJournalCount: number;
     journals: ReminderJournalModel[];
-}
-
-export interface SynthesisPreviewModel {
-    preview: SynthesisNotePreview;
-    exists: boolean;
 }

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { normalizePath } from "obsidian";
 import moment from "moment";
 import { getCadenceLabel, getCompactCadenceLabel } from "../../cadence";
 import type { CompleteOnboardingRequest } from "../../onboarding";
@@ -13,7 +12,7 @@ import {
 import {
     buildJournalAnalyticsSnapshot,
     buildJournalReviewSnapshot,
-    buildSynthesisNotePreview,
+    buildSynthesisWorkspaceSnapshot,
     type SnapshotBuildOptions,
 } from "../../review/buildSnapshot";
 import type {
@@ -37,7 +36,6 @@ import type {
     MainViewActions,
     ReminderWorkspaceModel,
     ReviewViewState,
-    SynthesisPreviewModel,
 } from "./main-view/types";
 import type { JournalSettingsSidebarItem, JournalSettingsViewModel } from "../../journalSettings";
 
@@ -61,6 +59,7 @@ let journalSettingsRequestRevision = 0;
 let reviewLookbackRequestRevision = 0;
 const snapshotBuildOptions: SnapshotBuildOptions = {
     isEntryComplete: file => props.plugin.isJournalEntryComplete(file),
+    resolveSynthesisNoteKind: file => props.plugin.getSynthesisNoteKind(file),
 };
 
 const tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }> = [
@@ -251,24 +250,16 @@ const analyticsSnapshot = computed(() => {
         : null;
 });
 
-const synthesisPreviews = computed<SynthesisPreviewModel[]>(() => {
+const synthesisSnapshot = computed(() => {
     const journal = workspaceContext.value.selectedJournal;
-    if (!journal) return [];
-
-    return (['weekly', 'monthly', 'quarterly'] as SynthesisPeriodType[]).map(periodType => {
-        const preview = buildSynthesisNotePreview(
+    return journal
+        ? buildSynthesisWorkspaceSnapshot(
             journal,
             props.state.anchorDate,
             props.plugin.settings,
-            periodType,
             snapshotBuildOptions,
-        );
-        const filePath = normalizePath(`${journal.path}/${preview.fileName}`);
-        return {
-            preview,
-            exists: !!props.plugin.app.vault.getFileByPath(filePath),
-        };
-    });
+        )
+        : null;
 });
 
 const remindersModel = computed<ReminderWorkspaceModel>(() => {
@@ -504,11 +495,12 @@ defineExpose({ flushJournalSettings });
                     @review-week="actions.setReviewState(analyticsSnapshot.journalPath, $event, 'review')"
                 />
                 <SynthesisTab
-                    v-else-if="state.activeTab === 'synthesis'"
-                    :previews="synthesisPreviews"
+                    v-else-if="state.activeTab === 'synthesis' && synthesisSnapshot"
+                    :snapshot="synthesisSnapshot"
                     :focused-period="synthesisAttentionPeriod"
                     @open-note="actions.openNote"
                     @create-note="actions.createSynthesisNote(state.journalPath!, state.anchorDate, $event)"
+                    @preview-note="actions.previewSynthesisNote($event)"
                 />
                 <RemindersTab
                     v-else-if="state.activeTab === 'reminders'"

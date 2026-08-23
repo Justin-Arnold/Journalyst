@@ -2339,6 +2339,43 @@ export default class JournalystPlugin extends Plugin {
         return file;
     }
 
+    getSynthesisNoteKind(file: TFile): ParsedJournalystNoteKind | null {
+        const parsedFileName = parseJournalystNoteKind(file);
+        if (parsedFileName?.periodType) {
+            return parsedFileName;
+        }
+
+        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        const periodType = frontmatter?.journalyst_period_type;
+        const periodStart = String(frontmatter?.journalyst_period_start ?? '');
+        const periodEnd = String(frontmatter?.journalyst_period_end ?? '');
+        const entryType = frontmatter?.journalyst_entry_type;
+        const expectedEntryType = periodType === 'weekly'
+            ? 'weekly-review'
+            : periodType === 'monthly'
+                ? 'monthly-reflection'
+                : periodType === 'quarterly'
+                    ? 'quarter-summary'
+                    : null;
+
+        if (
+            !expectedEntryType
+            || entryType !== expectedEntryType
+            || !moment(periodStart, 'YYYY-MM-DD', true).isValid()
+            || !moment(periodEnd, 'YYYY-MM-DD', true).isValid()
+            || periodStart > periodEnd
+        ) {
+            return null;
+        }
+
+        return {
+            entryType: expectedEntryType,
+            periodType,
+            periodStart,
+            periodEnd,
+        };
+    }
+
     private getReminderEventsForJournal(journal: TFolder, now: moment.Moment) {
         const entries = journal.children
             .filter((file): file is TFile => file instanceof TFile)

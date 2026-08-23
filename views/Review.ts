@@ -21,6 +21,7 @@ import {
     confirmResetJournalBase,
     previewJournalBasesBackfill,
 } from './BasesModal';
+import { openSynthesisPreviewModal } from './SynthesisPreviewModal';
 
 export const VIEW_TYPE_REVIEW = "journalyst-review-view";
 
@@ -265,6 +266,43 @@ export class ReviewView extends ItemView {
             createSynthesisNote: async (journalPath, anchorDate, periodType) => {
                 await this.plugin.createSynthesisNote(journalPath, anchorDate, periodType);
                 this.invalidateData();
+            },
+            previewSynthesisNote: async (request) => {
+                try {
+                    const existingFile = request.existingFilePath
+                        ? this.app.vault.getFileByPath(request.existingFilePath)
+                        : null;
+                    if (request.existingFilePath && !existingFile) {
+                        new Notice('Journalyst could not find that synthesis note.');
+                        this.invalidateData();
+                        return;
+                    }
+
+                    const markdown = existingFile
+                        ? await this.app.vault.read(existingFile)
+                        : request.generatedBody;
+                    openSynthesisPreviewModal(this.app, {
+                        title: request.title,
+                        markdown,
+                        sourcePath: existingFile?.path ?? request.journalPath,
+                        primaryLabel: existingFile ? 'Open synthesis' : 'Create synthesis',
+                        primaryIcon: existingFile ? 'external-link' : 'file-pen-line',
+                        onPrimary: async () => {
+                            if (existingFile) {
+                                await this.openReviewedNote(existingFile.path);
+                                return;
+                            }
+                            await this.plugin.createSynthesisNote(
+                                request.journalPath,
+                                request.anchorDate,
+                                request.periodType,
+                            );
+                            this.invalidateData();
+                        },
+                    });
+                } catch {
+                    new Notice('Journalyst could not load that synthesis preview.');
+                }
             },
             updateRemindersEnabled: async (enabled) => {
                 await this.plugin.updateRemindersEnabled(enabled);

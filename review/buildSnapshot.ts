@@ -18,6 +18,10 @@ import {
 } from '../cadence';
 import { type JournalDateSettings, parseJournalDateFromFile } from '../journalNaming';
 import {
+    parseJournalystNoteKind,
+    type ParsedJournalystNoteKind,
+} from '../bases';
+import {
     type AnalyticsChartSeries,
     type AnalyticsInsight,
     type AnalyticsPerformanceMetric,
@@ -31,8 +35,10 @@ import {
     type ReviewActivityCell,
     type ReviewInsights,
     type ReviewTodayAction,
+    type SynthesisHistoryItem,
     type SynthesisNotePreview,
     type SynthesisPeriodType,
+    type SynthesisWorkspaceSnapshot,
     type YearActivityCell,
 } from './types';
 
@@ -62,6 +68,7 @@ export interface SnapshotBuildOptions {
     isEntryComplete?: (file: TFile) => boolean;
     promptSourceLabel?: string;
     templateLabel?: string;
+    resolveSynthesisNoteKind?: (file: TFile) => ParsedJournalystNoteKind | null;
 }
 
 export function buildJournalReviewSnapshot(
@@ -148,37 +155,45 @@ export function buildSynthesisNotePreview(
     options: SnapshotBuildOptions = {},
 ): SynthesisNotePreview {
     const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
-    const period = getSynthesisPeriod(context.anchor, periodType);
-    const summary = createPeriodSummary(period.label, period.start, period.end, context.completedEntryByDate, context.cadence);
-    const notableEntries = context.completedEntries
-        .filter(entry => entry.date >= summary.startDate && entry.date <= summary.endDate)
-        .slice(-5)
-        .reverse();
-    const strongestPatterns = buildStrongestPatterns(context, summary);
-    const weakestPatterns = buildWeakestPatterns(context, summary);
-    const reflectionPrompts = buildReflectionPrompts(periodType, context, summary);
-    const title = buildSynthesisTitle(periodType, context.anchor);
-    const fileName = buildSynthesisFileName(periodType, context.anchor);
-    const body = buildSynthesisBody(title, summary, notableEntries, strongestPatterns, weakestPatterns, reflectionPrompts);
+    const synthesisNotes = getRecognizedSynthesisNotes(journal, options);
+    return buildSynthesisPeriodPreview(context, periodType, synthesisNotes);
+}
+
+export function buildSynthesisWorkspaceSnapshot(
+    journal: TFolder,
+    anchorDate: string,
+    journalDateSettings: JournalDateSettings,
+    options: SnapshotBuildOptions = {},
+): SynthesisWorkspaceSnapshot {
+    const context = buildSnapshotContext(journal, anchorDate, journalDateSettings, options);
+    const synthesisNotes = getRecognizedSynthesisNotes(journal, options);
+    const periods = (['weekly', 'monthly', 'quarterly'] as SynthesisPeriodType[])
+        .map(periodType => buildSynthesisPeriodPreview(context, periodType, synthesisNotes));
+    const currentStarts = new Map(periods.map(period => [period.periodType, period.startDate]));
+    const effectiveAnchorDate = moment.min(context.anchor, moment().startOf('day')).format('YYYY-MM-DD');
+    const history = synthesisNotes
+        .filter(({ kind }) => (
+            kind.periodType
+            && kind.periodStart
+            && kind.periodEnd
+            && kind.periodEnd < (currentStarts.get(kind.periodType) ?? '')
+            && kind.periodEnd <= effectiveAnchorDate
+        ))
+        .map(({ file, kind }) => buildSynthesisHistoryItem(context, file, kind))
+        .filter((item): item is SynthesisHistoryItem => !!item)
+        .sort((left, right) => (
+            right.endDate.localeCompare(left.endDate)
+            || right.createdAt - left.createdAt
+            || left.filePath.localeCompare(right.filePath)
+        ));
 
     return {
-        periodType,
-        title,
-        fileName,
-        startDate: summary.startDate,
-        endDate: summary.endDate,
-        summary,
-        notableEntries,
-        strongestPatterns,
-        weakestPatterns,
-        reflectionPrompts,
-        payload: {
-            title,
-            fileName,
-            startDate: summary.startDate,
-            endDate: summary.endDate,
-            body,
-        },
+        journalPath: journal.path,
+        journalName: journal.name,
+        anchorDate: context.anchorDate,
+        savedCurrentCount: periods.filter(period => !!period.existingFilePath).length,
+        periods,
+        history,
     };
 }
 
@@ -1018,66 +1033,259 @@ function getComparisonTone(delta: number): AnalyticsSummaryMetric['comparisonTon
     return 'neutral';
 }
 
-function buildStrongestPatterns(context: SnapshotContext, summary: PeriodSummary) {
+interface RecognizedSynthesisNote {
+    file: TFile;
+    kind: ParsedJournalystNoteKind;
+}
+
+function buildSynthesisPeriodPreview(
+    context: SnapshotContext,
+    periodType: SynthesisPeriodType,
+    synthesisNotes: RecognizedSynthesisNote[],
+): SynthesisNotePreview {
+    const period = getSynthesisPeriod(context.anchor, periodType);
+    const startDate = period.start.format('YYYY-MM-DD');
+    const endDate = period.end.format('YYYY-MM-DD');
+    const cutoff = moment.min(context.anchor, moment().startOf('day'), period.end);
+    const hasCoverage = cutoff.isSameOrAfter(period.start, 'day');
+    const coverageEndDate = hasCoverage ? cutoff.format('YYYY-MM-DD') : null;
+    const effectiveCoverageEndDate = coverageEndDate ?? startDate;
+    const summary = hasCoverage
+        ? createPeriodSummary(period.label, period.start, cutoff, context.completedEntryByDate, context.cadence)
+        : {
+            label: period.label,
+            startDate,
+            endDate: startDate,
+            completedDays: 0,
+            totalDays: 0,
+            completionRate: 0,
+            tracked: false,
+        };
+    const entries = hasCoverage
+        ? context.entries.filter(entry => (
+            entry.date >= startDate && entry.date <= effectiveCoverageEndDate
+        ))
+        : [];
+    const sourceEntries = entries.filter(entry => entry.isComplete);
+    const unfinishedEntryCount = entries.length - sourceEntries.length;
+    const reflectionPrompts = buildReflectionPrompts(periodType);
+    const patterns = buildSynthesisPatterns(context, summary, sourceEntries, coverageEndDate);
+    const title = buildSynthesisTitle(periodType, period.start, context.journal.name);
+    const fileName = buildSynthesisFileName(periodType, context.anchor);
+    const canonicalPath = `${context.journal.path}/${fileName}`;
+    const existingNote = synthesisNotes.find(({ file }) => file.path === canonicalPath)
+        ?? synthesisNotes.find(({ kind }) => (
+            kind.periodType === periodType
+            && kind.periodStart === startDate
+            && kind.periodEnd === endDate
+        ));
+    const isPartial = !coverageEndDate || coverageEndDate < endDate;
+    const summaryText = buildSynthesisSummaryText(
+        summary,
+        sourceEntries.length,
+        coverageEndDate,
+        !hasCoverage,
+    );
+    const body = buildSynthesisBody({
+        title,
+        startDate,
+        endDate,
+        coverageEndDate,
+        isPartial,
+        summary,
+        sourceEntries,
+        unfinishedEntryCount,
+        patterns,
+        reflectionPrompts,
+    });
+
+    return {
+        periodType,
+        title,
+        fileName,
+        existingFilePath: existingNote?.file.path ?? null,
+        markerLabel: period.markerLabel,
+        markerValue: period.markerValue,
+        periodLabel: period.label,
+        dateRangeLabel: formatSynthesisDateRange(period.start, period.end),
+        startDate,
+        endDate,
+        coverageEndDate,
+        isPartial,
+        isFuturePeriod: !hasCoverage,
+        summary,
+        sourceEntries,
+        unfinishedEntryCount,
+        summaryText,
+        patterns,
+        reflectionPrompts,
+        payload: {
+            title,
+            fileName,
+            startDate,
+            endDate,
+            body,
+        },
+    };
+}
+
+function getRecognizedSynthesisNotes(
+    journal: TFolder,
+    options: SnapshotBuildOptions,
+): RecognizedSynthesisNote[] {
+    return journal.children
+        .filter((child): child is TFile => child instanceof TFile && child.extension === 'md')
+        .map(file => ({
+            file,
+            kind: options.resolveSynthesisNoteKind?.(file) ?? parseJournalystNoteKind(file),
+        }))
+        .filter((item): item is RecognizedSynthesisNote => (
+            !!item.kind?.periodType
+            && !!item.kind.periodStart
+            && !!item.kind.periodEnd
+        ));
+}
+
+function buildSynthesisHistoryItem(
+    context: SnapshotContext,
+    file: TFile,
+    kind: ParsedJournalystNoteKind,
+): SynthesisHistoryItem | null {
+    if (!kind.periodType || !kind.periodStart || !kind.periodEnd) return null;
+
+    const start = moment(kind.periodStart, 'YYYY-MM-DD', true);
+    const end = moment(kind.periodEnd, 'YYYY-MM-DD', true);
+    if (!start.isValid() || !end.isValid() || start.isAfter(end, 'day')) return null;
+
+    const completedEntryCount = context.completedEntries.filter(entry => (
+        entry.date >= kind.periodStart!
+        && entry.date <= kind.periodEnd!
+    )).length;
+
+    return {
+        periodType: kind.periodType,
+        title: buildSynthesisTitle(kind.periodType, start, context.journal.name),
+        filePath: file.path,
+        pathLabel: file.path,
+        startDate: kind.periodStart,
+        endDate: kind.periodEnd,
+        completedEntryCount,
+        createdAt: file.stat.ctime,
+        createdDateLabel: moment(file.stat.ctime).format('MMM D, YYYY'),
+    };
+}
+
+function buildSynthesisPatterns(
+    context: SnapshotContext,
+    summary: PeriodSummary,
+    sourceEntries: JournalEntryRecord[],
+    coverageEndDate: string | null,
+) {
+    if (!coverageEndDate) {
+        return ['No activity has occurred in this period yet.'];
+    }
+
     const patterns: string[] = [];
-
-    if (summary.tracked) {
-        patterns.push(`${summary.completionRate}% of expected entries were completed during this period.`);
+    if (summary.tracked && summary.totalDays > 0) {
+        patterns.push(`${summary.completedDays} of ${summary.totalDays} expected days were completed through ${coverageEndDate}.`);
+    } else {
+        patterns.push(`${sourceEntries.length} completed ${pluralize('entry', sourceEntries.length)} fell within this period through ${coverageEndDate}.`);
     }
 
-    if (context.insights.busiestWeekday) {
-        patterns.push(`${context.insights.busiestWeekday}s remain your strongest journaling day.`);
+    const expectedDates = getExpectedDatesInRange(context.cadence, summary.startDate, coverageEndDate);
+    const longestRun = getLongestCompletedRun(expectedDates, context.completedEntryByDate);
+    if (longestRun >= 2) {
+        patterns.push(`The longest completed run covered ${longestRun} expected ${pluralize('entry', longestRun)}.`);
     }
 
-    if (context.insights.longestStreak > 0) {
-        patterns.push(`Your best consistency run so far is ${context.insights.longestStreak} expected entries.`);
+    const busiestWeekday = getBusiestWeekdayWithCount(sourceEntries);
+    if (sourceEntries.length >= 3 && busiestWeekday && busiestWeekday.count >= 2) {
+        patterns.push(`${busiestWeekday.count} completed entries landed on ${busiestWeekday.label}s, the most of any weekday in this period.`);
     }
 
     return patterns.slice(0, 3);
 }
 
-function buildWeakestPatterns(context: SnapshotContext, summary: PeriodSummary) {
-    const patterns: string[] = [];
-
-    if (summary.tracked && summary.completionRate < 50) {
-        patterns.push(`This period fell below the halfway mark for expected entries.`);
-    }
-
-    if (context.insights.isTracked && context.insights.longestMissStretch > 0) {
-        patterns.push(`Your longest missed stretch is ${context.insights.longestMissStretch} expected entries.`);
-    }
-
-    if (context.insights.outstandingMisses > 0) {
-        patterns.push(`You currently have ${context.insights.outstandingMisses} outstanding missed entries.`);
-    }
-
-    return patterns.slice(0, 3);
+function getLongestCompletedRun(
+    expectedDates: string[],
+    completedEntryByDate: Map<string, JournalEntryRecord>,
+) {
+    let current = 0;
+    let longest = 0;
+    expectedDates.forEach(date => {
+        if (completedEntryByDate.has(date)) {
+            current += 1;
+            longest = Math.max(longest, current);
+            return;
+        }
+        current = 0;
+    });
+    return longest;
 }
 
-function buildReflectionPrompts(periodType: SynthesisPeriodType, context: SnapshotContext, summary: PeriodSummary) {
-    const prompts = [
-        `What mattered most during this ${periodType === 'weekly' ? 'week' : periodType === 'monthly' ? 'month' : 'quarter'}?`,
-        summary.tracked
-            ? `What helped you meet ${summary.completionRate}% of your expected journaling rhythm, and what got in the way?`
-            : 'What kind of journaling rhythm felt natural during this period?',
-        context.insights.busiestWeekday
-            ? `Why do you think ${context.insights.busiestWeekday}s have been your strongest day lately?`
-            : 'Which situations made it easiest to show up and write?',
-    ];
-
-    return prompts;
+function getBusiestWeekdayWithCount(entries: JournalEntryRecord[]) {
+    const counts = new Map<number, number>();
+    entries.forEach(entry => {
+        const weekday = moment(entry.date, 'YYYY-MM-DD', true).day();
+        counts.set(weekday, (counts.get(weekday) ?? 0) + 1);
+    });
+    const busiest = [...counts.entries()]
+        .sort((left, right) => right[1] - left[1] || left[0] - right[0])[0];
+    return busiest ? { label: WEEKDAY_LABELS[busiest[0]], count: busiest[1] } : null;
 }
 
-function buildSynthesisTitle(periodType: SynthesisPeriodType, anchor: moment.Moment) {
+function buildSynthesisSummaryText(
+    summary: PeriodSummary,
+    sourceEntryCount: number,
+    coverageEndDate: string | null,
+    isFuturePeriod: boolean,
+) {
+    if (isFuturePeriod) {
+        return 'This period has not started yet. Its reflection can still be prepared in advance.';
+    }
+
+    const entryText = `${sourceEntryCount} completed ${pluralize('entry', sourceEntryCount)}`;
+    if (summary.tracked && summary.totalDays > 0) {
+        return `${entryText} through ${coverageEndDate}, with ${summary.completedDays} of ${summary.totalDays} expected days complete.`;
+    }
+
+    return `${entryText} through ${coverageEndDate}. No expected-day score applies to this period.`;
+}
+
+function buildReflectionPrompts(periodType: SynthesisPeriodType) {
     if (periodType === 'weekly') {
-        return `Weekly Review ${anchor.format('YYYY [Week] WW')}`;
+        return [
+            'What pattern showed up more than once this week?',
+            'Which entry feels most worth revisiting?',
+            'What should carry into next week?',
+        ];
     }
 
     if (periodType === 'monthly') {
-        return `Monthly Reflection ${anchor.format('YYYY-MM')}`;
+        return [
+            'What kept returning this month?',
+            'Which entry would you reread first?',
+            'What deserves more attention next month?',
+        ];
     }
 
-    return `Quarter Summary ${anchor.format('YYYY [Q]Q')}`;
+    return [
+        'What is the headline of this quarter?',
+        'Where did your attention actually go?',
+        'What should continue or change next quarter?',
+    ];
+}
+
+function buildSynthesisTitle(periodType: SynthesisPeriodType, start: moment.Moment, journalName: string) {
+    if (periodType === 'weekly') {
+        return `Week of ${start.format('MMM D')} - ${journalName}`;
+    }
+
+    if (periodType === 'monthly') {
+        return `${start.format('MMMM YYYY')} - ${journalName}`;
+    }
+
+    return `Q${start.quarter()} ${start.format('YYYY')} - ${journalName}`;
 }
 
 function buildSynthesisFileName(periodType: SynthesisPeriodType, anchor: moment.Moment) {
@@ -1092,74 +1300,98 @@ function buildSynthesisFileName(periodType: SynthesisPeriodType, anchor: moment.
     return `quarter-summary-${anchor.format('YYYY-[Q]Q')}.md`;
 }
 
-function buildSynthesisBody(
-    title: string,
-    summary: PeriodSummary,
-    notableEntries: JournalEntryRecord[],
-    strongestPatterns: string[],
-    weakestPatterns: string[],
-    reflectionPrompts: string[],
-) {
-    const entryLines = notableEntries.length > 0
-        ? notableEntries.map(entry => `- [[${entry.filePath.replace(/\.md$/i, '')}|${entry.displayLabel}]]`).join('\n')
-        : '- No journal entries in this period.';
-    const strongestLines = strongestPatterns.length > 0
-        ? strongestPatterns.map(pattern => `- ${pattern}`).join('\n')
-        : '- Nothing notable yet.';
-    const weakestLines = weakestPatterns.length > 0
-        ? weakestPatterns.map(pattern => `- ${pattern}`).join('\n')
-        : '- No clear weak spots yet.';
-    const promptLines = reflectionPrompts.map(prompt => `- ${prompt}`).join('\n');
-    const summaryLine = summary.tracked
-        ? `${summary.completedDays}/${summary.totalDays} expected entries (${summary.completionRate}%)`
-        : 'Ad hoc journal; completion is not scored.';
+function buildSynthesisBody(input: {
+    title: string;
+    startDate: string;
+    endDate: string;
+    coverageEndDate: string | null;
+    isPartial: boolean;
+    summary: PeriodSummary;
+    sourceEntries: JournalEntryRecord[];
+    unfinishedEntryCount: number;
+    patterns: string[];
+    reflectionPrompts: string[];
+}) {
+    const entryLines = input.sourceEntries.length > 0
+        ? input.sourceEntries.map(entry => `- [[${entry.filePath.replace(/\.md$/i, '')}|${entry.displayLabel}]]`).join('\n')
+        : '- No completed entries were available when this synthesis was prepared.';
+    const patternLines = input.patterns.map(pattern => `- ${pattern}`).join('\n');
+    const promptLines = input.reflectionPrompts.map(prompt => `### ${prompt}\n\n`).join('\n').trimEnd();
+    const summaryLine = input.summary.tracked && input.summary.totalDays > 0
+        ? `${input.summary.completedDays}/${input.summary.totalDays} expected days (${input.summary.completionRate}%)`
+        : 'No cadence score is available for this period.';
+    const preparedThroughLine = input.coverageEndDate
+        ? input.isPartial ? `- Prepared through: ${input.coverageEndDate}` : null
+        : '- Prepared before this period began.';
 
     return [
-        `# ${title}`,
+        `# ${input.title}`,
         '',
         '## Period',
-        `- ${summary.startDate} to ${summary.endDate}`,
+        `- ${input.startDate} to ${input.endDate}`,
+        preparedThroughLine,
         '',
-        '## Summary',
+        '## Snapshot',
         `- ${summaryLine}`,
+        `- ${input.sourceEntries.length} completed ${pluralize('entry', input.sourceEntries.length)} included`,
+        `- ${input.unfinishedEntryCount} unfinished ${pluralize('entry', input.unfinishedEntryCount)} excluded`,
         '',
-        '## Notable Entries',
+        '## Entries Included',
         entryLines,
         '',
-        '## Strongest Patterns',
-        strongestLines,
-        '',
-        '## Weakest Patterns',
-        weakestLines,
+        '## Patterns',
+        patternLines,
         '',
         '## Reflection',
         promptLines,
         '',
-    ].join('\n');
+    ].filter(line => line !== null).join('\n');
 }
 
 function getSynthesisPeriod(anchor: moment.Moment, periodType: SynthesisPeriodType) {
     if (periodType === 'weekly') {
+        const start = anchor.clone().startOf('week');
         return {
-            label: 'This week',
-            start: anchor.clone().startOf('week'),
-            end: anchor.clone(),
+            label: `Week of ${start.format('MMM D')}`,
+            markerLabel: 'Week',
+            markerValue: anchor.format('WW'),
+            start,
+            end: anchor.clone().endOf('week'),
         };
     }
 
     if (periodType === 'monthly') {
         return {
-            label: 'This month',
+            label: anchor.format('MMMM YYYY'),
+            markerLabel: 'Month',
+            markerValue: anchor.format('MMM'),
             start: anchor.clone().startOf('month'),
-            end: anchor.clone(),
+            end: anchor.clone().endOf('month'),
         };
     }
 
     return {
-        label: 'This quarter',
+        label: `Q${anchor.quarter()} ${anchor.format('YYYY')}`,
+        markerLabel: 'Quarter',
+        markerValue: `Q${anchor.quarter()}`,
         start: anchor.clone().startOf('quarter'),
-        end: anchor.clone(),
+        end: anchor.clone().endOf('quarter'),
     };
+}
+
+function formatSynthesisDateRange(start: moment.Moment, end: moment.Moment) {
+    if (start.year() !== end.year()) {
+        return `${start.format('MMM D, YYYY')} - ${end.format('MMM D, YYYY')}`;
+    }
+    if (start.month() !== end.month()) {
+        return `${start.format('MMM D')} - ${end.format('MMM D, YYYY')}`;
+    }
+    return `${start.format('MMM D')} - ${end.format('D, YYYY')}`;
+}
+
+function pluralize(word: string, count: number) {
+    if (count === 1) return word;
+    return word === 'entry' ? 'entries' : `${word}s`;
 }
 
 function getBusiestWeekday(entries: JournalEntryRecord[]): string | null {
