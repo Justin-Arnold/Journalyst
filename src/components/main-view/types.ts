@@ -67,11 +67,6 @@ export interface MainViewActions {
     openNote(filePath: string): Promise<void>;
     createSynthesisNote(journalPath: string, anchorDate: string, periodType: SynthesisPeriodType): Promise<void>;
     previewSynthesisNote(request: SynthesisPreviewRequest): Promise<void>;
-    updateRemindersEnabled(enabled: boolean): Promise<void>;
-    updateOsNotificationsEnabled(enabled: boolean): Promise<void>;
-    updateReminderQuietHours(settings: ReminderQuietHoursSettings): Promise<void>;
-    requestNotificationPermission(): Promise<void>;
-    sendTestReminderNotification(): Promise<void>;
 }
 
 export interface ReminderJournalModel {

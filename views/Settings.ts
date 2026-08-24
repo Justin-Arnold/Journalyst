@@ -36,6 +36,9 @@ export class JournalystSettingsTab extends PluginSettingTab {
 		this.renderSectionHeading(containerEl, 'Workspace', 'Choose where Journalyst lives in your vault and how its optional sidebar companion behaves.');
 		this.renderWorkspaceSettings(containerEl);
 
+		this.renderSectionHeading(containerEl, 'Reminders', 'Manage Journalyst-wide delivery, notification permission, and quiet hours.');
+		this.renderReminderSettings(containerEl);
+
 		this.renderSectionHeading(containerEl, 'Notes and files', 'Control how Journalyst names entry files and handles filename migrations.');
 		this.renderNoteSettings(containerEl, noteDateFormatDraft);
 
@@ -133,6 +136,108 @@ export class JournalystSettingsTab extends PluginSettingTab {
 						this.display();
 					});
 			});
+	}
+
+	private renderReminderSettings(containerEl: HTMLElement) {
+		new Setting(containerEl)
+			.setName('Enable reminders')
+			.setDesc('Master switch for every entry and synthesis reminder configured in Journalyst.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.areRemindersEnabled())
+				.onChange(async value => {
+					await this.plugin.updateRemindersEnabled(value);
+					this.display();
+				}));
+
+		new Setting(containerEl)
+			.setName('OS notifications')
+			.setDesc('Allow rules set to OS preferred to also send native notifications. In-app notices remain available as a fallback.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.areOsNotificationsEnabled())
+				.onChange(async value => {
+					await this.plugin.updateOsNotificationsEnabled(value);
+					this.display();
+				}));
+
+		const permissionStatus = this.plugin.getNotificationPermissionStatus();
+		const permissionDescription = permissionStatus === 'granted'
+			? 'Native notification permission is granted.'
+			: permissionStatus === 'denied'
+				? 'Native notifications are denied. Journalyst will continue using in-app notices.'
+				: permissionStatus === 'default'
+					? 'Native notification permission has not been requested yet.'
+					: 'Native notifications are unavailable in this environment.';
+		const permissionSetting = new Setting(containerEl)
+			.setName('Notification permission')
+			.setDesc(permissionDescription);
+
+		if (permissionStatus === 'default') {
+			permissionSetting.addButton(button => button
+				.setButtonText('Request permission')
+				.onClick(async () => {
+					await this.plugin.requestNotificationPermission();
+					this.display();
+				}));
+		}
+
+		permissionSetting.addButton(button => button
+			.setButtonText('Send test')
+			.setCta()
+			.onClick(async () => {
+				await this.plugin.sendTestReminderNotification();
+			}));
+
+		const quietHours = this.plugin.getReminderQuietHours();
+		new Setting(containerEl)
+			.setName('Quiet hours')
+			.setDesc('Hold reminders during this window. Relevant reminders can resume afterward.')
+			.addText(text => {
+				text.inputEl.type = 'time';
+				text.inputEl.addClass('journalyst-settings-time-input');
+				text.inputEl.setAttribute('aria-label', 'Quiet hours start');
+				text.setValue(quietHours.startTime)
+					.setDisabled(!quietHours.enabled)
+					.onChange(async value => {
+						if (!value || value === quietHours.endTime) {
+							new Notice('Quiet hours start and end must be different.');
+							this.display();
+							return;
+						}
+						await this.plugin.updateReminderQuietHours({
+							...quietHours,
+							startTime: value,
+						});
+						this.display();
+					});
+			})
+			.addText(text => {
+				text.inputEl.type = 'time';
+				text.inputEl.addClass('journalyst-settings-time-input');
+				text.inputEl.setAttribute('aria-label', 'Quiet hours end');
+				text.setValue(quietHours.endTime)
+					.setDisabled(!quietHours.enabled)
+					.onChange(async value => {
+						if (!value || value === quietHours.startTime) {
+							new Notice('Quiet hours start and end must be different.');
+							this.display();
+							return;
+						}
+						await this.plugin.updateReminderQuietHours({
+							...quietHours,
+							endTime: value,
+						});
+						this.display();
+					});
+			})
+			.addToggle(toggle => toggle
+				.setValue(quietHours.enabled)
+				.onChange(async value => {
+					await this.plugin.updateReminderQuietHours({
+						...quietHours,
+						enabled: value,
+					});
+					this.display();
+				}));
 	}
 
 	private renderNoteSettings(containerEl: HTMLElement, noteDateFormatDraft: string) {

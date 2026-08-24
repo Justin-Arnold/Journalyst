@@ -312,6 +312,10 @@
     color: var(--text-muted);
 }
 
+.journalyst-settings-time-input {
+    width: 7.5rem;
+}
+
 .journalyst-review-empty {
     padding: 1rem 0;
 }

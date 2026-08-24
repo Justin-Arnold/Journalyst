@@ -18,7 +18,7 @@ const emit = defineEmits<{
     commit: [];
     retry: [];
     undo: [];
-    openGlobalReminders: [];
+    openGlobalSettings: [];
 }>();
 
 const reviewPeriods: ReviewReminderPeriod[] = ['weekly', 'monthly', 'quarterly'];
@@ -30,8 +30,8 @@ const entryStatus = computed(() => {
 });
 const entryStatusClass = computed(() => entryStatus.value.toLowerCase().replace(' ', '-'));
 const globalReminderMessage = computed(() => props.model.remindersEnabled
-    ? 'Master switch, OS permission, and OS delivery are managed in the main Reminders tab.'
-    : 'Global reminders are off. These rules can still be saved, but they will not run.');
+    ? 'Master switch, OS permission, delivery, and quiet hours are managed in Journalyst settings.'
+    : 'Global reminders are off. These rules can still be saved, but they will not run until enabled in Journalyst settings.');
 
 function updateSettings(nextSettings: JournalReminderSettings) {
     settings.value = nextSettings;
@@ -93,8 +93,8 @@ function updateSettings(nextSettings: JournalReminderSettings) {
             :description="globalReminderMessage"
         >
             <template #actions>
-                <button type="button" @click="emit('openGlobalReminders')">
-                    Open Reminders
+                <button type="button" @click="emit('openGlobalSettings')">
+                    Open settings
                     <ObsidianIcon name="arrow-right" />
                 </button>
             </template>

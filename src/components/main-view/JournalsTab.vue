@@ -525,9 +525,9 @@ async function previewBasesBackfill() {
     }
 }
 
-async function openGlobalReminders() {
+async function openGlobalReminderSettings() {
     if (!props.model || !await prepareToLeave()) return;
-    await props.actions.activateJournalTab(props.model.journalPath, 'reminders');
+    await props.actions.openSettings();
 }
 
 function getEntrySetupDraft(): JournalEntrySetupUpdate {
@@ -676,7 +676,7 @@ defineExpose({ flushAutosave, prepareToLeave });
                     @commit="commitReminders"
                     @retry="retryAutosave"
                     @undo="undoAutosave"
-                    @open-global-reminders="openGlobalReminders"
+                    @open-global-settings="openGlobalReminderSettings"
                 />
 
                 <JournalIntegrationSettings

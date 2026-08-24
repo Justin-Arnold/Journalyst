@@ -304,25 +304,6 @@ export class ReviewView extends ItemView {
                     new Notice('Journalyst could not load that synthesis preview.');
                 }
             },
-            updateRemindersEnabled: async (enabled) => {
-                await this.plugin.updateRemindersEnabled(enabled);
-                this.invalidateData();
-            },
-            updateOsNotificationsEnabled: async (enabled) => {
-                await this.plugin.updateOsNotificationsEnabled(enabled);
-                this.invalidateData();
-            },
-            updateReminderQuietHours: async (settings) => {
-                await this.plugin.updateReminderQuietHours(settings);
-                this.invalidateData();
-            },
-            requestNotificationPermission: async () => {
-                await this.plugin.requestNotificationPermission();
-                this.invalidateData();
-            },
-            sendTestReminderNotification: async () => {
-                await this.plugin.sendTestReminderNotification();
-            },
         };
     }
 

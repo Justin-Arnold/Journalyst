@@ -580,12 +580,8 @@ defineExpose({ flushJournalSettings });
                 <RemindersTab
                     v-else-if="state.activeTab === 'reminders'"
                     :model="remindersModel"
-                    @update-reminders-enabled="actions.updateRemindersEnabled"
-                    @update-os-notifications-enabled="actions.updateOsNotificationsEnabled"
-                    @update-quiet-hours="actions.updateReminderQuietHours"
-                    @request-permission="actions.requestNotificationPermission"
-                    @test-notification="actions.sendTestReminderNotification"
                     @edit-journal="actions.activateJournalSettings($event, 'reminders')"
+                    @open-settings="actions.openSettings"
                 />
             </main>
         </template>
