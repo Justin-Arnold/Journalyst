@@ -15,10 +15,7 @@ import type {
     CompleteOnboardingRequest,
     CompleteOnboardingResult,
 } from "../../../onboarding";
-import type {
-    JournalReminderSettings,
-    ReminderQuietHoursSettings,
-} from "../../../reminders";
+import type { JournalReminderSettings } from "../../../reminders";
 import type { JournalPromptSettings, PromptOption } from "../../../prompts";
 import type {
     LookbackResult,
@@ -67,34 +64,4 @@ export interface MainViewActions {
     openNote(filePath: string): Promise<void>;
     createSynthesisNote(journalPath: string, anchorDate: string, periodType: SynthesisPeriodType): Promise<void>;
     previewSynthesisNote(request: SynthesisPreviewRequest): Promise<void>;
-}
-
-export interface ReminderJournalModel {
-    journalPath: string;
-    journalName: string;
-    cadenceLabel: string;
-    status: 'active' | 'global-off' | 'off';
-    enabledRuleCount: number;
-    rules: ReminderRuleSummaryModel[];
-}
-
-export interface ReminderRuleSummaryModel {
-    id: 'entry' | 'weekly' | 'monthly' | 'quarterly';
-    label: string;
-    enabled: boolean;
-    available: boolean;
-    scheduleLabel: string;
-    deliveryLabel: string;
-}
-
-export interface ReminderWorkspaceModel {
-    remindersEnabled: boolean;
-    osNotificationsEnabled: boolean;
-    quietHours: ReminderQuietHoursSettings;
-    permissionStatus: NotificationPermission | 'unsupported';
-    activeJournalCount: number;
-    configuredJournalCount: number;
-    enabledRuleCount: number;
-    osPreferredRuleCount: number;
-    journals: ReminderJournalModel[];
 }

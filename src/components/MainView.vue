@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import moment from "moment";
-import { getCadenceLabel, getCompactCadenceLabel } from "../../cadence";
+import { getCompactCadenceLabel } from "../../cadence";
 import type { CompleteOnboardingRequest } from "../../onboarding";
 import {
     buildJournalHomeAttentionItems,
@@ -29,12 +29,10 @@ import AnalyticsTab from "./main-view/AnalyticsTab.vue";
 import HomeTab from "./main-view/HomeTab.vue";
 import JournalsTab from "./main-view/JournalsTab.vue";
 import OnboardingView from "./main-view/OnboardingView.vue";
-import RemindersTab from "./main-view/RemindersTab.vue";
 import ReviewTab from "./main-view/ReviewTab.vue";
 import SynthesisTab from "./main-view/SynthesisTab.vue";
 import type {
     MainViewActions,
-    ReminderWorkspaceModel,
     ReviewViewState,
 } from "./main-view/types";
 import type { JournalSettingsSidebarItem, JournalSettingsViewModel } from "../../journalSettings";
@@ -67,7 +65,6 @@ const tabs: Array<{ id: ReviewWorkspaceTab; label: string; icon: string }> = [
     { id: 'review', label: 'Review', icon: 'history' },
     { id: 'analytics', label: 'Analytics', icon: 'chart-column' },
     { id: 'synthesis', label: 'Synthesis', icon: 'file-pen-line' },
-    { id: 'reminders', label: 'Reminders', icon: 'bell' },
     { id: 'journals', label: 'Journals', icon: 'notebook-pen' },
 ];
 
@@ -260,107 +257,6 @@ const synthesisSnapshot = computed(() => {
             snapshotBuildOptions,
         )
         : null;
-});
-
-function formatReminderTime(time: string) {
-    const parsed = moment(time, 'HH:mm', true);
-    return parsed.isValid() ? parsed.format('LT') : time;
-}
-
-function getOrdinal(value: number) {
-    const remainder = value % 100;
-    if (remainder >= 11 && remainder <= 13) return `${value}th`;
-    if (value % 10 === 1) return `${value}st`;
-    if (value % 10 === 2) return `${value}nd`;
-    if (value % 10 === 3) return `${value}rd`;
-    return `${value}th`;
-}
-
-function getQuarterlyReminderLabel(daysAfterQuarterEnd: number) {
-    if (daysAfterQuarterEnd === 0) return 'Quarter end';
-    if (daysAfterQuarterEnd === 1) return 'Start of next quarter';
-    return `${daysAfterQuarterEnd} days after quarter end`;
-}
-
-const remindersModel = computed<ReminderWorkspaceModel>(() => {
-    const remindersEnabled = props.plugin.areRemindersEnabled();
-    const journalsWithRules = workspaceContext.value.journalFolders.map(journal => {
-        const cadence = props.plugin.getJournalCadence(journal.path);
-        const settings = props.plugin.getJournalReminderSettings(journal.path);
-        const entryAvailable = cadence.type !== 'adhoc';
-        const rules = [
-            {
-                id: 'entry' as const,
-                label: 'Entry',
-                enabled: entryAvailable && settings.entryReminder.enabled,
-                available: entryAvailable,
-                scheduleLabel: entryAvailable
-                    ? `At ${formatReminderTime(settings.entryReminder.time)}`
-                    : 'Scheduled journals only',
-                deliveryLabel: settings.entryReminder.deliveryMode === 'os-preferred'
-                    ? 'OS preferred'
-                    : 'In-app',
-            },
-            {
-                id: 'weekly' as const,
-                label: 'Weekly',
-                enabled: settings.reviewReminders.weekly.enabled,
-                available: true,
-                scheduleLabel: `${moment().day(settings.reviewReminders.weekly.weekday).format('ddd')} at ${formatReminderTime(settings.reviewReminders.weekly.time)}`,
-                deliveryLabel: settings.reviewReminders.weekly.deliveryMode === 'os-preferred'
-                    ? 'OS preferred'
-                    : 'In-app',
-            },
-            {
-                id: 'monthly' as const,
-                label: 'Monthly',
-                enabled: settings.reviewReminders.monthly.enabled,
-                available: true,
-                scheduleLabel: `${getOrdinal(settings.reviewReminders.monthly.dayOfMonth)} at ${formatReminderTime(settings.reviewReminders.monthly.time)}`,
-                deliveryLabel: settings.reviewReminders.monthly.deliveryMode === 'os-preferred'
-                    ? 'OS preferred'
-                    : 'In-app',
-            },
-            {
-                id: 'quarterly' as const,
-                label: 'Quarterly',
-                enabled: settings.reviewReminders.quarterly.enabled,
-                available: true,
-                scheduleLabel: `${getQuarterlyReminderLabel(settings.reviewReminders.quarterly.daysAfterQuarterEnd)} at ${formatReminderTime(settings.reviewReminders.quarterly.time)}`,
-                deliveryLabel: settings.reviewReminders.quarterly.deliveryMode === 'os-preferred'
-                    ? 'OS preferred'
-                    : 'In-app',
-            },
-        ];
-        const enabledRuleCount = rules.filter(rule => rule.enabled).length;
-
-        return {
-            journalPath: journal.path,
-            journalName: journal.name,
-            cadenceLabel: getCadenceLabel(cadence),
-            status: enabledRuleCount === 0
-                ? 'off' as const
-                : remindersEnabled
-                    ? 'active' as const
-                    : 'global-off' as const,
-            enabledRuleCount,
-            rules,
-        };
-    });
-    const configuredJournals = journalsWithRules.filter(journal => journal.enabledRuleCount > 0);
-    const enabledRules = journalsWithRules.flatMap(journal => journal.rules).filter(rule => rule.enabled);
-
-    return {
-        remindersEnabled,
-        osNotificationsEnabled: props.plugin.areOsNotificationsEnabled(),
-        quietHours: props.plugin.getReminderQuietHours(),
-        permissionStatus: props.plugin.getNotificationPermissionStatus(),
-        activeJournalCount: remindersEnabled ? configuredJournals.length : 0,
-        configuredJournalCount: configuredJournals.length,
-        enabledRuleCount: enabledRules.length,
-        osPreferredRuleCount: enabledRules.filter(rule => rule.deliveryLabel === 'OS preferred').length,
-        journals: journalsWithRules,
-    };
 });
 
 async function loadJournalSettings() {
@@ -576,12 +472,6 @@ defineExpose({ flushJournalSettings });
                     @open-note="actions.openNote"
                     @create-note="actions.createSynthesisNote(state.journalPath!, state.anchorDate, $event)"
                     @preview-note="actions.previewSynthesisNote($event)"
-                />
-                <RemindersTab
-                    v-else-if="state.activeTab === 'reminders'"
-                    :model="remindersModel"
-                    @edit-journal="actions.activateJournalSettings($event, 'reminders')"
-                    @open-settings="actions.openSettings"
                 />
             </main>
         </template>

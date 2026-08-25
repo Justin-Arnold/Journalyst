@@ -299,9 +299,18 @@ export default class JournalystPlugin extends Plugin {
 
         this.addCommand({
             id: 'open-journalyst-reminders',
-            name: 'Open Journalyst reminders',
+            name: 'Open Journalyst reminder settings',
             callback: () => {
-                this.activateReviewView(undefined, undefined, 'reminders');
+                const journal = this.inferCurrentJournal()
+                    ?? this.getJournalByPath(this.reviewState.journalPath ?? '')
+                    ?? this.journals[0];
+
+                if (journal) {
+                    void this.activateJournalSettings(journal.path, 'reminders');
+                    return;
+                }
+
+                this.openSettings();
             }
         });
 
