@@ -154,7 +154,7 @@ withDefaults(defineProps<{
 }
 
 .journalyst-alert-card-actions :deep(button:hover:not(:disabled)) {
-    background: var(--background-modifier-hover);
+    background: var(--interactive-hover);
     color: var(--text-normal);
 }
 

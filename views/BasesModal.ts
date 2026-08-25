@@ -61,6 +61,7 @@ class BasesBackfillPreviewModal extends Modal {
     constructor(
         app: App,
         private readonly items: JournalNotePropertyBackfillItem[],
+        private readonly scopeLabel: string,
         private readonly resolve: (apply: boolean) => void,
     ) {
         super(app);
@@ -70,7 +71,7 @@ class BasesBackfillPreviewModal extends Modal {
         this.setTitle('Journal metadata preview');
         if (this.items.length === 0) {
             this.contentEl.createEl('p', {
-                text: 'Every recognized note in this journal already has the current Journalyst metadata.',
+                text: `Every recognized note in ${this.scopeLabel} already has the current Journalyst metadata.`,
             });
             const actions = this.contentEl.createDiv({ cls: 'modal-button-container' });
             const closeButton = actions.createEl('button', { text: 'Close', cls: 'mod-cta' });
@@ -142,8 +143,12 @@ export function confirmResetJournalBase(app: App, target: BasesGenerationTarget)
     });
 }
 
-export function previewJournalBasesBackfill(app: App, items: JournalNotePropertyBackfillItem[]) {
+export function previewJournalBasesBackfill(
+    app: App,
+    items: JournalNotePropertyBackfillItem[],
+    scopeLabel = 'this journal',
+) {
     return new Promise<boolean>(resolve => {
-        new BasesBackfillPreviewModal(app, items, resolve).open();
+        new BasesBackfillPreviewModal(app, items, scopeLabel, resolve).open();
     });
 }

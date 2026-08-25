@@ -2721,7 +2721,7 @@ export default class JournalystPlugin extends Plugin {
         };
     }
 
-    private isBasesCorePluginAvailable() {
+    isBasesCorePluginAvailable() {
         const internalPlugins = this.getObsidianInternalPlugins();
         const basesPlugin = internalPlugins?.getPluginById?.('bases')
             ?? internalPlugins?.plugins?.['bases'];

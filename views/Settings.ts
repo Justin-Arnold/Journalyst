@@ -1,578 +1,346 @@
-import { App, Notice, PluginSettingTab, Setting, TFolder } from 'obsidian';
-import { type JournalNotePropertyBackfillItem } from "../bases";
-import { type SidebarMode } from "../review/types";
-import { type TemplateEngine } from "../templates/types";
-import JournalystPlugin from "../src/main";
+import {
+    App,
+    PluginSettingTab,
+    TFile,
+    TFolder,
+    normalizePath,
+} from 'obsidian';
+import { createApp, markRaw, reactive, type App as VueApp } from 'vue';
+import {
+    JOURNALYST_BASE_MANAGED_PROPERTIES,
+    getJournalystBaseFileName,
+} from '../bases';
+import type { JournalSettingsSection } from '../journalSettings';
+import GlobalSettingsView from '../src/components/GlobalSettingsView.vue';
+import type {
+    JournalystSettingsActions,
+    JournalystSettingsViewModel,
+    JournalystSettingsViewState,
+    PromptLibraryListItem,
+    SettingsActionResult,
+} from '../src/components/settings/types';
+import JournalystPlugin from '../src/main';
+import { previewJournalBasesBackfill } from './BasesModal';
+import {
+    confirmDeletePromptLibrary,
+    openPromptLibraryModal,
+    previewNoteMigration,
+} from './SettingsModals';
 
 export class JournalystSettingsTab extends PluginSettingTab {
-	plugin: JournalystPlugin;
-	private noteDateFormatDraft: string | null = null;
-	private migrationPreviewFormat: string | null = null;
-	private readonly migrationPreviewLimit = 24;
-	private customPromptListDrafts: Record<string, { name: string; body: string }> = {};
-	private basesBackfillPreview: JournalNotePropertyBackfillItem[] | null = null;
-	private readonly basesPreviewLimit = 24;
+    private vueApp: VueApp<Element> | null = null;
+    private modelRequestRevision = 0;
+    private mutationQueue: Promise<void> = Promise.resolve();
+    private visible = false;
+    private readonly state = reactive<JournalystSettingsViewState>({
+        model: null,
+        loading: true,
+        error: '',
+        revision: 0,
+    });
+    private readonly actions: JournalystSettingsActions;
 
-	constructor(app: App, plugin: JournalystPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+    constructor(app: App, private readonly plugin: JournalystPlugin) {
+        super(app, plugin);
+        this.actions = this.createActions();
+    }
 
-	display(): void {
-		void this.displayAsync();
-	}
+    display(): void {
+        this.visible = true;
+        this.unmountVue();
+        this.containerEl.empty();
+        this.containerEl.addClass('journalyst-global-settings-tab');
 
-	private async displayAsync() {
-		const { containerEl } = this;
-		if (this.noteDateFormatDraft === null) {
-			this.noteDateFormatDraft = this.plugin.settings.noteDateFormat;
-		}
+        const mountTarget = this.containerEl.createDiv({ cls: 'journalyst-global-settings-mount' });
+        this.vueApp = createApp(GlobalSettingsView, {
+            state: this.state,
+            actions: markRaw(this.actions),
+        });
+        this.vueApp.mount(mountTarget);
+        void this.reloadModel();
+    }
 
-		const noteDateFormatDraft = this.noteDateFormatDraft;
+    hide(): void {
+        this.visible = false;
+        this.modelRequestRevision += 1;
+        this.unmountVue();
+        this.containerEl.removeClass('journalyst-global-settings-tab');
+        this.containerEl.empty();
+        super.hide();
+    }
 
-		containerEl.empty();
-		this.plugin.refreshJournals();
+    onExternalSettingsChange() {
+        void this.reloadModel();
+    }
 
-		this.renderSectionHeading(containerEl, 'Workspace', 'Choose where Journalyst lives in your vault and how its optional sidebar companion behaves.');
-		this.renderWorkspaceSettings(containerEl);
+    private unmountVue() {
+        this.vueApp?.unmount();
+        this.vueApp = null;
+    }
 
-		this.renderSectionHeading(containerEl, 'Reminders', 'Manage Journalyst-wide delivery, notification permission, and quiet hours.');
-		this.renderReminderSettings(containerEl);
+    private async reloadModel() {
+        if (!this.visible) return;
+        const requestRevision = ++this.modelRequestRevision;
+        this.state.loading = !this.state.model;
+        this.state.error = '';
 
-		this.renderSectionHeading(containerEl, 'Notes and files', 'Control how Journalyst names entry files and handles filename migrations.');
-		this.renderNoteSettings(containerEl, noteDateFormatDraft);
+        try {
+            const model = await this.buildViewModel();
+            if (requestRevision !== this.modelRequestRevision) return;
+            this.state.model = model;
+            this.state.revision += 1;
+        } catch (error) {
+            if (requestRevision !== this.modelRequestRevision) return;
+            this.state.error = getErrorMessage(error, 'Journalyst could not load its settings.');
+        } finally {
+            if (requestRevision === this.modelRequestRevision) {
+                this.state.loading = false;
+            }
+        }
+    }
 
-		this.renderSectionHeading(containerEl, 'Prompts', 'Manage reusable prompt libraries. Assign prompts to journals from the Journals workspace.');
-		this.renderSubsectionIntro(
-			containerEl,
-			'Prompt libraries',
-			'Create custom prompt lists here, or use Journalyst built-in libraries and markdown note-backed lists when you assign prompts to journals.'
-		);
-		await this.renderCustomPromptLists(containerEl);
+    private async buildViewModel(): Promise<JournalystSettingsViewModel> {
+        this.plugin.refreshJournals();
+        const templateEngine = this.plugin.settings.templateEngine;
+        const folderPaths = Array.from(new Set([
+            '/',
+            ...this.app.vault.getAllLoadedFiles()
+                .filter((file): file is TFolder => file instanceof TFolder)
+                .map(folder => folder.path),
+        ])).sort((left, right) => left === '/' ? -1 : right === '/' ? 1 : left.localeCompare(right));
+        const configuredRoot = this.plugin.settings.rootDirectory;
+        const folderOptions = folderPaths.map(path => ({
+            path,
+            label: path === '/' ? 'Vault root (/)' : path,
+            missing: false,
+        }));
+        if (configuredRoot && !folderPaths.includes(configuredRoot)) {
+            folderOptions.push({
+                path: configuredRoot,
+                label: `${configuredRoot} (missing)`,
+                missing: true,
+            });
+        }
 
-		this.renderSectionHeading(containerEl, 'Templates', 'Choose the global template engine and fallback behavior. Assign templates from the Journals workspace.');
-		await this.renderTemplateSettings(containerEl);
+        const builtInLibraries = Object.values(this.plugin.getBuiltInPromptLists())
+            .map(list => this.buildPromptLibraryItem(list.id, list.name, list.prompts.length, 'built-in'));
+        const customLibraries = Object.values(this.plugin.getCustomPromptLists())
+            .map(list => this.buildPromptLibraryItem(list.id, list.name, list.prompts.length, 'custom'));
+        const basesResources = this.plugin.journals.flatMap(journal => (
+            ['entries', 'reflections'] as const
+        ).map(target => {
+            const path = normalizePath(`${journal.path}/${getJournalystBaseFileName(target)}`);
+            const resource = this.app.vault.getAbstractFileByPath(path);
+            return resource instanceof TFile ? 'ready' : resource ? 'conflict' : 'missing';
+        }));
 
-		this.renderSectionHeading(containerEl, 'Bases', 'Opt into Journalyst properties and managed starter Bases files for your journals.');
-		await this.renderBasesSettings(containerEl);
-	}
+        return {
+            workspace: {
+                rootDirectory: configuredRoot,
+                folderOptions,
+                sidebarMode: this.plugin.getSidebarMode(),
+                journalCount: this.plugin.journals.length,
+            },
+            reminders: {
+                enabled: this.plugin.areRemindersEnabled(),
+                osNotificationsEnabled: this.plugin.areOsNotificationsEnabled(),
+                permissionStatus: this.plugin.getNotificationPermissionStatus(),
+                quietHours: this.plugin.getReminderQuietHours(),
+            },
+            notes: {
+                dateFormat: this.plugin.settings.noteDateFormat,
+            },
+            prompts: {
+                builtInLibraries,
+                customLibraries,
+            },
+            templates: {
+                engine: templateEngine,
+                failureBehavior: this.plugin.settings.templateFailureBehavior,
+                availability: templateEngine === 'none'
+                    ? 'none'
+                    : await this.plugin.getTemplateAvailability(templateEngine),
+            },
+            bases: {
+                enabled: this.plugin.isBasesIntegrationEnabled(),
+                corePluginAvailable: this.plugin.isBasesCorePluginAvailable(),
+                readyResourceCount: basesResources.filter(status => status === 'ready').length,
+                totalResourceCount: basesResources.length,
+                conflictCount: basesResources.filter(status => status === 'conflict').length,
+                managedProperties: JOURNALYST_BASE_MANAGED_PROPERTIES.map(property => ({ ...property })),
+            },
+        };
+    }
 
-	private renderSectionHeading(containerEl: HTMLElement, title: string, description?: string) {
-		if (containerEl.children.length > 0) {
-			containerEl.createEl('hr');
-		}
+    private buildPromptLibraryItem(
+        id: string,
+        name: string,
+        promptCount: number,
+        sourceType: 'built-in' | 'custom',
+    ): PromptLibraryListItem {
+        let journalUsageCount = 0;
+        let weekdayOverrideCount = 0;
 
-		const section = containerEl.createDiv({ cls: 'journalyst-settings-section' });
-		section.createEl('h3', { text: title });
+        this.plugin.journals.forEach(journal => {
+            const settings = this.plugin.getJournalPromptSettings(journal.path);
+            if (settings.sourceType === sourceType && settings.selectedListId === id) {
+                journalUsageCount += 1;
+            }
+            weekdayOverrideCount += Object.values(settings.weekdaySourceOverrides)
+                .filter(source => source.sourceType === sourceType && source.selectedListId === id).length;
+        });
 
-		if (description) {
-			section.createEl('p', {
-				text: description,
-				cls: 'journalyst-settings-section-description',
-			});
-		}
-	}
+        return {
+            id,
+            name,
+            promptCount,
+            sourceType,
+            journalUsageCount,
+            weekdayOverrideCount,
+        };
+    }
 
-	private renderSubsectionIntro(containerEl: HTMLElement, title: string, description: string) {
-		const section = containerEl.createDiv({ cls: 'journalyst-settings-subsection' });
-		section.createEl('h4', { text: title });
-		section.createEl('p', {
-			text: description,
-			cls: 'journalyst-settings-subsection-description',
-		});
-	}
+    private createActions(): JournalystSettingsActions {
+        return {
+            reload: async () => this.reloadModel(),
+            openJournalSettings: async (section = 'schedule') => this.openJournalSettings(section),
+            updateRootDirectory: async path => {
+                const result = await this.plugin.updateRootDirectory(path);
+                await this.reloadModel();
+                return result;
+            },
+            updateSidebarMode: async mode => this.runMutation(() => this.plugin.updateSidebarMode(mode)),
+            updateRemindersEnabled: async enabled => this.runMutation(() => this.plugin.updateRemindersEnabled(enabled)),
+            updateOsNotificationsEnabled: async enabled => this.runMutation(() => this.plugin.updateOsNotificationsEnabled(enabled)),
+            requestNotificationPermission: async () => this.runMutation(() => this.plugin.requestNotificationPermission()),
+            sendTestNotification: async () => this.runMutation(
+                () => this.plugin.sendTestReminderNotification(),
+                false,
+            ),
+            updateQuietHours: async settings => this.runMutation(() => this.plugin.updateReminderQuietHours(settings)),
+            getNoteFileNameExample: format => this.plugin.formatJournalNoteFileNameForFormat(
+                '2026-04-25',
+                format.trim() || 'YYYY-MM-DD',
+            ),
+            saveNoteDateFormat: async format => this.runMutation(() => this.plugin.updateNoteDateFormat(format)),
+            previewNoteMigration: async format => this.previewNoteMigration(format),
+            editPromptLibrary: async listId => this.editPromptLibrary(listId),
+            deletePromptLibrary: async listId => this.deletePromptLibrary(listId),
+            updateTemplateEngine: async engine => this.runMutation(async () => {
+                this.plugin.settings.templateEngine = engine;
+                await this.plugin.saveSettings();
+            }),
+            updateTemplateFailureBehavior: async behavior => this.runMutation(async () => {
+                this.plugin.settings.templateFailureBehavior = behavior;
+                await this.plugin.saveSettings();
+            }),
+            updateBasesEnabled: async enabled => this.runMutation(() => this.plugin.updateBasesIntegrationEnabled(enabled)),
+            createMissingBases: async () => {
+                try {
+                    const result = await this.plugin.generateBasesForAllJournals();
+                    await this.reloadModel();
+                    return result;
+                } catch (error) {
+                    return { ok: false, error: getErrorMessage(error, 'Journalyst could not create the missing Bases.') };
+                }
+            },
+            previewBasesBackfill: async () => this.previewBasesBackfill(),
+            openCorePluginsSettings: async () => this.plugin.openCorePluginsSettings(),
+        };
+    }
 
-	private renderWorkspaceSettings(containerEl: HTMLElement) {
-		new Setting(containerEl)
-			.setName('Manage journals')
-			.setDesc('Edit journal schedules, entry setup, reminders, integrations, and names in Journalyst.')
-			.addButton(button => button
-				.setButtonText('Open Journals')
-				.setCta()
-				.onClick(() => {
-					const appWithSettings = this.app as typeof this.app & { setting?: { close(): void } };
-					appWithSettings.setting?.close();
-					void this.plugin.activateJournalSettings();
-				}));
+    private async runMutation(
+        mutation: () => Promise<unknown>,
+        reload = true,
+    ): Promise<SettingsActionResult> {
+        const operation = this.mutationQueue.then(() => this.performMutation(mutation, reload));
+        this.mutationQueue = operation.then(() => undefined, () => undefined);
+        return operation;
+    }
 
-		new Setting(containerEl)
-			.setName('Journalyst home directory')
-			.setDesc('The directory where Journalyst will look for your journals.')
-			.addDropdown(dropdown => {
-				const folderPaths = Array.from(new Set([
-					'/',
-					...this.app.vault.getAllLoadedFiles()
-						.filter(file => file instanceof TFolder)
-						.map(folder => folder.path),
-				]));
+    private async performMutation(
+        mutation: () => Promise<unknown>,
+        reload: boolean,
+    ): Promise<SettingsActionResult> {
+        const previousSettings = structuredClone(this.plugin.settings);
+        try {
+            await mutation();
+            if (reload) await this.reloadModel();
+            return { ok: true };
+        } catch (error) {
+            this.plugin.settings = previousSettings;
+            try {
+                await this.plugin.saveSettings();
+            } catch (rollbackError) {
+                console.error('Journalyst could not persist a settings rollback.', rollbackError);
+            }
+            if (reload) await this.reloadModel();
+            return { ok: false, error: getErrorMessage(error, 'Journalyst could not save that setting.') };
+        }
+    }
 
-				dropdown.addOption('', 'Not configured');
-				folderPaths.forEach(folderPath => dropdown.addOption(folderPath, folderPath));
+    private async openJournalSettings(section: JournalSettingsSection) {
+        const appWithSettings = this.app as typeof this.app & { setting?: { close(): void } };
+        appWithSettings.setting?.close();
+        await this.plugin.activateJournalSettings(undefined, section);
+    }
 
-				const configuredRoot = this.plugin.settings.rootDirectory;
-				if (configuredRoot && !folderPaths.includes(configuredRoot)) {
-					dropdown.addOption(configuredRoot, `${configuredRoot} (missing)`);
-				}
+    private async previewNoteMigration(format: string): Promise<SettingsActionResult> {
+        try {
+            const migrationItems = this.plugin.getJournalMigrationPlanForFormat(format);
+            const shouldApply = await previewNoteMigration(this.app, format, migrationItems);
+            if (shouldApply) {
+                await this.plugin.applyJournalMigrationPlan(migrationItems);
+                await this.reloadModel();
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, error: getErrorMessage(error, 'Journalyst could not preview the filename migration.') };
+        }
+    }
 
-				dropdown.setValue(configuredRoot ?? '')
-					.onChange(async (value) => {
-						const result = await this.plugin.updateRootDirectory(value || null);
-						if (!result.ok) {
-							new Notice(result.error);
-						}
-						this.display();
-					});
-			});
+    private async editPromptLibrary(listId?: string): Promise<SettingsActionResult> {
+        const existing = listId ? this.plugin.getCustomPromptLists()[listId] : null;
+        if (listId && !existing) {
+            return { ok: false, error: 'Journalyst could not find that prompt library.' };
+        }
 
-		new Setting(containerEl)
-			.setName('Sidebar mode')
-			.setDesc('Choose whether the optional Journalyst sidebar shows a quick home summary or the journal heatmap launcher.')
-			.addDropdown(dropdown => {
-				dropdown.addOption('home-mini', 'Home mini view');
-				dropdown.addOption('journals-mini', 'Journals mini view');
-				dropdown.setValue(this.plugin.getSidebarMode())
-					.onChange(async value => {
-						await this.plugin.updateSidebarMode(value as SidebarMode);
-						this.display();
-					});
-			});
-	}
+        const draft = await openPromptLibraryModal(this.app, existing ? {
+            name: existing.name,
+            body: existing.prompts.join('\n'),
+        } : null);
+        if (!draft) return { ok: true };
 
-	private renderReminderSettings(containerEl: HTMLElement) {
-		new Setting(containerEl)
-			.setName('Enable reminders')
-			.setDesc('Master switch for every entry and synthesis reminder configured in Journalyst.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.areRemindersEnabled())
-				.onChange(async value => {
-					await this.plugin.updateRemindersEnabled(value);
-					this.display();
-				}));
+        const targetId = listId ?? this.plugin.createCustomPromptListId();
+        return this.runMutation(() => this.plugin.upsertCustomPromptList(targetId, draft.name, draft.body));
+    }
 
-		new Setting(containerEl)
-			.setName('OS notifications')
-			.setDesc('Allow rules set to OS preferred to also send native notifications. In-app notices remain available as a fallback.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.areOsNotificationsEnabled())
-				.onChange(async value => {
-					await this.plugin.updateOsNotificationsEnabled(value);
-					this.display();
-				}));
+    private async deletePromptLibrary(listId: string): Promise<SettingsActionResult> {
+        const library = this.state.model?.prompts.customLibraries.find(item => item.id === listId);
+        if (!library) {
+            return { ok: false, error: 'Journalyst could not find that prompt library.' };
+        }
 
-		const permissionStatus = this.plugin.getNotificationPermissionStatus();
-		const permissionDescription = permissionStatus === 'granted'
-			? 'Native notification permission is granted.'
-			: permissionStatus === 'denied'
-				? 'Native notifications are denied. Journalyst will continue using in-app notices.'
-				: permissionStatus === 'default'
-					? 'Native notification permission has not been requested yet.'
-					: 'Native notifications are unavailable in this environment.';
-		const permissionSetting = new Setting(containerEl)
-			.setName('Notification permission')
-			.setDesc(permissionDescription);
+        const confirmed = await confirmDeletePromptLibrary(this.app, library);
+        if (!confirmed) return { ok: true };
+        return this.runMutation(() => this.plugin.deleteCustomPromptList(listId));
+    }
 
-		if (permissionStatus === 'default') {
-			permissionSetting.addButton(button => button
-				.setButtonText('Request permission')
-				.onClick(async () => {
-					await this.plugin.requestNotificationPermission();
-					this.display();
-				}));
-		}
+    private async previewBasesBackfill(): Promise<SettingsActionResult> {
+        try {
+            const items = await this.plugin.getJournalNotePropertyBackfillPreview();
+            const shouldApply = await previewJournalBasesBackfill(this.app, items, 'all journals');
+            if (shouldApply) {
+                await this.plugin.applyJournalNotePropertyBackfill(items);
+                await this.reloadModel();
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, error: getErrorMessage(error, 'Journalyst could not preview the metadata changes.') };
+        }
+    }
+}
 
-		permissionSetting.addButton(button => button
-			.setButtonText('Send test')
-			.setCta()
-			.onClick(async () => {
-				await this.plugin.sendTestReminderNotification();
-			}));
-
-		const quietHours = this.plugin.getReminderQuietHours();
-		new Setting(containerEl)
-			.setName('Quiet hours')
-			.setDesc('Hold reminders during this window. Relevant reminders can resume afterward.')
-			.addText(text => {
-				text.inputEl.type = 'time';
-				text.inputEl.addClass('journalyst-settings-time-input');
-				text.inputEl.setAttribute('aria-label', 'Quiet hours start');
-				text.setValue(quietHours.startTime)
-					.setDisabled(!quietHours.enabled)
-					.onChange(async value => {
-						if (!value || value === quietHours.endTime) {
-							new Notice('Quiet hours start and end must be different.');
-							this.display();
-							return;
-						}
-						await this.plugin.updateReminderQuietHours({
-							...quietHours,
-							startTime: value,
-						});
-						this.display();
-					});
-			})
-			.addText(text => {
-				text.inputEl.type = 'time';
-				text.inputEl.addClass('journalyst-settings-time-input');
-				text.inputEl.setAttribute('aria-label', 'Quiet hours end');
-				text.setValue(quietHours.endTime)
-					.setDisabled(!quietHours.enabled)
-					.onChange(async value => {
-						if (!value || value === quietHours.startTime) {
-							new Notice('Quiet hours start and end must be different.');
-							this.display();
-							return;
-						}
-						await this.plugin.updateReminderQuietHours({
-							...quietHours,
-							endTime: value,
-						});
-						this.display();
-					});
-			})
-			.addToggle(toggle => toggle
-				.setValue(quietHours.enabled)
-				.onChange(async value => {
-					await this.plugin.updateReminderQuietHours({
-						...quietHours,
-						enabled: value,
-					});
-					this.display();
-				}));
-	}
-
-	private renderNoteSettings(containerEl: HTMLElement, noteDateFormatDraft: string) {
-		const noteNameExample = noteDateFormatDraft.trim()
-			? this.plugin.formatJournalNoteFileNameForFormat('2026-04-25', noteDateFormatDraft.trim())
-			: 'YYYY-MM-DD.md';
-		new Setting(containerEl)
-			.setName('Journal note date format')
-			.setDesc(`Use Moment-style date tokens for note filenames. Example output: ${noteNameExample}`)
-			.addText(text => {
-				text.setPlaceholder('YYYY-MM-DD')
-					.setValue(noteDateFormatDraft)
-					.onChange((value) => {
-						this.noteDateFormatDraft = value;
-					});
-			})
-			.addButton(button => {
-				button.setButtonText('Preview renames')
-					.setDisabled(!noteDateFormatDraft.trim())
-					.onClick(() => {
-						this.migrationPreviewFormat = this.noteDateFormatDraft?.trim() || null;
-						this.display();
-					});
-			})
-			.addButton(button => {
-				button.setButtonText('Save format')
-					.setCta()
-					.setDisabled(!noteDateFormatDraft.trim() || noteDateFormatDraft.trim() === this.plugin.settings.noteDateFormat)
-					.onClick(async () => {
-						const nextFormat = this.noteDateFormatDraft?.trim() || '';
-						if (!nextFormat) {
-							return;
-						}
-
-						await this.plugin.updateNoteDateFormat(nextFormat);
-						this.noteDateFormatDraft = this.plugin.settings.noteDateFormat;
-						if (this.migrationPreviewFormat) {
-							this.migrationPreviewFormat = nextFormat;
-						}
-						this.display();
-					});
-			});
-
-		if (!this.migrationPreviewFormat) {
-			return;
-		}
-
-		const migrationPlan = this.plugin.getJournalMigrationPlanForFormat(this.migrationPreviewFormat);
-		const conflictingMigrationItems = migrationPlan.filter(item => item.hasConflict);
-		const safeMigrationItems = migrationPlan.filter(item => !item.hasConflict);
-		const visibleMigrationItems = migrationPlan.slice(0, this.migrationPreviewLimit);
-		const hiddenCount = Math.max(0, migrationPlan.length - visibleMigrationItems.length);
-
-		new Setting(containerEl)
-			.setName('Migration preview')
-			.setDesc(
-				migrationPlan.length === 0
-					? `No journal notes need renaming for ${this.migrationPreviewFormat}.`
-					: conflictingMigrationItems.length > 0
-						? `Found ${migrationPlan.length} rename candidates with ${conflictingMigrationItems.length} conflicts to resolve first.`
-						: `Found ${migrationPlan.length} journal notes that can be renamed to match ${this.migrationPreviewFormat}.`
-			)
-			.addButton(button => {
-				button.setButtonText(`Rename ${safeMigrationItems.length} notes`)
-					.setDisabled(migrationPlan.length === 0 || safeMigrationItems.length === 0 || conflictingMigrationItems.length > 0)
-					.onClick(async () => {
-						await this.plugin.applyJournalMigrationPlan(safeMigrationItems);
-						this.display();
-					});
-			})
-			.addExtraButton(button => {
-				button.setIcon('cross')
-					.setTooltip('Hide migration preview')
-					.onClick(() => {
-						this.migrationPreviewFormat = null;
-						this.display();
-					});
-			});
-
-		if (migrationPlan.length > 0) {
-			const migrationList = containerEl.createDiv({ cls: 'journalyst-migration-list' });
-			visibleMigrationItems.forEach(item => {
-				const row = migrationList.createDiv({ cls: 'journalyst-migration-row' });
-				row.createEl('code', { text: item.currentPath });
-				row.createEl('span', { text: '->', cls: 'journalyst-migration-arrow' });
-				row.createEl('code', { text: item.targetPath });
-
-				if (item.hasConflict) {
-					row.createEl('span', {
-						text: `Conflict with ${item.conflictPath}`,
-						cls: 'journalyst-migration-conflict',
-					});
-				}
-			});
-
-			if (hiddenCount > 0) {
-				containerEl.createEl('p', {
-					text: `Showing ${visibleMigrationItems.length} examples out of ${migrationPlan.length} rename candidates.`,
-					cls: 'journalyst-migration-summary',
-				});
-			}
-		}
-	}
-
-	private async renderTemplateSettings(containerEl: HTMLElement) {
-		new Setting(containerEl)
-			.setName('Template engine')
-			.setDesc('Choose which template system Journalyst should use when creating journal entries.')
-			.addDropdown(dropdown => {
-				dropdown.addOption('none', 'None');
-				dropdown.addOption('core', 'Obsidian Templates');
-				dropdown.addOption('templater', 'Templater');
-				dropdown.setValue(this.plugin.settings.templateEngine)
-					.onChange(async (value: string) => {
-						const castValue = value as TemplateEngine;
-						this.plugin.settings.templateEngine = castValue;
-						await this.plugin.saveSettings();
-						this.display();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName('Template failure behavior')
-			.setDesc('Choose whether Journalyst should create its default note when a configured template cannot be applied.')
-			.addDropdown(dropdown => {
-				dropdown.addOption('fallback-default', 'Create default note');
-				dropdown.addOption('abort', 'Abort with notice');
-				dropdown.setValue(this.plugin.settings.templateFailureBehavior)
-					.onChange(async (value) => {
-						this.plugin.settings.templateFailureBehavior = value as typeof this.plugin.settings.templateFailureBehavior;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		if (this.plugin.settings.templateEngine === 'none') {
-			this.addTemplateNotice('Journalyst will create entries with its default note content.');
-			return;
-		}
-
-		const templateAvailability = await this.plugin.getTemplateAvailability(this.plugin.settings.templateEngine);
-		const statusText = templateAvailability === 'ready'
-			? 'The selected template engine is ready. Template assignments are managed per journal in Journalyst.'
-			: templateAvailability === 'not-installed'
-				? 'The selected template plugin is not installed.'
-				: templateAvailability === 'disabled'
-					? 'The selected template plugin is disabled.'
-					: 'Configure a template folder before assigning journal templates.';
-		this.addTemplateNotice(statusText);
-	}
-
-	private addTemplateNotice(message: string) {
-		new Setting(this.containerEl)
-			.setDesc(message);
-	}
-
-	private async renderBasesSettings(containerEl: HTMLElement) {
-		new Setting(containerEl)
-			.setName('Enable Bases integration')
-			.setDesc('Add Journalyst properties to notes and create customizable starter Bases for each journal.')
-			.addToggle(toggle => {
-				toggle.setValue(this.plugin.isBasesIntegrationEnabled())
-					.onChange(async value => {
-						await this.plugin.updateBasesIntegrationEnabled(value);
-						if (!value) {
-							this.basesBackfillPreview = null;
-						}
-						this.display();
-					});
-			});
-
-		if (!this.plugin.isBasesIntegrationEnabled()) {
-			new Setting(containerEl)
-				.setDesc('Bases stays completely out of the way until you opt in here.');
-			return;
-		}
-
-		new Setting(containerEl)
-			.setName('Starter Base files')
-			.setDesc('Create missing starter Bases for your journals. Existing Base files are always left unchanged.')
-			.addButton(button => {
-				button.setButtonText('Create missing')
-					.setCta()
-					.onClick(async () => {
-						await this.plugin.generateBasesForAllJournals();
-					});
-			})
-			.addButton(button => {
-				button.setButtonText('Preview backfill')
-					.onClick(async () => {
-						this.basesBackfillPreview = await this.plugin.getJournalNotePropertyBackfillPreview();
-						this.display();
-					});
-			});
-		if (!this.basesBackfillPreview) {
-			return;
-		}
-
-		const backfillPreview = this.basesBackfillPreview;
-		const visibleItems = backfillPreview.slice(0, this.basesPreviewLimit);
-		const hiddenCount = Math.max(0, backfillPreview.length - visibleItems.length);
-
-		new Setting(containerEl)
-				.setName('Property backfill preview')
-				.setDesc(
-					backfillPreview.length === 0
-						? 'All recognized journal notes already have the current Journalyst Bases properties.'
-						: `Journalyst found ${backfillPreview.length} notes that need missing or updated properties.`
-				)
-				.addButton(button => {
-					button.setButtonText(`Apply to ${backfillPreview.length} notes`)
-						.setDisabled(backfillPreview.length === 0)
-						.onClick(async () => {
-							await this.plugin.applyJournalNotePropertyBackfill(backfillPreview);
-							this.basesBackfillPreview = await this.plugin.getJournalNotePropertyBackfillPreview();
-							this.display();
-						});
-			})
-			.addExtraButton(button => {
-				button.setIcon('cross')
-					.setTooltip('Hide backfill preview')
-					.onClick(() => {
-						this.basesBackfillPreview = null;
-						this.display();
-					});
-			});
-
-		if (backfillPreview.length === 0) {
-			return;
-		}
-
-		const previewList = containerEl.createDiv({ cls: 'journalyst-migration-list' });
-		visibleItems.forEach(item => {
-			const row = previewList.createDiv({ cls: 'journalyst-migration-row' });
-			row.createEl('code', { text: item.filePath });
-			const details = [
-				item.entryType,
-				item.missingKeys.length > 0 ? `missing: ${item.missingKeys.join(', ')}` : null,
-				item.changedKeys.length > 0 ? `update: ${item.changedKeys.join(', ')}` : null,
-			].filter(Boolean).join(' | ');
-			row.createEl('span', { text: details, cls: 'journalyst-migration-summary' });
-		});
-
-		if (hiddenCount > 0) {
-			containerEl.createEl('p', {
-				text: `Showing ${visibleItems.length} examples out of ${backfillPreview.length} notes needing backfill.`,
-				cls: 'journalyst-migration-summary',
-			});
-		}
-	}
-
-	private async renderCustomPromptLists(containerEl: HTMLElement) {
-		const customLists = Object.values(this.plugin.getCustomPromptLists());
-
-		new Setting(containerEl)
-			.setName('Custom prompt lists')
-			.setDesc(customLists.length === 0
-				? 'You do not have any custom prompt lists yet.'
-				: 'Settings-managed prompt lists use one prompt per line.')
-			.addButton(button => {
-				button.setButtonText(customLists.length === 0 ? 'Add first list' : 'Add list')
-					.setCta()
-					.onClick(async () => {
-						const listId = this.plugin.createCustomPromptListId();
-						await this.plugin.upsertCustomPromptList(listId, 'New Prompt List', '');
-						this.customPromptListDrafts[listId] = { name: 'New Prompt List', body: '' };
-						this.display();
-					});
-			});
-
-		if (customLists.length === 0) {
-			containerEl.createEl('p', {
-				text: 'Built-in prompt libraries are always available when you assign prompts to a journal. Add a custom list here only if you want your own reusable bank.',
-				cls: 'journalyst-settings-empty-note',
-			});
-			return;
-		}
-
-		customLists.forEach(list => {
-			const draft = this.getCustomPromptListDraft(list.id, list.name, list.prompts.join('\n'));
-			new Setting(containerEl)
-				.setName(list.name)
-				.setDesc('One prompt per line. Save after editing the list name or body.')
-				.addText(text => {
-					text.setPlaceholder('Prompt list name')
-						.setValue(draft.name)
-						.onChange(value => {
-							this.customPromptListDrafts[list.id] = {
-								...draft,
-								name: value,
-							};
-						});
-				})
-				.addButton(button => {
-					button.setButtonText('Save')
-						.onClick(async () => {
-							const nextDraft = this.customPromptListDrafts[list.id] ?? draft;
-							await this.plugin.upsertCustomPromptList(list.id, nextDraft.name, nextDraft.body);
-							this.display();
-						});
-				})
-				.addExtraButton(button => {
-					button.setIcon('trash')
-						.setTooltip('Delete prompt list')
-						.onClick(async () => {
-							delete this.customPromptListDrafts[list.id];
-							await this.plugin.deleteCustomPromptList(list.id);
-							this.display();
-						});
-				});
-
-			const textarea = containerEl.createEl('textarea', { cls: 'journalyst-prompt-textarea' });
-			textarea.value = draft.body;
-			textarea.rows = Math.max(4, Math.min(10, draft.body.split('\n').length || 4));
-			textarea.placeholder = 'Write one prompt per line';
-			textarea.addEventListener('input', () => {
-				this.customPromptListDrafts[list.id] = {
-					...draft,
-					body: textarea.value,
-				};
-			});
-		});
-	}
-
-	private getCustomPromptListDraft(listId: string, defaultName: string, defaultBody: string) {
-		const existingDraft = this.customPromptListDrafts[listId];
-		if (existingDraft) {
-			return existingDraft;
-		}
-
-		const nextDraft = {
-			name: defaultName,
-			body: defaultBody,
-		};
-		this.customPromptListDrafts[listId] = nextDraft;
-		return nextDraft;
-	}
-
+function getErrorMessage(error: unknown, fallback: string) {
+    return error instanceof Error ? error.message : fallback;
 }

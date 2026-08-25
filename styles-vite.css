@@ -297,25 +297,6 @@
     outline-offset: 2px;
 }
 
-.journalyst-settings-section {
-    margin: 0 0 0.9rem;
-}
-
-.journalyst-settings-section h3 {
-    margin: 1.5rem 0 0.3rem;
-    font-size: 1.45rem;
-    line-height: 1.15;
-}
-
-.journalyst-settings-section-description {
-    margin: 0 0 0.9rem;
-    color: var(--text-muted);
-}
-
-.journalyst-settings-time-input {
-    width: 7.5rem;
-}
-
 .journalyst-review-empty {
     padding: 1rem 0;
 }
@@ -330,138 +311,137 @@
     color: var(--text-muted);
 }
 
-.journalyst-migration-list {
+.journalyst-global-settings-tab {
+    container-type: inline-size;
+}
+
+.journalyst-global-settings-mount {
+    min-width: 0;
+}
+
+.journalyst-settings-segmented {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: stretch;
+    padding: var(--size-2-1);
+    border: var(--border-width) solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: var(--journalyst-base-recessed);
+}
+
+.journalyst-settings-segmented button {
+    display: inline-flex;
+    width: auto;
+    min-height: calc(var(--input-height) - var(--size-2-2));
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-4-2);
+    padding: 0 var(--size-4-3);
+    border: 0;
+    border-radius: calc(var(--radius-s) - 1px);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+}
+
+.journalyst-settings-segmented button:hover:not(:disabled) {
+    background: var(--interactive-hover);
+    color: var(--text-normal);
+}
+
+.journalyst-settings-segmented button.is-active {
+    background: var(--journalyst-accent-dark);
+    color: var(--text-on-accent);
+}
+
+.journalyst-settings-segmented button:focus-visible {
+    outline: var(--border-width) solid var(--color-accent);
+    outline-offset: var(--size-2-1);
+}
+
+.journalyst-prompt-library-form .setting-item {
+    padding-right: 0;
+    padding-left: 0;
+}
+
+.journalyst-prompt-library-editor {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
+    gap: var(--size-4-2);
+    margin-top: var(--size-4-4);
 }
 
-.journalyst-migration-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    gap: 0.6rem;
-    align-items: center;
-    padding: 0.75rem 0.9rem;
+.journalyst-prompt-library-editor label {
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    font-weight: var(--font-semibold);
+}
+
+.journalyst-prompt-library-editor textarea {
+    width: 100%;
+    min-height: 14rem;
+    resize: vertical;
+}
+
+.journalyst-settings-modal-error {
+    min-height: 1.4em;
+    margin-top: var(--size-4-3);
+    color: var(--text-error);
+    font-size: var(--font-ui-small);
+}
+
+.journalyst-settings-preview-list {
+    display: flex;
+    max-height: min(52vh, 32rem);
+    flex-direction: column;
+    margin-top: var(--size-4-4);
+    overflow-y: auto;
+    border: var(--border-width) solid var(--background-modifier-border);
     border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-secondary);
 }
 
-.journalyst-migration-row code {
-    white-space: nowrap;
+.journalyst-settings-preview-row {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--size-4-3);
+    padding: var(--size-4-3);
+}
+
+.journalyst-settings-preview-row + .journalyst-settings-preview-row {
+    border-top: var(--border-width) solid var(--background-modifier-border);
+}
+
+.journalyst-settings-preview-row.is-conflict {
+    background: var(--background-modifier-error);
+}
+
+.journalyst-settings-preview-row code {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.journalyst-migration-arrow {
-    color: var(--text-muted);
+.journalyst-settings-preview-arrow {
+    color: var(--text-faint);
 }
 
-.journalyst-migration-conflict {
+.journalyst-settings-preview-conflict {
     grid-column: 1 / -1;
     color: var(--text-error);
-    font-size: 0.85rem;
+    font-size: var(--font-ui-smaller);
 }
 
-.journalyst-migration-summary {
-    color: var(--text-muted);
-    margin-top: 0.6rem;
-}
+@container (max-width: 34rem) {
+    .journalyst-settings-preview-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
 
-.journalyst-settings-subsection {
-    margin: 1.1rem 0 0.85rem;
-    padding-top: 0.95rem;
-    border-top: 1px solid var(--background-modifier-border);
-}
-
-.journalyst-settings-subsection h4 {
-    margin: 0 0 0.3rem;
-    font-size: 1.05rem;
-    line-height: 1.2;
-    font-weight: 600;
-}
-
-.journalyst-settings-subsection-description,
-.journalyst-settings-empty-note {
-    color: var(--text-muted);
-    margin: 0 0 0.9rem;
-}
-
-.journalyst-cadence-detail {
-    margin: -0.2rem 0 1rem;
-}
-
-.journalyst-cadence-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.75rem;
-}
-
-.journalyst-cadence-field {
-    display: flex;
-    flex-direction: column;
-}
-
-.journalyst-cadence-label {
-    display: block;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    margin-bottom: 0.45rem;
-}
-
-.journalyst-cadence-input {
-    width: 100%;
-}
-
-.journalyst-cadence-weekdays {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-}
-
-.journalyst-cadence-day {
-    min-width: 2rem;
-    padding: 0.35rem 0.55rem;
-}
-
-.journalyst-cadence-day.is-selected {
-    background: rgba(var(--interactive-accent-rgb), 0.18);
-    color: var(--text-normal);
-    border-color: rgba(var(--interactive-accent-rgb), 0.55);
-}
-
-.journalyst-prompt-textarea {
-    width: 100%;
-    min-height: 7rem;
-    margin: -0.35rem 0 1rem;
-}
-
-.journalyst-prompt-weekdays {
-    margin: -0.1rem 0 0.95rem;
-}
-
-.journalyst-prompt-preview {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin: -0.1rem 0 0.95rem;
-}
-
-.journalyst-prompt-preview-item {
-    padding: 0.75rem 0.9rem;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-secondary);
-    color: var(--text-muted);
-}
-
-.journalyst-prompt-journal-details {
-    margin: -0.1rem 0 1rem;
-    padding: 0.9rem 1rem 0.2rem;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    background: rgba(var(--background-primary-rgb), 0.35);
+    .journalyst-settings-preview-arrow {
+        transform: rotate(90deg);
+        justify-self: start;
+    }
 }
 
 .journalyst-onboarding,
