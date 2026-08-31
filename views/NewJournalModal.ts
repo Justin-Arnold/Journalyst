@@ -10,6 +10,7 @@ export class NewJournalModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle('New journal');
         this.contentEl.empty();
 

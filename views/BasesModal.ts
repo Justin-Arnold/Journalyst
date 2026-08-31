@@ -22,6 +22,7 @@ class ResetJournalBaseModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         const label = this.target === 'entries' ? 'Journal entries' : 'Reviews and reflections';
         this.setTitle(`Reset ${label} Base?`);
         this.contentEl.createEl('p', {
@@ -68,6 +69,7 @@ class BasesBackfillPreviewModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle('Journal metadata preview');
         if (this.items.length === 0) {
             this.contentEl.createEl('p', {

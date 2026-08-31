@@ -69,7 +69,7 @@ const presentedItems = computed(() => props.items.map(item => {
 <template>
     <section class="journalyst-home-attention" :aria-labelledby="headingId">
         <header class="journalyst-home-attention-header">
-            <h2 :id="headingId">Needs attention today</h2>
+            <h2 :id="headingId" class="journalyst-type-section-title">Needs attention today</h2>
         </header>
 
         <div class="journalyst-home-attention-list">
@@ -116,9 +116,6 @@ const presentedItems = computed(() => props.items.map(item => {
 .journalyst-home-attention-header h2 {
     margin: 0;
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    text-transform: uppercase;
-    letter-spacing: 0;
 }
 
 .journalyst-home-attention-list {

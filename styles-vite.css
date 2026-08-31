@@ -2,6 +2,166 @@
 .theme-light {
     --journalyst-base-recessed: color-mix(in srgb, var(--color-base-00) 85%, black);
     --journalyst-accent-dark: color-mix(in srgb, var(--color-accent-1) 50%, black);
+
+    /* Journalyst typography maps semantic roles onto the active Obsidian theme. */
+    --journalyst-type-font-interface: var(--font-interface);
+    --journalyst-type-font-code: var(--font-monospace);
+    --journalyst-type-font-markdown: var(--font-text);
+    --journalyst-type-size-page-title: var(--h1-size);
+    --journalyst-type-size-context-title: var(--h2-size);
+    --journalyst-type-size-section-title: var(--font-ui-medium);
+    --journalyst-type-size-card-title: var(--font-ui-medium);
+    --journalyst-type-size-row-title: var(--font-ui-small);
+    --journalyst-type-size-body: var(--font-ui-small);
+    --journalyst-type-size-supporting: var(--font-ui-smaller);
+    --journalyst-type-size-label: var(--font-ui-smaller);
+    --journalyst-type-size-status: var(--font-ui-smaller);
+    --journalyst-type-size-metric-large: calc(var(--font-ui-large) + 0.75rem);
+    --journalyst-type-size-metric-medium: calc(var(--font-ui-large) + 0.35rem);
+    --journalyst-type-size-control: var(--font-ui-small);
+    --journalyst-type-size-code: var(--font-ui-smaller);
+    --journalyst-type-weight-page-title: var(--h1-weight);
+    --journalyst-type-weight-context-title: var(--h2-weight);
+    --journalyst-type-weight-section-title: var(--font-semibold);
+    --journalyst-type-weight-card-title: var(--font-semibold);
+    --journalyst-type-weight-row-title: var(--font-semibold);
+    --journalyst-type-weight-body: var(--font-normal);
+    --journalyst-type-weight-label: var(--font-semibold);
+    --journalyst-type-weight-status: var(--font-semibold);
+    --journalyst-type-weight-metric: var(--font-semibold);
+    --journalyst-type-line-tight: var(--line-height-tight);
+    --journalyst-type-line-normal: var(--line-height-normal);
+    --journalyst-type-line-prose: 1.5;
+    --journalyst-type-measure-compact: 42ch;
+    --journalyst-type-measure-readable: 68ch;
+}
+
+.journalyst-workspace,
+.journalyst-sidebar-view,
+.journalyst-global-settings-tab,
+.journalyst-modal {
+    font-family: var(--journalyst-type-font-interface);
+}
+
+.journalyst-workspace :where(button, input, select, textarea),
+.journalyst-sidebar-view :where(button, input, select, textarea),
+.journalyst-global-settings-tab :where(button, input, select, textarea),
+.journalyst-modal :where(button, input, select, textarea) {
+    font-family: var(--journalyst-type-font-interface);
+    font-size: var(--journalyst-type-size-control);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-page-title {
+    font-size: var(--journalyst-type-size-page-title);
+    font-weight: var(--journalyst-type-weight-page-title);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-context-title {
+    font-size: var(--journalyst-type-size-context-title);
+    font-weight: var(--journalyst-type-weight-context-title);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-section-title {
+    font-size: var(--journalyst-type-size-section-title);
+    font-weight: var(--journalyst-type-weight-section-title);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-card-title {
+    font-size: var(--journalyst-type-size-card-title);
+    font-weight: var(--journalyst-type-weight-card-title);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-row-title {
+    font-size: var(--journalyst-type-size-row-title);
+    font-weight: var(--journalyst-type-weight-row-title);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-body {
+    font-size: var(--journalyst-type-size-body);
+    font-weight: var(--journalyst-type-weight-body);
+    line-height: var(--journalyst-type-line-normal);
+}
+
+.journalyst-type-supporting {
+    color: var(--text-muted);
+    font-size: var(--journalyst-type-size-supporting);
+    font-weight: var(--journalyst-type-weight-body);
+    line-height: var(--journalyst-type-line-normal);
+    overflow-wrap: anywhere;
+}
+
+.journalyst-type-label {
+    font-size: var(--journalyst-type-size-label);
+    font-weight: var(--journalyst-type-weight-label);
+    line-height: var(--journalyst-type-line-tight);
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.journalyst-type-metadata {
+    color: var(--text-faint);
+    font-size: var(--journalyst-type-size-supporting);
+    font-weight: var(--journalyst-type-weight-body);
+    line-height: var(--journalyst-type-line-normal);
+}
+
+.journalyst-type-status {
+    font-size: var(--journalyst-type-size-status);
+    font-weight: var(--journalyst-type-weight-status);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-metric-large {
+    font-size: var(--journalyst-type-size-metric-large);
+    font-weight: var(--journalyst-type-weight-metric);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-metric-medium {
+    font-size: var(--journalyst-type-size-metric-medium);
+    font-weight: var(--journalyst-type-weight-metric);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-control {
+    font-size: var(--journalyst-type-size-control);
+    line-height: var(--journalyst-type-line-tight);
+}
+
+.journalyst-type-code {
+    font-family: var(--journalyst-type-font-code);
+    font-size: var(--journalyst-type-size-code);
+    line-height: var(--journalyst-type-line-normal);
+}
+
+.journalyst-type-prose {
+    max-width: var(--journalyst-type-measure-readable);
+    font-size: var(--journalyst-type-size-body);
+    line-height: var(--journalyst-type-line-prose);
+    overflow-wrap: anywhere;
+}
+
+.journalyst-modal code {
+    font-family: var(--journalyst-type-font-code);
+    font-size: var(--journalyst-type-size-code);
+    line-height: var(--journalyst-type-line-normal);
+}
+
+.journalyst-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .heat-map-wrapper {
@@ -18,7 +178,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 0.8rem;
+    font-size: var(--journalyst-type-size-supporting);
     color: var(--text-muted);
     border-radius: var(--radius-s);
     aspect-ratio: 1;
@@ -56,7 +216,7 @@
     justify-content: space-between;
     gap: 0.75rem;
     margin: 0.2rem 0 0.75rem;
-    font-size: 0.8rem;
+    font-size: var(--journalyst-type-size-supporting);
     color: var(--text-muted);
 }
 
@@ -103,6 +263,9 @@
 
 .journalyst-sidebar-header h3 {
     margin: 0;
+    font-size: var(--journalyst-type-size-section-title);
+    font-weight: var(--journalyst-type-weight-section-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-sidebar-summary {
@@ -129,6 +292,9 @@
 
 .journalyst-sidebar-mini-card h4 {
     margin: 0;
+    font-size: var(--journalyst-type-size-card-title);
+    font-weight: var(--journalyst-type-weight-card-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-icon {
@@ -168,7 +334,7 @@
 
 .journalyst-bases-backfill-row span {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-review-overview {
@@ -183,7 +349,6 @@
 
 .journalyst-review-overview-copy h2 {
     margin: 0 0 0.35rem 0;
-    font-size: 1.35rem;
 }
 
 .journalyst-review-overview-copy p {
@@ -216,8 +381,6 @@
 .journalyst-review-stat dd {
     margin: 0;
     color: var(--text-normal);
-    font-size: 1.25rem;
-    font-weight: 600;
     overflow-wrap: anywhere;
 }
 
@@ -231,19 +394,12 @@
 
 .journalyst-section-heading h2 {
     margin: 0 0 0.3rem 0;
-    font-size: 1.2rem;
 }
 
 .journalyst-review-section-description,
 .journalyst-review-empty-text {
     color: var(--text-muted);
     margin-top: 0;
-}
-
-.journalyst-review-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.9rem;
 }
 
 .journalyst-home-actions-compact {
@@ -254,31 +410,13 @@
     flex: 1 1 auto;
 }
 
-.journalyst-review-card {
-    background: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    text-align: left;
-}
-
 .journalyst-review-label {
-    font-size: 0.8rem;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0;
-}
-
-.journalyst-review-card strong {
-    font-size: 1.6rem;
-    line-height: 1.05;
 }
 
 .journalyst-review-meta {
-    font-size: 0.85rem;
+    font-size: var(--journalyst-type-size-supporting);
+    line-height: var(--journalyst-type-line-normal);
     color: var(--text-faint);
 }
 
@@ -301,9 +439,8 @@
     padding: 1rem 0;
 }
 
-.journalyst-review-empty h2 {
+.journalyst-review-empty h1 {
     margin: 0 0 0.35rem;
-    font-size: 1.2rem;
 }
 
 .journalyst-review-empty p {
@@ -333,8 +470,8 @@
 
 .journalyst-prompt-library-editor label {
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
-    font-weight: var(--font-semibold);
+    font-size: var(--journalyst-type-size-body);
+    font-weight: var(--journalyst-type-weight-row-title);
 }
 
 .journalyst-prompt-library-editor textarea {
@@ -347,7 +484,7 @@
     min-height: 1.4em;
     margin-top: var(--size-4-3);
     color: var(--text-error);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-settings-preview-list {
@@ -390,7 +527,7 @@
 .journalyst-settings-preview-conflict {
     grid-column: 1 / -1;
     color: var(--text-error);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 @container (max-width: 34rem) {
@@ -416,8 +553,6 @@
 
 .journalyst-onboarding-header h1 {
     margin: 0;
-    font-size: 1.8rem;
-    line-height: 1.15;
 }
 
 .journalyst-onboarding-header p {
@@ -437,7 +572,8 @@
     padding-bottom: 0.85rem;
     border-bottom: 1px solid var(--background-modifier-border);
     color: var(--text-faint);
-    font-size: 0.8rem;
+    font-size: var(--journalyst-type-size-supporting);
+    line-height: var(--journalyst-type-line-normal);
 }
 
 .journalyst-onboarding-progress span {
@@ -448,7 +584,7 @@
 
 .journalyst-onboarding-progress span.is-active {
     color: var(--text-normal);
-    font-weight: 600;
+    font-weight: var(--journalyst-type-weight-status);
 }
 
 .journalyst-onboarding-step {
@@ -461,7 +597,6 @@
 
 .journalyst-onboarding-step-heading h2 {
     margin: 0.2rem 0 0.35rem;
-    font-size: 1.35rem;
 }
 
 .journalyst-onboarding-step-heading p {
@@ -471,8 +606,9 @@
 
 .journalyst-onboarding-step-label {
     color: var(--text-accent);
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-size: var(--journalyst-type-size-label);
+    font-weight: var(--journalyst-type-weight-label);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-onboarding-mode {
@@ -490,8 +626,9 @@
 .journalyst-onboarding-custom > label,
 .journalyst-onboarding-starters legend {
     color: var(--text-muted);
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-size: var(--journalyst-type-size-row-title);
+    font-weight: var(--journalyst-type-weight-row-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-onboarding-field input,
@@ -663,7 +800,9 @@
 }
 
 .journalyst-onboarding-deferred-content h2 {
-    font-size: 1.25rem;
+    font-size: var(--journalyst-type-size-section-title);
+    font-weight: var(--journalyst-type-weight-section-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-onboarding-deferred-content p {
@@ -696,6 +835,7 @@
     border: var(--border-width) solid var(--background-modifier-border);
     border-radius: var(--radius-s);
     background: var(--journalyst-base-recessed);
+    font-family: var(--journalyst-type-font-markdown);
 }
 
 .journalyst-synthesis-preview-content > :first-child {
@@ -731,10 +871,6 @@
 
     .journalyst-review-overview-stats {
         grid-template-columns: 1fr 1fr;
-    }
-
-    .journalyst-review-grid {
-        grid-template-columns: 1fr;
     }
 
     .journalyst-onboarding-starters {

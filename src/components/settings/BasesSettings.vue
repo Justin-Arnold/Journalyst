@@ -127,7 +127,7 @@ async function updateEnabled(value: boolean) {
             description="Journalyst updates only these fields. Custom properties and Base columns remain yours."
         >
             <div class="journalyst-settings-property-list" aria-label="Journalyst managed properties">
-                <code v-for="property in model.managedProperties" :key="property.key" :title="property.key">
+                <code v-for="property in model.managedProperties" :key="property.key" class="journalyst-type-code" :title="property.key">
                     {{ property.label }}
                 </code>
             </div>
@@ -163,7 +163,7 @@ async function updateEnabled(value: boolean) {
 
 .journalyst-settings-resource-count {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     white-space: nowrap;
 }
 
@@ -181,7 +181,7 @@ async function updateEnabled(value: boolean) {
     border-radius: var(--radius-s);
     background: var(--journalyst-base-recessed);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-settings-group-footer {
@@ -195,7 +195,7 @@ async function updateEnabled(value: boolean) {
 
 .journalyst-settings-group-footer span {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-settings-group-footer button {

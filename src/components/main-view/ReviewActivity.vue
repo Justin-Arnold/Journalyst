@@ -165,7 +165,7 @@ function getCellLabel(cell: ReviewActivityCell) {
     background: var(--background-primary);
     box-shadow: none;
     color: var(--text-muted);
-    line-height: 1;
+    line-height: var(--journalyst-type-line-tight);
 }
 
 button.journalyst-review-activity-day {
@@ -174,13 +174,13 @@ button.journalyst-review-activity-day {
 }
 
 .journalyst-review-activity-day strong {
-    font-size: var(--font-ui-small);
-    font-weight: 600;
+    font-size: var(--journalyst-type-size-body);
+    font-weight: var(--journalyst-type-weight-row-title);
 }
 
 .journalyst-review-activity-day span {
     color: currentColor;
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     opacity: 0.7;
 }
 

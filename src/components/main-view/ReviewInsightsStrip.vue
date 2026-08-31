@@ -31,8 +31,8 @@ const items = computed(() => [
     <WorkspaceSection title="Insights">
         <dl class="journalyst-review-insights">
             <div v-for="item in items" :key="item.label">
-                <dt>{{ item.label }}</dt>
-                <dd :title="item.value">{{ item.value }}</dd>
+                <dt class="journalyst-type-label">{{ item.label }}</dt>
+                <dd class="journalyst-type-row-title" :title="item.value">{{ item.value }}</dd>
             </div>
         </dl>
     </WorkspaceSection>
@@ -61,8 +61,6 @@ const items = computed(() => [
 .journalyst-review-insights dt {
     margin-bottom: var(--size-4-2);
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
 }
 
 .journalyst-review-insights dd {
@@ -70,8 +68,6 @@ const items = computed(() => [
     margin: 0;
     overflow: hidden;
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
-    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
 }

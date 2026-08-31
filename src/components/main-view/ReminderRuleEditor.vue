@@ -149,7 +149,7 @@ function updateSchedule(value: string) {
         :class="{ 'is-entry': kind === 'entry', 'is-disabled': !currentRule.enabled }"
     >
         <div class="journalyst-reminder-rule-copy">
-            <h3>{{ titles[kind] }}</h3>
+            <h4>{{ titles[kind] }}</h4>
             <p>{{ descriptions[kind] }}</p>
         </div>
         <div class="journalyst-reminder-rule-fields">
@@ -213,13 +213,15 @@ function updateSchedule(value: string) {
     min-width: 0;
 }
 
-.journalyst-reminder-rule-copy h3,
+.journalyst-reminder-rule-copy h4,
 .journalyst-reminder-rule-copy p {
     margin: 0;
 }
 
-.journalyst-reminder-rule-copy h3 {
-    font-size: var(--font-ui-medium);
+.journalyst-reminder-rule-copy h4 {
+    font-size: var(--journalyst-type-size-card-title);
+    font-weight: var(--journalyst-type-weight-row-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-reminder-rule-copy p {
@@ -227,7 +229,7 @@ function updateSchedule(value: string) {
     color: var(--text-muted);
 }
 
-.journalyst-reminder-rule-row.is-disabled .journalyst-reminder-rule-copy h3 {
+.journalyst-reminder-rule-row.is-disabled .journalyst-reminder-rule-copy h4 {
     color: var(--text-muted);
 }
 
@@ -264,16 +266,6 @@ function updateSchedule(value: string) {
     flex: 0 0 var(--input-height);
     align-items: center;
     justify-content: center;
-}
-
-.journalyst-visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    clip-path: inset(50%);
 }
 
 select:focus-visible,

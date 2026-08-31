@@ -47,19 +47,19 @@ function getExcerpt(lookback: LookbackResult) {
                 class="journalyst-review-lookback-card"
                 :class="{ 'is-empty': !lookback.entry }"
             >
-                <div class="journalyst-review-lookback-heading">
+                <div class="journalyst-review-lookback-heading journalyst-type-label">
                     <span>
                         {{ lookback.label }} · {{ moment(lookback.targetDate).format('YYYY-MM-DD') }}
                     </span>
                     <span
                         v-if="lookback.entry && !lookback.entry.isComplete"
-                        class="journalyst-review-lookback-status"
+                        class="journalyst-review-lookback-status journalyst-type-status"
                     >
                         Unfinished
                     </span>
                 </div>
-                <h3>{{ getTitle(lookback) }}</h3>
-                <p :class="{ 'is-empty': !lookback.entry }">
+                <h3 class="journalyst-type-card-title">{{ getTitle(lookback) }}</h3>
+                <p class="journalyst-type-prose" :class="{ 'is-empty': !lookback.entry }">
                     {{ getExcerpt(lookback) }}
                 </p>
                 <button
@@ -106,8 +106,6 @@ function getExcerpt(lookback: LookbackResult) {
     justify-content: space-between;
     gap: var(--size-4-2);
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
 }
 
 .journalyst-review-lookback-heading > span:first-child {
@@ -120,14 +118,11 @@ function getExcerpt(lookback: LookbackResult) {
 .journalyst-review-lookback-status {
     flex: 0 0 auto;
     color: var(--text-warning);
-    text-transform: none;
 }
 
 .journalyst-review-lookback-card h3 {
     margin: 0;
     color: var(--text-normal);
-    font-size: var(--font-ui-medium);
-    line-height: 1.25;
     overflow-wrap: anywhere;
 }
 
@@ -136,8 +131,6 @@ function getExcerpt(lookback: LookbackResult) {
     margin: 0;
     overflow: hidden;
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    line-height: 1.45;
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 4;

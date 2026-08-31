@@ -386,12 +386,12 @@ defineExpose({ flushJournalSettings });
 
         <div v-else-if="onboardingModel.status === 'deferred'" class="journalyst-onboarding-deferred">
             <header class="journalyst-onboarding-header">
-                <h1>Journalyst</h1>
+                <h1 class="journalyst-type-page-title">Journalyst</h1>
             </header>
             <main class="journalyst-onboarding-deferred-content" role="status">
                 <ObsidianIcon name="folder-plus" />
-                <h2>Journalyst is ready when you are</h2>
-                <p>Choose a home folder and create your starting journals when you are ready to begin.</p>
+                <h2 class="journalyst-type-section-title">Journalyst is ready when you are</h2>
+                <p class="journalyst-type-supporting">Choose a home folder and create your starting journals when you are ready to begin.</p>
                 <p v-if="onboardingError" class="journalyst-onboarding-error" role="alert">
                     {{ onboardingError }}
                 </p>
@@ -417,8 +417,8 @@ defineExpose({ flushJournalSettings });
                 class="journalyst-review-empty"
                 role="status"
             >
-                <h2>Nothing to review yet</h2>
-                <p>No journals are available for review. Choose another home directory in Journalyst settings or add a journal folder.</p>
+                <h1 class="journalyst-type-page-title">Nothing to review yet</h1>
+                <p class="journalyst-type-supporting">No journals are available for review. Choose another home directory in Journalyst settings or add a journal folder.</p>
             </div>
 
             <main v-else class="journalyst-workspace-content" role="tabpanel">

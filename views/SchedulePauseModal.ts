@@ -19,6 +19,7 @@ class SchedulePauseModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle(this.pause ? 'Edit schedule pause' : 'Add schedule pause');
         this.contentEl.empty();
 
@@ -144,6 +145,7 @@ class RemoveSchedulePauseModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle('Remove schedule pause?');
         this.contentEl.createEl('p', {
             text: `Removing "${this.pause.name}" will recalculate expectations for ${this.pause.startDate} through ${this.pause.endDate}.`,

@@ -37,7 +37,7 @@ function getEntryCountLabel(entryCount: number) {
                     <ObsidianIcon name="notebook-pen" />
                 </span>
                 <div class="journalyst-journal-identity-copy">
-                    <h2 :title="model.journalName">{{ model.journalName }}</h2>
+                    <h2 class="journalyst-type-context-title" :title="model.journalName">{{ model.journalName }}</h2>
                     <p class="journalyst-journal-identity-meta">
                         <span class="journalyst-journal-path" :title="model.journalPath">{{ model.journalPath }}</span>
                         <span aria-hidden="true">&middot;</span>
@@ -132,8 +132,6 @@ function getEntryCountLabel(entryCount: number) {
     margin: 0;
     overflow: hidden;
     color: var(--text-normal);
-    font-size: var(--h2-size);
-    font-weight: var(--h2-weight);
     white-space: nowrap;
     text-overflow: ellipsis;
 }
@@ -146,7 +144,7 @@ function getEntryCountLabel(entryCount: number) {
     gap: 0 var(--size-4-2);
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-journal-path {
@@ -245,7 +243,7 @@ function getEntryCountLabel(entryCount: number) {
     }
 
     .journalyst-journal-identity-copy h2 {
-        font-size: var(--font-ui-large);
+        font-size: var(--journalyst-type-size-section-title);
     }
 
     .journalyst-journal-section-tabs {

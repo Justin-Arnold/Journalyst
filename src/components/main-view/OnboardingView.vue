@@ -128,7 +128,7 @@ function completeSetup() {
 <template>
     <div class="journalyst-onboarding">
         <header class="journalyst-onboarding-header">
-            <h1>Journalyst</h1>
+            <h1 class="journalyst-type-page-title">Journalyst</h1>
             <p>Set up a home folder and the journals you want to start with.</p>
         </header>
 
@@ -137,7 +137,7 @@ function completeSetup() {
             <section v-if="step === 1" class="journalyst-onboarding-step">
                 <div class="journalyst-onboarding-step-heading">
                     <span class="journalyst-onboarding-step-label">Step 1 of 2</span>
-                    <h2 id="journalyst-onboarding-title">Choose a home folder</h2>
+                    <h2 id="journalyst-onboarding-title" class="journalyst-type-section-title">Choose a home folder</h2>
                     <p>Journalyst treats each folder inside this location as a separate journal.</p>
                 </div>
 
@@ -158,7 +158,7 @@ function completeSetup() {
                         autocomplete="off"
                         @keydown.enter.prevent="continueToJournals"
                     />
-                    <small>Nested paths such as <code>Areas/Journals</code> are supported.</small>
+                    <small>Nested paths such as <code class="journalyst-type-code">Areas/Journals</code> are supported.</small>
                 </label>
 
                 <label v-else class="journalyst-onboarding-field">
@@ -186,7 +186,7 @@ function completeSetup() {
             <section v-else class="journalyst-onboarding-step">
                 <div class="journalyst-onboarding-step-heading">
                     <span class="journalyst-onboarding-step-label">Step 2 of 2</span>
-                    <h2 id="journalyst-onboarding-title">Choose your journals</h2>
+                    <h2 id="journalyst-onboarding-title" class="journalyst-type-section-title">Choose your journals</h2>
                     <p>Select any starting folders you want. You can add or remove journals later.</p>
                 </div>
 

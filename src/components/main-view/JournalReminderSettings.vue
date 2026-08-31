@@ -43,11 +43,11 @@ function updateSettings(nextSettings: JournalReminderSettings) {
     <div class="journalyst-journal-reminder-settings">
         <section class="journalyst-journal-reminder-block">
             <header class="journalyst-journal-reminder-header">
-                <span class="journalyst-journal-reminder-title">
+                <h3 class="journalyst-journal-reminder-title journalyst-type-label">
                     <ObsidianIcon name="bell" />
                     <span>Entry reminder</span>
-                </span>
-                <span class="journalyst-journal-reminder-status" :class="`is-${entryStatusClass}`">
+                </h3>
+                <span class="journalyst-journal-reminder-status journalyst-type-status" :class="`is-${entryStatusClass}`">
                     {{ entryStatus }}
                 </span>
             </header>
@@ -70,10 +70,10 @@ function updateSettings(nextSettings: JournalReminderSettings) {
 
         <section class="journalyst-journal-reminder-block">
             <header class="journalyst-journal-reminder-header">
-                <span class="journalyst-journal-reminder-title">
+                <h3 class="journalyst-journal-reminder-title journalyst-type-label">
                     <ObsidianIcon name="sparkles" />
                     <span>Review reminders</span>
-                </span>
+                </h3>
                 <span>Feed the Synthesis tab</span>
             </header>
 
@@ -126,7 +126,7 @@ function updateSettings(nextSettings: JournalReminderSettings) {
     padding-bottom: var(--size-4-2);
     border-bottom: var(--border-width) solid var(--background-modifier-border);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
     flex-wrap: wrap;
 }
 
@@ -137,7 +137,7 @@ function updateSettings(nextSettings: JournalReminderSettings) {
 
 .journalyst-journal-reminder-title {
     gap: var(--size-4-2);
-    text-transform: uppercase;
+    margin: 0;
 }
 
 .journalyst-journal-reminder-status {
@@ -145,9 +145,6 @@ function updateSettings(nextSettings: JournalReminderSettings) {
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
 }
 
 .journalyst-journal-reminder-status.is-active {

@@ -17,11 +17,11 @@ const emit = defineEmits<{
     <WorkspaceSection title="Best and lowest weeks" description="The last 12 completed calendar weeks ranked by cadence-aware completion.">
         <div class="journalyst-analytics-ranked-weeks">
             <article v-if="strongest" class="journalyst-analytics-ranked-week">
-                <div class="journalyst-analytics-ranked-label is-strongest">
+                <div class="journalyst-analytics-ranked-label journalyst-type-label is-strongest">
                     <ObsidianIcon name="trophy" />
                     Strongest week
                 </div>
-                <h3>{{ strongest.label }}</h3>
+                <h3 class="journalyst-type-card-title">{{ strongest.label }}</h3>
                 <p>{{ strongest.completedDays }}/{{ strongest.totalDays }} expected · {{ strongest.completionRate }}%</p>
                 <button type="button" @click="emit('reviewWeek', strongest.reviewAnchorDate)">
                     <ObsidianIcon name="history" />
@@ -29,20 +29,20 @@ const emit = defineEmits<{
                 </button>
             </article>
             <article v-else class="journalyst-analytics-ranked-week is-empty">
-                <div class="journalyst-analytics-ranked-label">
+                <div class="journalyst-analytics-ranked-label journalyst-type-label">
                     <ObsidianIcon name="trophy" />
                     Strongest week
                 </div>
-                <h3>More history needed</h3>
+                <h3 class="journalyst-type-card-title">More history needed</h3>
                 <p>Completed weeks will appear once this journal has a scored schedule.</p>
             </article>
 
             <article v-if="lowest" class="journalyst-analytics-ranked-week">
-                <div class="journalyst-analytics-ranked-label is-lowest">
+                <div class="journalyst-analytics-ranked-label journalyst-type-label is-lowest">
                     <ObsidianIcon name="trending-down" />
                     Lowest-completion week
                 </div>
-                <h3>{{ lowest.label }}</h3>
+                <h3 class="journalyst-type-card-title">{{ lowest.label }}</h3>
                 <p>{{ lowest.completedDays }}/{{ lowest.totalDays }} expected · {{ lowest.completionRate }}%</p>
                 <button type="button" @click="emit('reviewWeek', lowest.reviewAnchorDate)">
                     <ObsidianIcon name="history" />
@@ -50,11 +50,11 @@ const emit = defineEmits<{
                 </button>
             </article>
             <article v-else class="journalyst-analytics-ranked-week is-empty">
-                <div class="journalyst-analytics-ranked-label">
+                <div class="journalyst-analytics-ranked-label journalyst-type-label">
                     <ObsidianIcon name="trending-down" />
                     Lowest-completion week
                 </div>
-                <h3>More history needed</h3>
+                <h3 class="journalyst-type-card-title">More history needed</h3>
                 <p>At least two scored weeks are needed for a meaningful comparison.</p>
             </article>
         </div>
@@ -94,8 +94,6 @@ const emit = defineEmits<{
     align-items: center;
     gap: var(--size-4-2);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
 }
 
 .journalyst-analytics-ranked-label.is-strongest {
@@ -114,12 +112,11 @@ const emit = defineEmits<{
 
 .journalyst-analytics-ranked-week h3 {
     color: var(--text-normal);
-    font-size: var(--font-ui-medium);
 }
 
 .journalyst-analytics-ranked-week p {
     color: var(--text-faint);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-analytics-ranked-week button {

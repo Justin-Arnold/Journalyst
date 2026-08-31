@@ -170,8 +170,8 @@ onBeforeUnmount(() => filterMenu?.hide());
     <section class="journalyst-journals-section">
         <header class="journalyst-journals-heading">
             <div class="journalyst-journals-heading-copy">
-                <h2>Journals</h2>
-                <p>Write today, scan the month, or jump into review.</p>
+                <h2 class="journalyst-type-section-title">Journals</h2>
+                <p class="journalyst-type-supporting">Write today, scan the month, or jump into review.</p>
             </div>
             <button
                 type="button"
@@ -234,15 +234,13 @@ onBeforeUnmount(() => filterMenu?.hide());
 
 .journalyst-journals-heading h2 {
     flex: none;
-    font-size: var(--font-ui-medium);
-    text-transform: uppercase;
     color: var(--text-muted);
 }
 
 .journalyst-journals-heading p {
     overflow: hidden;
     color: var(--text-faint);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
     text-overflow: ellipsis;
     white-space: nowrap;
 }

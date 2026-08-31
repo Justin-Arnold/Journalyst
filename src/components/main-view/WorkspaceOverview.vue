@@ -24,8 +24,8 @@ defineEmits<{
 <template>
     <section class="journalyst-review-overview">
         <div class="journalyst-review-overview-copy">
-            <h2>{{ title }}</h2>
-            <p class="journalyst-review-section-description">{{ description }}</p>
+            <h2 class="journalyst-type-section-title">{{ title }}</h2>
+            <p class="journalyst-review-section-description journalyst-type-supporting">{{ description }}</p>
             <div v-if="actions?.length" class="journalyst-review-overview-actions">
                 <button
                     v-for="action in actions"
@@ -40,8 +40,8 @@ defineEmits<{
         </div>
         <dl class="journalyst-review-overview-stats">
             <div v-for="stat in stats" :key="stat.label" class="journalyst-review-stat">
-                <dt class="journalyst-review-label">{{ stat.label }}</dt>
-                <dd>{{ stat.value }}</dd>
+                <dt class="journalyst-review-label journalyst-type-label">{{ stat.label }}</dt>
+                <dd class="journalyst-type-metric-medium">{{ stat.value }}</dd>
             </div>
         </dl>
     </section>

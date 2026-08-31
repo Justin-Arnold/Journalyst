@@ -108,7 +108,7 @@ function getCellLabel(cell: YearActivityCell) {
     gap: var(--size-4-3);
     margin-bottom: var(--size-4-3);
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     flex-wrap: wrap;
 }
 
@@ -149,7 +149,7 @@ function getCellLabel(cell: YearActivityCell) {
     min-width: 0;
     overflow: visible;
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     white-space: nowrap;
 }
 

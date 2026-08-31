@@ -28,7 +28,7 @@ const selectedValue = computed({
     <select
         v-model="selectedValue"
         v-bind="$attrs"
-        class="dropdown journalyst-obsidian-select"
+        class="dropdown journalyst-obsidian-select journalyst-type-control"
         @change="emit('change', $event)"
     >
         <slot />

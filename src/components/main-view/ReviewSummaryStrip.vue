@@ -37,35 +37,35 @@ const nextExpected = computed(() => {
     <section class="journalyst-review-summary" aria-label="Journal review summary">
         <dl class="journalyst-review-summary-grid">
             <div class="journalyst-review-summary-metric">
-                <dt>Cadence</dt>
+                <dt class="journalyst-type-label">Cadence</dt>
                 <dd>
                     <strong>{{ snapshot.insights.cadenceLabel }}</strong>
                     <span>At the anchor date</span>
                 </dd>
             </div>
             <div class="journalyst-review-summary-metric">
-                <dt>Current streak</dt>
+                <dt class="journalyst-type-label">Current streak</dt>
                 <dd>
                     <strong>{{ streakValue }}</strong>
                     <span>{{ streakDetail }}</span>
                 </dd>
             </div>
             <div class="journalyst-review-summary-metric">
-                <dt>This month</dt>
+                <dt class="journalyst-type-label">This month</dt>
                 <dd>
                     <strong>{{ monthValue }}</strong>
                     <span>{{ monthDetail }}</span>
                 </dd>
             </div>
             <div class="journalyst-review-summary-metric">
-                <dt>Next expected</dt>
+                <dt class="journalyst-type-label">Next expected</dt>
                 <dd>
                     <strong>{{ nextExpected }}</strong>
                     <span>From the anchor date</span>
                 </dd>
             </div>
             <div class="journalyst-review-summary-metric">
-                <dt>Total entries</dt>
+                <dt class="journalyst-type-label">Total entries</dt>
                 <dd>
                     <strong>{{ snapshot.entryCount.toLocaleString() }}</strong>
                     <span>Includes unfinished</span>
@@ -103,9 +103,6 @@ const nextExpected = computed(() => {
 .journalyst-review-summary-metric dt {
     margin-bottom: var(--size-4-3);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
-    letter-spacing: 0;
 }
 
 .journalyst-review-summary-metric dd {
@@ -120,14 +117,15 @@ const nextExpected = computed(() => {
 .journalyst-review-summary-metric strong {
     max-width: 100%;
     color: var(--text-normal);
-    font-size: 1.4rem;
-    line-height: 1.1;
+    font-size: var(--journalyst-type-size-metric-medium);
+    font-weight: var(--journalyst-type-weight-metric);
+    line-height: var(--journalyst-type-line-tight);
     overflow-wrap: anywhere;
 }
 
 .journalyst-review-summary-metric span {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     overflow-wrap: anywhere;
 }
 

@@ -18,16 +18,16 @@ withDefaults(defineProps<{
 <template>
     <section class="journalyst-settings-group">
         <header class="journalyst-settings-group-header">
-            <span class="journalyst-settings-group-title">
+            <div class="journalyst-settings-group-title">
                 <ObsidianIcon :name="icon" />
-                <span>
-                    <strong>{{ title }}</strong>
-                    <small v-if="description">{{ description }}</small>
-                </span>
-            </span>
+                <div>
+                    <h2 class="journalyst-type-section-title">{{ title }}</h2>
+                    <p v-if="description" class="journalyst-type-supporting">{{ description }}</p>
+                </div>
+            </div>
             <span
                 v-if="status"
-                class="journalyst-settings-group-status"
+                class="journalyst-settings-group-status journalyst-type-status"
                 :class="`is-${statusTone}`"
             >
                 {{ status }}
@@ -77,23 +77,21 @@ withDefaults(defineProps<{
     flex: 0 0 auto;
 }
 
-.journalyst-settings-group-title > span {
+.journalyst-settings-group-title > div {
     display: flex;
     min-width: 0;
     flex-direction: column;
     gap: var(--size-2-1);
 }
 
-.journalyst-settings-group-title strong {
+.journalyst-settings-group-title h2 {
+    margin: 0;
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
-    font-weight: var(--font-semibold);
 }
 
-.journalyst-settings-group-title small {
+.journalyst-settings-group-title p {
+    margin: 0;
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    line-height: 1.35;
 }
 
 .journalyst-settings-group-status {
@@ -102,8 +100,6 @@ withDefaults(defineProps<{
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    font-weight: var(--font-semibold);
     white-space: nowrap;
 }
 

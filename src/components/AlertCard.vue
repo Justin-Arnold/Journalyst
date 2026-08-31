@@ -36,8 +36,8 @@ withDefaults(defineProps<{
                 <ObsidianIcon :name="icon" :class="iconClass" />
             </span>
             <div class="journalyst-alert-card-copy">
-                <strong v-if="title">{{ title }}</strong>
-                <p v-if="description">{{ description }}</p>
+                <strong v-if="title" class="journalyst-type-row-title">{{ title }}</strong>
+                <p v-if="description" class="journalyst-type-supporting">{{ description }}</p>
                 <slot />
             </div>
             <div v-if="$slots.actions" class="journalyst-alert-card-actions">
@@ -115,14 +115,12 @@ withDefaults(defineProps<{
 .journalyst-alert-card-copy strong {
     display: block;
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
     overflow-wrap: anywhere;
 }
 
 .journalyst-alert-card-copy p {
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
     overflow-wrap: anywhere;
 }
 

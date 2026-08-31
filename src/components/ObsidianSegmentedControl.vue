@@ -32,7 +32,7 @@ function select(value: string) {
 
 <template>
     <div
-        class="journalyst-obsidian-segmented"
+        class="journalyst-obsidian-segmented journalyst-type-control"
         :class="{ 'is-stretched': stretch }"
         role="radiogroup"
         :aria-label="label"

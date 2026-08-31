@@ -363,10 +363,10 @@ function clone<T>(value: T): T {
     <div class="journalyst-entry-setup-settings">
         <section class="journalyst-entry-setup-block">
             <header class="journalyst-entry-setup-header">
-                <span class="journalyst-entry-setup-title">
+                <h3 class="journalyst-entry-setup-title journalyst-type-label">
                     <ObsidianIcon name="file-cog" />
                     <span>Template</span>
-                </span>
+                </h3>
                 <button type="button" class="journalyst-entry-setup-context" @click="actions.openSettings">
                     Engine: {{ templateEngineLabel }}
                     <ObsidianIcon name="external-link" />
@@ -375,7 +375,7 @@ function clone<T>(value: T): T {
 
             <div class="journalyst-entry-setup-row">
                 <div>
-                    <h3>Template file</h3>
+                    <h4>Template file</h4>
                     <p>Applied when Journalyst creates a new entry for this journal.</p>
                 </div>
                 <div class="journalyst-entry-setup-control is-template">
@@ -411,7 +411,7 @@ function clone<T>(value: T): T {
 
             <div class="journalyst-entry-setup-row">
                 <div>
-                    <h3>When the template cannot run</h3>
+                    <h4>When the template cannot run</h4>
                     <p>This journal inherits the plugin-wide template failure policy.</p>
                 </div>
                 <button type="button" class="journalyst-entry-setup-policy" @click="actions.openSettings">
@@ -433,10 +433,10 @@ function clone<T>(value: T): T {
 
         <section class="journalyst-entry-setup-block">
             <header class="journalyst-entry-setup-header">
-                <span class="journalyst-entry-setup-title">
+                <h3 class="journalyst-entry-setup-title journalyst-type-label">
                     <ObsidianIcon name="hash" />
                     <span>Prompts</span>
-                </span>
+                </h3>
                 <button type="button" class="journalyst-entry-setup-context" @click="actions.openSettings">
                     Manage libraries
                     <ObsidianIcon name="external-link" />
@@ -445,7 +445,7 @@ function clone<T>(value: T): T {
 
             <div class="journalyst-entry-setup-row">
                 <div>
-                    <h3>Prompt source</h3>
+                    <h4>Prompt source</h4>
                     <p>Choose where this journal draws prompts from.</p>
                 </div>
                 <ObsidianSegmentedControl
@@ -459,7 +459,7 @@ function clone<T>(value: T): T {
 
             <div v-if="sourceMode === 'library'" class="journalyst-entry-setup-row">
                 <div>
-                    <h3>Library</h3>
+                    <h4>Library</h4>
                     <p>Built-in and custom libraries can be shared across journals.</p>
                 </div>
                 <ObsidianSelect :value="selectedLibraryValue" aria-label="Prompt library" @change="setDefaultSourceFromValue(($event.target as HTMLSelectElement).value)">
@@ -478,7 +478,7 @@ function clone<T>(value: T): T {
 
             <div v-if="sourceMode === 'note'" class="journalyst-entry-setup-row">
                 <div>
-                    <h3>Prompt note</h3>
+                    <h4>Prompt note</h4>
                     <p>Journalyst reads Markdown list items from this note.</p>
                 </div>
                 <ObsidianSelect :value="selectedNoteValue" aria-label="Prompt note" @change="setDefaultSourceFromValue(($event.target as HTMLSelectElement).value)">
@@ -495,7 +495,7 @@ function clone<T>(value: T): T {
             <template v-if="sourceMode !== 'off'">
                 <div class="journalyst-entry-setup-row">
                     <div>
-                        <h3>Selection</h3>
+                        <h4>Selection</h4>
                         <p>Control how Journalyst chooses the next prompt.</p>
                     </div>
                     <ObsidianSegmentedControl
@@ -509,7 +509,7 @@ function clone<T>(value: T): T {
 
                 <div v-if="promptSettings.selectionMode === 'static'" class="journalyst-entry-setup-row">
                     <div>
-                        <h3>Fixed prompt</h3>
+                        <h4>Fixed prompt</h4>
                         <p>Use the same prompt for every new entry.</p>
                     </div>
                     <ObsidianSelect
@@ -524,7 +524,7 @@ function clone<T>(value: T): T {
 
                 <div class="journalyst-entry-setup-row">
                     <div>
-                        <h3>Delivery</h3>
+                        <h4>Delivery</h4>
                         <p>Choose how the prompt appears in a generated entry.</p>
                     </div>
                     <ObsidianSegmentedControl
@@ -557,7 +557,7 @@ function clone<T>(value: T): T {
                 <div class="journalyst-prompt-variable-list" aria-label="Template prompt variables">
                     <div v-for="variable in promptTemplateVariables" :key="variable.key" class="journalyst-prompt-variable-row">
                         <span>{{ variable.label }}</span>
-                        <code>{{ variable.value }}</code>
+                        <code class="journalyst-type-code">{{ variable.value }}</code>
                         <button
                             type="button"
                             class="clickable-icon"
@@ -575,10 +575,10 @@ function clone<T>(value: T): T {
 
         <section v-if="sourceMode !== 'off'" class="journalyst-entry-setup-block">
             <header class="journalyst-entry-setup-header">
-                <span class="journalyst-entry-setup-title">
+                <h3 class="journalyst-entry-setup-title journalyst-type-label">
                     <ObsidianIcon name="calendar-days" />
                     <span>Weekday overrides</span>
-                </span>
+                </h3>
                 <span v-if="promptSettings.selectionMode === 'static'" class="journalyst-entry-setup-meta">Unavailable with Fixed</span>
                 <span v-else class="journalyst-entry-setup-meta">Optional</span>
             </header>
@@ -618,10 +618,10 @@ function clone<T>(value: T): T {
 
         <section class="journalyst-entry-setup-block">
             <header class="journalyst-entry-setup-header">
-                <span class="journalyst-entry-setup-title">
+                <h3 class="journalyst-entry-setup-title journalyst-type-label">
                     <ObsidianIcon name="text-cursor-input" />
                     <span>Prompt preview</span>
-                </span>
+                </h3>
                 <span v-if="preview" class="journalyst-entry-setup-meta">{{ preview.sourceLabel }}</span>
             </header>
 
@@ -629,7 +629,7 @@ function clone<T>(value: T): T {
                 <span v-if="sourceMode === 'off'">Prompts are off for this journal.</span>
                 <span v-else-if="promptLoading">Loading prompt preview...</span>
                 <span v-else-if="!preview">No prompt is available to preview.</span>
-                <pre v-else><code>{{ preview.output }}</code></pre>
+                <pre v-else class="journalyst-type-prose"><code class="journalyst-type-code">{{ preview.output }}</code></pre>
             </div>
         </section>
 
@@ -666,12 +666,12 @@ function clone<T>(value: T): T {
     padding-bottom: var(--size-4-2);
     border-bottom: var(--border-width) solid var(--background-modifier-border);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-entry-setup-title {
     gap: var(--size-4-2);
-    text-transform: uppercase;
+    margin: 0;
 }
 
 .journalyst-entry-setup-context,
@@ -683,7 +683,7 @@ function clone<T>(value: T): T {
     box-shadow: none;
     background: transparent;
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-entry-setup-context:hover,
@@ -701,14 +701,16 @@ function clone<T>(value: T): T {
     border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
-.journalyst-entry-setup-row h3,
+.journalyst-entry-setup-row h4,
 .journalyst-entry-setup-row p,
 .journalyst-prompt-output-preview pre {
     margin: 0;
 }
 
-.journalyst-entry-setup-row h3 {
-    font-size: var(--font-ui-medium);
+.journalyst-entry-setup-row h4 {
+    font-size: var(--journalyst-type-size-card-title);
+    font-weight: var(--journalyst-type-weight-row-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-entry-setup-row p {
@@ -754,7 +756,7 @@ function clone<T>(value: T): T {
 
 .journalyst-prompt-variable-row > span {
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-prompt-variable-row code {
@@ -773,12 +775,12 @@ function clone<T>(value: T): T {
     min-height: 1.4em;
     margin-top: var(--size-4-2);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-entry-setup-meta {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-weekday-source-list {
@@ -798,7 +800,7 @@ function clone<T>(value: T): T {
 
 .journalyst-weekday-source-row > span {
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-prompt-output-preview {

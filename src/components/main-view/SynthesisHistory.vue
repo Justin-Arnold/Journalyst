@@ -35,13 +35,13 @@ watch(() => props.items, () => {
                     <ObsidianIcon name="file-pen-line" />
                 </span>
                 <span class="journalyst-synthesis-history-identity">
-                    <strong>{{ item.title }}</strong>
-                    <small :title="item.pathLabel">{{ item.pathLabel }}</small>
+                    <strong class="journalyst-type-row-title">{{ item.title }}</strong>
+                    <small class="journalyst-type-code" :title="item.pathLabel">{{ item.pathLabel }}</small>
                 </span>
-                <span class="journalyst-synthesis-history-count">
+                <span class="journalyst-synthesis-history-count journalyst-type-metadata">
                     {{ item.completedEntryCount }} {{ item.completedEntryCount === 1 ? 'entry' : 'entries' }}
                 </span>
-                <span class="journalyst-synthesis-history-created">Created {{ item.createdDateLabel }}</span>
+                <span class="journalyst-synthesis-history-created journalyst-type-metadata">Created {{ item.createdDateLabel }}</span>
                 <ObsidianIcon name="external-link" />
             </button>
         </div>
@@ -130,14 +130,12 @@ watch(() => props.items, () => {
 
 .journalyst-synthesis-history-identity strong {
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
 }
 
 .journalyst-synthesis-history-identity small,
 .journalyst-synthesis-history-created,
 .journalyst-synthesis-history-count {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-synthesis-history-count {

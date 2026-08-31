@@ -65,7 +65,7 @@ onBeforeUnmount(() => journalMenu?.hide());
 
 <template>
     <header class="journalyst-context-header">
-        <h2>
+        <h1 class="journalyst-type-context-title">
             <button
                 type="button"
                 class="journalyst-context-journal-button"
@@ -76,7 +76,7 @@ onBeforeUnmount(() => journalMenu?.hide());
                 <span>{{ selectedJournalName }}</span>
                 <ObsidianIcon name="chevron-down" />
             </button>
-        </h2>
+        </h1>
 
         <span class="journalyst-context-divider" aria-hidden="true">&middot;</span>
 
@@ -114,11 +114,9 @@ onBeforeUnmount(() => journalMenu?.hide());
     border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
-.journalyst-context-header h2 {
+.journalyst-context-header h1 {
     min-width: 0;
     margin: 0;
-    font-size: var(--h2-size);
-    font-weight: var(--h2-weight);
 }
 
 .journalyst-context-journal-button,
@@ -139,7 +137,7 @@ onBeforeUnmount(() => journalMenu?.hide());
     padding: var(--size-4-1) var(--size-4-2);
     color: var(--text-normal);
     font: inherit;
-    line-height: 1.2;
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-context-journal-button span,
@@ -173,7 +171,7 @@ onBeforeUnmount(() => journalMenu?.hide());
     max-width: 100%;
     padding: var(--size-4-1) var(--size-4-2);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-context-journal-button:hover,
@@ -206,15 +204,15 @@ onBeforeUnmount(() => journalMenu?.hide());
         display: none;
     }
 
-    .journalyst-context-header h2,
+    .journalyst-context-header h1,
     .journalyst-context-journal-button,
     .journalyst-context-date-picker,
     .journalyst-context-date-button {
         max-width: 100%;
     }
 
-    .journalyst-context-header h2 {
-        font-size: var(--font-ui-large);
+    .journalyst-context-header h1 {
+        font-size: var(--journalyst-type-size-section-title);
     }
 }
 </style>

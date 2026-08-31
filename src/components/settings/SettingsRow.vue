@@ -12,8 +12,8 @@ withDefaults(defineProps<{
 <template>
     <div class="setting-item journalyst-settings-row" :class="{ 'is-disabled': disabled }">
         <div class="setting-item-info journalyst-settings-row-copy">
-            <div class="setting-item-name">{{ title }}</div>
-            <div v-if="description" class="setting-item-description">{{ description }}</div>
+            <h3 class="setting-item-name journalyst-type-row-title">{{ title }}</h3>
+            <div v-if="description" class="setting-item-description journalyst-type-supporting">{{ description }}</div>
             <slot name="detail" />
         </div>
         <div class="setting-item-control journalyst-settings-row-controls">
@@ -43,16 +43,13 @@ withDefaults(defineProps<{
 
 .journalyst-settings-row-copy .setting-item-name {
     display: block;
+    margin: 0;
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
-    font-weight: var(--font-semibold);
 }
 
 .journalyst-settings-row-copy .setting-item-description {
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    line-height: 1.4;
 }
 
 .journalyst-settings-row-controls {

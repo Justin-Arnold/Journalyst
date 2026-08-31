@@ -50,9 +50,9 @@ function activateTab(tab: ReviewWorkspaceTab) {
             <span class="journalyst-home-card-icon" aria-hidden="true">
                 <ObsidianIcon name="notebook-pen" />
             </span>
-            <h3 :title="overview.journal.name">{{ overview.journal.name }}</h3>
+            <h3 class="journalyst-type-card-title" :title="overview.journal.name">{{ overview.journal.name }}</h3>
             <span
-                class="journalyst-home-status-badge"
+                class="journalyst-home-status-badge journalyst-type-status"
                 :class="`is-${overview.cardStatus.kind}`"
             >
                 {{ statusLabel }}
@@ -61,15 +61,15 @@ function activateTab(tab: ReviewWorkspaceTab) {
 
         <dl class="journalyst-home-card-meta">
             <div>
-                <dt>Cadence</dt>
+                <dt class="journalyst-type-label">Cadence</dt>
                 <dd :title="overview.cadenceLabel">{{ overview.cadenceLabel }}</dd>
             </div>
             <div>
-                <dt>Reminder</dt>
+                <dt class="journalyst-type-label">Reminder</dt>
                 <dd :title="overview.reminderDisplayText">{{ overview.reminderDisplayText }}</dd>
             </div>
             <div>
-                <dt>Entries</dt>
+                <dt class="journalyst-type-label">Entries</dt>
                 <dd>{{ overview.entryCount }}</dd>
             </div>
         </dl>
@@ -117,8 +117,6 @@ function activateTab(tab: ReviewWorkspaceTab) {
     margin: 0;
     overflow: hidden;
     color: var(--text-normal);
-    font-size: var(--font-ui-medium);
-    line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -145,9 +143,6 @@ function activateTab(tab: ReviewWorkspaceTab) {
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    font-weight: 600;
-    line-height: 1;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -204,13 +199,11 @@ function activateTab(tab: ReviewWorkspaceTab) {
 .journalyst-home-card-meta dt {
     margin-bottom: var(--size-4-1);
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
 }
 
 .journalyst-home-card-meta dd {
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    font-weight: 500;
+    font-size: var(--journalyst-type-size-body);
+    font-weight: var(--journalyst-type-weight-body);
 }
 </style>

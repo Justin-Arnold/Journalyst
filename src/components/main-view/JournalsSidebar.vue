@@ -26,8 +26,8 @@ function getAccessibleLabel(journal: JournalSettingsSidebarItem) {
 <template>
     <aside class="journalyst-journals-sidebar" aria-label="Journals">
         <header class="journalyst-journals-sidebar-header">
-            <span>Journals</span>
-            <span :aria-label="`${journals.length} journals`">{{ journals.length }}</span>
+            <span class="journalyst-type-label">Journals</span>
+            <span class="journalyst-type-metadata" :aria-label="`${journals.length} journals`">{{ journals.length }}</span>
         </header>
 
         <ul class="journalyst-journals-sidebar-list">
@@ -42,10 +42,10 @@ function getAccessibleLabel(journal: JournalSettingsSidebarItem) {
                 >
                     <ObsidianIcon name="notebook-pen" class="journalyst-journals-sidebar-icon" />
                     <span class="journalyst-journals-sidebar-copy">
-                        <span class="journalyst-journals-sidebar-name" :title="journal.name">
+                        <span class="journalyst-journals-sidebar-name journalyst-type-card-title" :title="journal.name">
                             {{ journal.name }}
                         </span>
-                        <span class="journalyst-journals-sidebar-meta">
+                        <span class="journalyst-journals-sidebar-meta journalyst-type-supporting">
                             {{ getMetadata(journal) }}
                         </span>
                     </span>
@@ -83,9 +83,6 @@ function getAccessibleLabel(journal: JournalSettingsSidebarItem) {
     gap: var(--size-4-3);
     padding: var(--size-4-4) var(--size-4-4) var(--size-4-2);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    letter-spacing: 0;
-    text-transform: uppercase;
 }
 
 .journalyst-journals-sidebar-list {
@@ -143,13 +140,10 @@ function getAccessibleLabel(journal: JournalSettingsSidebarItem) {
 
 .journalyst-journals-sidebar-name {
     color: var(--text-normal);
-    font-size: var(--font-ui-medium);
-    font-weight: var(--font-medium);
 }
 
 .journalyst-journals-sidebar-meta {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-journals-sidebar-footer {

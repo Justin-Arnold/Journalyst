@@ -10,9 +10,9 @@ defineProps<{
     <section class="journalyst-analytics-summary" aria-label="Analytics summary">
         <dl>
             <div v-for="metric in metrics" :key="metric.id">
-                <dt>{{ metric.label }}</dt>
+                <dt class="journalyst-type-label">{{ metric.label }}</dt>
                 <dd>
-                    <strong>{{ metric.value }}</strong>
+                    <strong class="journalyst-type-metric-large">{{ metric.value }}</strong>
                     <span>{{ metric.supportingText }}</span>
                     <span
                         v-if="metric.comparisonText"
@@ -55,8 +55,6 @@ defineProps<{
 .journalyst-analytics-summary dt {
     margin-bottom: var(--size-4-3);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
 }
 
 .journalyst-analytics-summary dd {
@@ -71,14 +69,12 @@ defineProps<{
 .journalyst-analytics-summary strong {
     max-width: 100%;
     color: var(--text-normal);
-    font-size: 1.65rem;
-    line-height: 1;
     overflow-wrap: anywhere;
 }
 
 .journalyst-analytics-summary dd > span {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     overflow-wrap: anywhere;
 }
 

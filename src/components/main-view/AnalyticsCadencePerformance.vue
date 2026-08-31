@@ -68,13 +68,13 @@ defineProps<{
 
 .journalyst-analytics-performance-row strong {
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
-    font-weight: 500;
+    font-size: var(--journalyst-type-size-body);
+    font-weight: var(--journalyst-type-weight-row-title);
 }
 
 .journalyst-analytics-performance-row span {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     overflow-wrap: anywhere;
 }
 

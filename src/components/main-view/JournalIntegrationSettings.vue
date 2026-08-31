@@ -55,11 +55,11 @@ function resourceStatusLabel(resource: JournalBaseResource) {
     <div class="journalyst-journal-bases-settings">
         <section class="journalyst-bases-block">
             <header class="journalyst-bases-header">
-                <span class="journalyst-bases-title">
+                <h3 class="journalyst-bases-title journalyst-type-label">
                     <ObsidianIcon name="database" />
                     <span>Obsidian Bases</span>
-                </span>
-                <span class="journalyst-bases-status" :class="`is-${model.status}`">
+                </h3>
+                <span class="journalyst-bases-status journalyst-type-status" :class="`is-${model.status}`">
                     {{ statusLabel }}
                 </span>
             </header>
@@ -97,10 +97,10 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 
         <section class="journalyst-bases-block">
             <header class="journalyst-bases-subheader">
-                <span>
+                <h3 class="journalyst-type-label">
                     <ObsidianIcon name="table-properties" />
                     <span>Base files</span>
-                </span>
+                </h3>
                 <span>Existing files are never replaced automatically</span>
             </header>
 
@@ -111,13 +111,13 @@ function resourceStatusLabel(resource: JournalBaseResource) {
                     </div>
                     <div class="journalyst-bases-resource-copy">
                         <div class="journalyst-bases-resource-heading">
-                            <h4>{{ resource.label }}</h4>
-                            <span class="journalyst-bases-resource-status" :class="`is-${resource.status}`">
+                            <h4 class="journalyst-type-card-title">{{ resource.label }}</h4>
+                            <span class="journalyst-bases-resource-status journalyst-type-status" :class="`is-${resource.status}`">
                                 {{ resourceStatusLabel(resource) }}
                             </span>
                         </div>
                         <p>{{ resource.description }}</p>
-                        <code :title="resource.filePath">{{ resource.filePath }}</code>
+                        <code class="journalyst-type-code" :title="resource.filePath">{{ resource.filePath }}</code>
                         <p v-if="resource.status === 'conflict'" class="journalyst-bases-conflict" role="alert">
                             A folder already occupies this file path.
                         </p>
@@ -155,14 +155,14 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 
         <section class="journalyst-bases-block">
             <header class="journalyst-bases-subheader">
-                <span>
+                <h3 class="journalyst-type-label">
                     <ObsidianIcon name="tags" />
                     <span>Managed properties</span>
-                </span>
+                </h3>
             </header>
             <div class="journalyst-bases-property-row">
                 <div>
-                    <h4>Journalyst metadata</h4>
+                    <h4 class="journalyst-type-card-title">Journalyst metadata</h4>
                     <p>Custom properties from your templates remain available to Bases and are never removed or managed by Journalyst.</p>
                 </div>
                 <div class="journalyst-bases-property-list" aria-label="Journalyst managed properties">
@@ -179,14 +179,14 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 
         <section class="journalyst-bases-block">
             <header class="journalyst-bases-subheader">
-                <span>
+                <h3 class="journalyst-type-label">
                     <ObsidianIcon name="history" />
                     <span>Existing notes</span>
-                </span>
+                </h3>
             </header>
             <div class="journalyst-bases-backfill-row">
                 <div>
-                    <h4>Journal metadata</h4>
+                    <h4 class="journalyst-type-card-title">Journal metadata</h4>
                     <p>{{ metadataDescription }}</p>
                 </div>
                 <button
@@ -219,7 +219,7 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 .journalyst-bases-header,
 .journalyst-bases-subheader,
 .journalyst-bases-title,
-.journalyst-bases-subheader > span,
+.journalyst-bases-subheader > h3,
 .journalyst-bases-resource,
 .journalyst-bases-resource-heading,
 .journalyst-bases-resource-actions,
@@ -236,14 +236,14 @@ function resourceStatusLabel(resource: JournalBaseResource) {
     padding-bottom: var(--size-4-2);
     border-bottom: var(--border-width) solid var(--background-modifier-border);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
     flex-wrap: wrap;
 }
 
 .journalyst-bases-title,
-.journalyst-bases-subheader > span:first-child {
+.journalyst-bases-subheader > h3:first-child {
     gap: var(--size-4-2);
-    text-transform: uppercase;
+    margin: 0;
 }
 
 .journalyst-bases-status,
@@ -251,14 +251,12 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 .journalyst-bases-property-list span {
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-bases-status {
     padding: var(--size-2-1) var(--size-4-2);
     color: var(--text-muted);
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
 }
 
 .journalyst-bases-status.is-ready,
@@ -350,7 +348,7 @@ function resourceStatusLabel(resource: JournalBaseResource) {
 }
 
 .journalyst-bases-conflict {
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-bases-resource-actions {

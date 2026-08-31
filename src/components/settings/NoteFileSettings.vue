@@ -62,7 +62,7 @@ async function previewMigration() {
                     :disabled="isPending('format')"
                     @keydown.enter.prevent="saveFormat"
                 />
-                <code>{{ example }}</code>
+                <code class="journalyst-type-code">{{ example }}</code>
                 <ObsidianButton
                     variant="cta"
                     :disabled="!dateFormatDraft.trim() || !formatChanged || isPending('format')"
@@ -112,7 +112,7 @@ async function previewMigration() {
     overflow: hidden;
     padding: var(--size-4-1) var(--size-4-2);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     text-overflow: ellipsis;
     white-space: nowrap;
 }

@@ -23,19 +23,19 @@ const emit = defineEmits<{
         tabindex="-1"
     >
         <div class="journalyst-synthesis-period-marker" aria-hidden="true">
-            <span>{{ preview.markerLabel }}</span>
-            <strong>{{ preview.markerValue }}</strong>
-            <small>{{ preview.dateRangeLabel }}</small>
+            <span class="journalyst-type-label">{{ preview.markerLabel }}</span>
+            <strong class="journalyst-type-metric-large">{{ preview.markerValue }}</strong>
+            <small class="journalyst-type-metadata">{{ preview.dateRangeLabel }}</small>
         </div>
 
         <div class="journalyst-synthesis-period-content">
             <header>
                 <div>
-                    <h2>{{ preview.title }}</h2>
-                    <p>{{ preview.summaryText }}</p>
+                    <h2 class="journalyst-type-card-title">{{ preview.title }}</h2>
+                    <p class="journalyst-type-supporting">{{ preview.summaryText }}</p>
                 </div>
                 <span
-                    class="journalyst-synthesis-period-status"
+                    class="journalyst-synthesis-period-status journalyst-type-status"
                     :class="{
                         'is-ready': !preview.existingFilePath && !preview.isFuturePeriod,
                         'is-existing': !!preview.existingFilePath,
@@ -45,7 +45,7 @@ const emit = defineEmits<{
                 </span>
             </header>
 
-            <div class="journalyst-synthesis-period-meta">
+            <div class="journalyst-synthesis-period-meta journalyst-type-metadata">
                 <span>
                     <ObsidianIcon name="files" />
                     {{ preview.sourceEntries.length }} included
@@ -59,20 +59,20 @@ const emit = defineEmits<{
                     {{ preview.unfinishedEntryCount }} unfinished
                 </span>
                 <span
-                    class="journalyst-synthesis-period-path"
+                    class="journalyst-synthesis-period-path journalyst-type-code"
                     :title="preview.existingFilePath ?? `${journalPath}/${preview.fileName}`"
                 >
                     {{ preview.existingFilePath ?? `${journalPath}/${preview.fileName}` }}
                 </span>
             </div>
 
-            <p v-if="preview.patterns[1]" class="journalyst-synthesis-period-pattern">
+            <p v-if="preview.patterns[1]" class="journalyst-synthesis-period-pattern journalyst-type-body">
                 <ObsidianIcon name="sparkles" />
                 <span>{{ preview.patterns[1] }}</span>
             </p>
 
             <div class="journalyst-synthesis-prompt-preview" aria-label="Reflection prompt preview">
-                <p v-for="prompt in preview.reflectionPrompts.slice(0, 2)" :key="prompt">{{ prompt }}</p>
+                <p v-for="prompt in preview.reflectionPrompts.slice(0, 2)" :key="prompt" class="journalyst-type-prose">{{ prompt }}</p>
                 <span v-if="preview.reflectionPrompts.length > 2">
                     +{{ preview.reflectionPrompts.length - 2 }} more
                 </span>
@@ -99,7 +99,7 @@ const emit = defineEmits<{
                     </button>
                 </div>
 
-                <span class="journalyst-synthesis-period-state">
+                <span class="journalyst-synthesis-period-state journalyst-type-metadata">
                     <ObsidianIcon :name="preview.existingFilePath ? 'circle-check' : 'clock-3'" />
                     {{ preview.existingFilePath ? 'Note exists' : 'Not yet created' }}
                 </span>
@@ -136,22 +136,15 @@ const emit = defineEmits<{
 
 .journalyst-synthesis-period-marker span {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
 }
 
 .journalyst-synthesis-period-marker strong {
     color: var(--text-accent);
-    font-size: 2rem;
-    font-weight: 500;
-    line-height: 1;
     overflow-wrap: anywhere;
 }
 
 .journalyst-synthesis-period-marker small {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
-    line-height: 1.4;
 }
 
 .journalyst-synthesis-period-content {
@@ -195,8 +188,6 @@ const emit = defineEmits<{
     align-items: flex-start;
     gap: var(--size-4-2);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    line-height: 1.4;
 }
 
 .journalyst-synthesis-period-pattern :deep(.svg-icon) {
@@ -206,15 +197,12 @@ const emit = defineEmits<{
 
 .journalyst-synthesis-period-content h2 {
     color: var(--text-normal);
-    font-size: var(--font-ui-large);
     overflow-wrap: anywhere;
 }
 
 .journalyst-synthesis-period-content header p {
     margin-top: var(--size-4-1);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    line-height: 1.45;
 }
 
 .journalyst-synthesis-period-status {
@@ -223,7 +211,6 @@ const emit = defineEmits<{
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-synthesis-period-status.is-ready {
@@ -239,7 +226,6 @@ const emit = defineEmits<{
     flex-wrap: wrap;
     gap: var(--size-4-3);
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-synthesis-period-meta span {
@@ -263,14 +249,11 @@ const emit = defineEmits<{
 
 .journalyst-synthesis-prompt-preview p {
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
     font-style: italic;
-    line-height: 1.4;
 }
 
 .journalyst-synthesis-prompt-preview > span {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-synthesis-period-content > footer {
@@ -311,7 +294,6 @@ const emit = defineEmits<{
 .journalyst-synthesis-period-state {
     flex: 0 0 auto;
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
 }
 
 @container (max-width: 42rem) {
@@ -329,7 +311,7 @@ const emit = defineEmits<{
     }
 
     .journalyst-synthesis-period-marker strong {
-        font-size: var(--font-ui-large);
+        font-size: var(--journalyst-type-size-metric-medium);
     }
 
     .journalyst-synthesis-period-marker small {

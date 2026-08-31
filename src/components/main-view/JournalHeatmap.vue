@@ -98,7 +98,7 @@ function getDayLabel(day: JournalHeatmapDay) {
     min-width: 0;
     min-height: 1.25rem;
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-card-calendar-blank,
@@ -124,8 +124,8 @@ function getDayLabel(day: JournalHeatmapDay) {
     background: var(--background-primary);
     box-shadow: none;
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    line-height: 1;
+    font-size: var(--journalyst-type-size-supporting);
+    line-height: var(--journalyst-type-line-tight);
     cursor: pointer;
 }
 

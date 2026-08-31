@@ -580,8 +580,8 @@ defineExpose({ flushAutosave, prepareToLeave });
 <template>
     <div ref="rootEl" class="journalyst-journal-settings-page">
         <header class="journalyst-journal-settings-page-header">
-            <h1>Journal settings</h1>
-            <p>Schedule, entry setup, reminders, and integrations for each journal.</p>
+            <h1 class="journalyst-type-page-title">Journal settings</h1>
+            <p class="journalyst-type-supporting">Schedule, entry setup, reminders, and integrations for each journal.</p>
         </header>
 
         <div class="journalyst-journals-workspace">
@@ -604,7 +604,7 @@ defineExpose({ flushAutosave, prepareToLeave });
             <div v-else-if="error && !model" class="journalyst-journal-editor-state is-error" role="alert">{{ error }}</div>
             <div v-else-if="journals.length === 0" class="journalyst-journal-editor-state journalyst-journal-empty" role="status">
                 <ObsidianIcon name="folder-plus" />
-                <h2>No journals yet</h2>
+                <h2 class="journalyst-type-section-title">No journals yet</h2>
                 <p>Create a journal to start configuring its schedule and entry setup.</p>
                 <button type="button" class="mod-cta" @click="actions.createJournal">New journal</button>
             </div>
@@ -714,10 +714,6 @@ defineExpose({ flushAutosave, prepareToLeave });
 .journalyst-journal-settings-page-header h1,
 .journalyst-journal-settings-page-header p {
     margin: 0;
-}
-
-.journalyst-journal-settings-page-header h1 {
-    font-size: var(--h2-size);
 }
 
 .journalyst-journal-settings-page-header p {

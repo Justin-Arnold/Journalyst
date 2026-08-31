@@ -116,16 +116,16 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
     <div class="journalyst-schedule-settings">
         <section class="journalyst-schedule-block">
             <header class="journalyst-settings-block-header">
-                <span class="journalyst-settings-block-title">
+                <h3 class="journalyst-settings-block-title journalyst-type-label">
                     <ObsidianIcon name="circle-dot" />
                     <span>Current rule</span>
-                </span>
-                <span class="journalyst-current-rule-badge">{{ getCadenceLabel(cadence) }}</span>
+                </h3>
+                <span class="journalyst-current-rule-badge journalyst-type-status">{{ getCadenceLabel(cadence) }}</span>
             </header>
 
             <div class="journalyst-schedule-setting-row">
                 <div>
-                    <h3>Cadence</h3>
+                    <h4>Cadence</h4>
                     <p>How often an entry is expected in this journal.</p>
                 </div>
                 <ObsidianSelect :value="cadence.type" aria-label="Cadence" @change="setCadenceType(($event.target as HTMLSelectElement).value as JournalCadenceType)">
@@ -139,7 +139,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 
             <div v-if="cadence.type === 'weekly-days'" class="journalyst-schedule-setting-row is-weekdays">
                 <div>
-                    <h3>Expected weekdays</h3>
+                    <h4>Expected weekdays</h4>
                     <p>Choose each day this journal should receive an entry.</p>
                 </div>
                 <div>
@@ -160,7 +160,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
             <template v-if="cadence.type === 'interval'">
                 <div class="journalyst-schedule-setting-row">
                     <div>
-                        <h3>Interval</h3>
+                        <h4>Interval</h4>
                         <p>Set the number of days between expected entries.</p>
                     </div>
                     <div class="journalyst-input-suffix">
@@ -178,7 +178,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                 </div>
                 <div class="journalyst-schedule-setting-row">
                     <div>
-                        <h3>Anchor date</h3>
+                        <h4>Anchor date</h4>
                         <p>The date used to calculate the repeating interval.</p>
                     </div>
                     <ObsidianInput
@@ -197,10 +197,10 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 
         <section class="journalyst-schedule-block">
             <header class="journalyst-settings-block-header">
-                <span class="journalyst-settings-block-title">
+                <h3 class="journalyst-settings-block-title journalyst-type-label">
                     <ObsidianIcon name="history" />
                     <span>Schedule change log</span>
-                </span>
+                </h3>
                 <span>{{ model.cadenceHistory.length }} {{ model.cadenceHistory.length === 1 ? 'revision' : 'revisions' }}</span>
             </header>
 
@@ -223,8 +223,8 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                                 <ObsidianIcon name="arrow-right" />
                             </template>
                             <strong>{{ revision.cadenceLabel }}</strong>
-                            <span v-if="revision.isCurrent" class="journalyst-schedule-history-badge is-current">In effect</span>
-                            <span v-if="revision.isCreated" class="journalyst-schedule-history-badge">Created</span>
+                            <span v-if="revision.isCurrent" class="journalyst-schedule-history-badge journalyst-type-status is-current">In effect</span>
+                            <span v-if="revision.isCreated" class="journalyst-schedule-history-badge journalyst-type-status">Created</span>
                         </div>
                         <span class="journalyst-schedule-history-range">
                             {{ moment(revision.effectiveFrom, 'YYYY-MM-DD', true).format('MMM D, YYYY') }}
@@ -238,10 +238,10 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 
         <section class="journalyst-schedule-block">
             <header class="journalyst-settings-block-header">
-                <span class="journalyst-settings-block-title">
+                <h3 class="journalyst-settings-block-title journalyst-type-label">
                     <ObsidianIcon name="archive" />
                     <span>Pauses and exceptions</span>
-                </span>
+                </h3>
                 <button type="button" class="journalyst-section-text-action" @click="$emit('editPause', null)">
                     <ObsidianIcon name="plus" />
                     <span>Add pause</span>
@@ -258,7 +258,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                         <strong>{{ pause.name }}</strong>
                         <span>{{ getPauseDateLabel(pause) }}</span>
                     </div>
-                    <span class="journalyst-schedule-pause-status" :class="`is-${getPauseStatus(pause).toLowerCase()}`">
+                    <span class="journalyst-schedule-pause-status journalyst-type-status" :class="`is-${getPauseStatus(pause).toLowerCase()}`">
                         {{ getPauseStatus(pause) }}
                     </span>
                     <button type="button" class="clickable-icon" :aria-label="`Edit ${pause.name}`" title="Edit pause" @click="$emit('editPause', pause)">
@@ -295,7 +295,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
     padding-bottom: var(--size-4-2);
     border-bottom: var(--border-width) solid var(--background-modifier-border);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-settings-block-title,
@@ -307,7 +307,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
 
 .journalyst-settings-block-title {
     gap: var(--size-4-2);
-    text-transform: uppercase;
+    margin: 0;
 }
 
 .journalyst-current-rule-badge,
@@ -316,13 +316,10 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
     padding: var(--size-2-1) var(--size-4-2);
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
-    font-size: var(--font-ui-smaller);
 }
 
 .journalyst-current-rule-badge {
     color: var(--text-accent);
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
 }
 
 .journalyst-schedule-setting-row {
@@ -334,13 +331,15 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
     border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
-.journalyst-schedule-setting-row h3,
+.journalyst-schedule-setting-row h4,
 .journalyst-schedule-setting-row p {
     margin: 0;
 }
 
-.journalyst-schedule-setting-row h3 {
-    font-size: var(--font-ui-medium);
+.journalyst-schedule-setting-row h4 {
+    font-size: var(--journalyst-type-size-card-title);
+    font-weight: var(--journalyst-type-weight-row-title);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-schedule-setting-row p,

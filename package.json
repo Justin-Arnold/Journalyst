@@ -5,7 +5,8 @@
 	"main": "main.js",
 	"scripts": {
 		"build": "npm run check && npm run lint && vite build --mode production",
-		"check": "vue-tsc -p tsconfig.app.json --noEmit --skipLibCheck",
+		"check": "npm run check:typography && vue-tsc -p tsconfig.app.json --noEmit --skipLibCheck",
+		"check:typography": "node scripts/check-typography.mjs",
 		"dev": "vite build --mode development",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",

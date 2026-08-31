@@ -32,7 +32,7 @@ function handleInput(event: Event) {
 <template>
     <input
         v-bind="$attrs"
-        class="journalyst-obsidian-input"
+        class="journalyst-obsidian-input journalyst-type-control"
         :type="type"
         :value="inputValue"
         @input="handleInput"
@@ -51,10 +51,6 @@ function handleInput(event: Event) {
     border-radius: var(--input-radius);
     background: var(--background-modifier-form-field);
     color: var(--text-normal);
-    font-family: inherit;
-    font-size: var(--font-ui-small);
-    font-weight: var(--input-font-weight);
-    line-height: var(--line-height-tight);
     outline: none;
 }
 

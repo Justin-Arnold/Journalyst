@@ -19,6 +19,7 @@ class PromptLibraryModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle(this.initialValue ? 'Edit prompt library' : 'New prompt library');
         this.contentEl.empty();
 
@@ -117,6 +118,7 @@ class DeletePromptLibraryModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle(`Delete ${this.library.name}?`);
         this.contentEl.empty();
 
@@ -175,6 +177,7 @@ class NoteMigrationPreviewModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle('Filename migration preview');
         this.contentEl.empty();
 

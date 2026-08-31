@@ -8,6 +8,7 @@ export class ConfirmDiscardModal extends Modal {
     }
 
     onOpen() {
+        this.modalEl.addClass('journalyst-modal');
         this.setTitle('Leave without saving changes?');
         this.contentEl.createEl('p', {
             text: 'The current value is invalid or could not be saved. Stay to fix or retry it, or discard the local change.',

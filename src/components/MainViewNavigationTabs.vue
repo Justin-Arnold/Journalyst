@@ -85,8 +85,8 @@ function handleKeydown(event: KeyboardEvent, currentIndex: number) {
     box-shadow: none;
     color: var(--tab-text-color);
     flex: 0 0 auto;
-    font-size: var(--tab-font-size);
-    font-weight: var(--tab-font-weight);
+    font-size: var(--journalyst-type-size-control);
+    font-weight: var(--journalyst-type-weight-body);
     gap: var(--size-4-1);
     padding: var(--size-4-2) var(--size-4-3);
     white-space: nowrap;

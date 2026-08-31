@@ -17,7 +17,7 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
     <section class="journalyst-home-summary" aria-label="Journal overview">
         <dl class="journalyst-home-summary-grid">
             <div class="journalyst-home-summary-metric">
-                <dt>Due today</dt>
+                <dt class="journalyst-type-label">Due today</dt>
                 <dd>
                     <span class="journalyst-home-summary-value">
                         <strong>{{ summary.dueTodayCount }}</strong>
@@ -30,7 +30,7 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
             </div>
 
             <div class="journalyst-home-summary-metric">
-                <dt>Total entries</dt>
+                <dt class="journalyst-type-label">Total entries</dt>
                 <dd>
                     <strong>{{ totalEntriesText }}</strong>
                     <span class="journalyst-home-summary-detail">
@@ -40,7 +40,7 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
             </div>
 
             <div class="journalyst-home-summary-metric">
-                <dt>Reminders</dt>
+                <dt class="journalyst-type-label">Reminders</dt>
                 <dd>
                     <span class="journalyst-home-summary-value">
                         <strong>{{ summary.remindersActiveCount }}</strong>
@@ -53,7 +53,7 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
             </div>
 
             <div class="journalyst-home-summary-metric">
-                <dt>Current streak</dt>
+                <dt class="journalyst-type-label">Current streak</dt>
                 <dd>
                     <strong>{{ currentStreakText }}</strong>
                     <span class="journalyst-home-summary-detail">
@@ -93,9 +93,6 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
 .journalyst-home-summary-metric dt {
     margin-bottom: var(--size-4-3);
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    text-transform: uppercase;
-    letter-spacing: 0;
 }
 
 .journalyst-home-summary-metric dd {
@@ -108,8 +105,9 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
 }
 
 .journalyst-home-summary-metric strong {
-    font-size: 1.75rem;
-    line-height: 1;
+    font-size: var(--journalyst-type-size-metric-large);
+    font-weight: var(--journalyst-type-weight-metric);
+    line-height: var(--journalyst-type-line-tight);
 }
 
 .journalyst-home-summary-value {
@@ -129,7 +127,7 @@ const longestStreakText = computed(() => `Best ever: ${props.summary.longestStre
     gap: var(--size-4-1);
     min-width: 0;
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     overflow-wrap: anywhere;
 }
 

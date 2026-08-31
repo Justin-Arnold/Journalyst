@@ -24,7 +24,7 @@ class SynthesisPreviewModal extends Modal {
     }
 
     async onOpen() {
-        this.modalEl.addClass('journalyst-synthesis-preview-modal');
+        this.modalEl.addClasses(['journalyst-modal', 'journalyst-synthesis-preview-modal']);
         this.setTitle(this.options.title);
 
         const previewEl = this.contentEl.createDiv({ cls: 'journalyst-synthesis-preview-content markdown-rendered' });
@@ -40,7 +40,10 @@ class SynthesisPreviewModal extends Modal {
             );
         } catch {
             previewEl.empty();
-            previewEl.createEl('pre', { text: this.options.markdown });
+            previewEl.createEl('pre', {
+                text: this.options.markdown,
+                cls: 'journalyst-type-code',
+            });
         }
 
         const actionsEl = this.contentEl.createDiv({ cls: 'journalyst-synthesis-preview-actions' });

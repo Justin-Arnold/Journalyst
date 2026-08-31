@@ -176,13 +176,13 @@ function usageLabel(library: PromptLibraryListItem) {
 
 .journalyst-settings-subsection > header strong {
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-settings-subsection > header span,
 .journalyst-settings-group-footer span {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-settings-library-list {
@@ -223,7 +223,7 @@ function usageLabel(library: PromptLibraryListItem) {
 .journalyst-settings-library-row strong {
     overflow: hidden;
     color: var(--text-normal);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -231,7 +231,7 @@ function usageLabel(library: PromptLibraryListItem) {
 .journalyst-settings-library-row small,
 .journalyst-settings-library-row > span:not(.journalyst-settings-library-icon) {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-settings-library-actions {
@@ -257,7 +257,7 @@ function usageLabel(library: PromptLibraryListItem) {
     padding: var(--size-4-4);
     border-top: var(--border-width) solid var(--background-modifier-border);
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
+    font-size: var(--journalyst-type-size-body);
 }
 
 .journalyst-settings-group-footer button {

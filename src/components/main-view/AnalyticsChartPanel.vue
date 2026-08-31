@@ -17,10 +17,10 @@ function getBarHeight(value: number) {
     <article class="journalyst-analytics-chart-panel" :class="`is-${series.id}`">
         <header>
             <div>
-                <h2>{{ series.title }}</h2>
-                <p>{{ series.description }}</p>
+                <h2 class="journalyst-type-card-title">{{ series.title }}</h2>
+                <p class="journalyst-type-supporting">{{ series.description }}</p>
             </div>
-            <strong>{{ series.totalLabel }}</strong>
+            <strong class="journalyst-type-metadata">{{ series.totalLabel }}</strong>
         </header>
 
         <div class="journalyst-analytics-chart-scroll">
@@ -84,15 +84,11 @@ function getBarHeight(value: number) {
 
 .journalyst-analytics-chart-panel h2 {
     color: var(--text-normal);
-    font-size: var(--font-ui-medium);
-    text-transform: uppercase;
 }
 
 .journalyst-analytics-chart-panel p,
 .journalyst-analytics-chart-panel header strong {
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
-    font-weight: 400;
     overflow-wrap: anywhere;
 }
 
@@ -136,7 +132,7 @@ function getBarHeight(value: number) {
 .journalyst-analytics-chart-value,
 .journalyst-analytics-chart-label {
     overflow: hidden;
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
     text-overflow: ellipsis;
     white-space: nowrap;
 }

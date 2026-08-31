@@ -196,7 +196,7 @@ function updateQuietTime(key: 'startTime' | 'endTime', event: Event) {
 
 .journalyst-settings-inline-status {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--journalyst-type-size-supporting);
 }
 
 .journalyst-settings-time-range {

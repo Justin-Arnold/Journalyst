@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{
 
 const buttonClasses = computed(() => [
     'journalyst-obsidian-button',
+    'journalyst-type-control',
     `is-${props.variant}`,
     props.variant === 'default' ? null : `mod-${props.variant}`,
 ]);

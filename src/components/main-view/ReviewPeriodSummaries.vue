@@ -17,8 +17,8 @@ function getSummaryText(summary: PeriodSummary) {
     <div class="journalyst-review-period-layout">
         <section class="journalyst-review-period-panel">
             <header>
-                <h2>Calendar summary</h2>
-                <p>Fixed calendar windows through the anchor date.</p>
+                <h2 class="journalyst-type-section-title">Calendar summary</h2>
+                <p class="journalyst-type-supporting">Fixed calendar windows through the anchor date.</p>
             </header>
             <div class="journalyst-review-period-list">
                 <div
@@ -46,8 +46,8 @@ function getSummaryText(summary: PeriodSummary) {
 
         <section class="journalyst-review-period-panel">
             <header>
-                <h2>Rolling summary</h2>
-                <p>Rolling windows ending at the anchor date.</p>
+                <h2 class="journalyst-type-section-title">Rolling summary</h2>
+                <p class="journalyst-type-supporting">Rolling windows ending at the anchor date.</p>
             </header>
             <div class="journalyst-review-period-list">
                 <div
@@ -105,13 +105,11 @@ function getSummaryText(summary: PeriodSummary) {
 .journalyst-review-period-panel h2 {
     flex: 0 0 auto;
     color: var(--text-normal);
-    font-size: var(--font-ui-medium);
 }
 
 .journalyst-review-period-panel p {
     min-width: 0;
     color: var(--text-faint);
-    font-size: var(--font-ui-smaller);
     overflow-wrap: anywhere;
 }
 
@@ -143,8 +141,8 @@ function getSummaryText(summary: PeriodSummary) {
 
 .journalyst-review-period-row strong {
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    font-weight: 500;
+    font-size: var(--journalyst-type-size-body);
+    font-weight: var(--journalyst-type-weight-row-title);
     text-align: right;
     white-space: nowrap;
 }

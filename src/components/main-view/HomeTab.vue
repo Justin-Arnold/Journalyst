@@ -25,6 +25,8 @@ const emit = defineEmits<{
 </script>
 
 <template>
+    <h1 class="journalyst-visually-hidden">Journalyst Home</h1>
+
     <HomeSummaryStrip :summary="summary" />
 
     <HomeAttentionSection

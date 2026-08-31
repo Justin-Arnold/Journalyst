@@ -20,8 +20,8 @@ defineProps<{
     <main class="journalyst-global-settings">
         <header class="journalyst-global-settings-header">
             <div>
-                <h2>Journalyst settings</h2>
-                <p>Workspace, reminders, note files, prompts, templates, and Bases integration.</p>
+                <h1 class="journalyst-type-page-title">Journalyst settings</h1>
+                <p class="journalyst-type-supporting">Workspace, reminders, note files, prompts, templates, and Bases integration.</p>
             </div>
             <div class="setting-item-control journalyst-global-settings-header-actions">
                 <ObsidianButton variant="cta" @click="actions.openJournalSettings()">
@@ -89,17 +89,14 @@ defineProps<{
     min-width: 0;
 }
 
-.journalyst-global-settings-header h2 {
+.journalyst-global-settings-header h1 {
     margin: 0;
     color: var(--text-normal);
-    font-size: var(--h2-size);
-    letter-spacing: 0;
 }
 
 .journalyst-global-settings-header p {
     margin: var(--size-4-1) 0 0;
     color: var(--text-muted);
-    font-size: var(--font-ui-small);
 }
 
 .journalyst-global-settings-header-actions {
