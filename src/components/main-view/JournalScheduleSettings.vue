@@ -10,6 +10,8 @@ import {
 import type { JournalAutosaveFeedback, JournalSettingsViewModel } from '../../../journalSettings';
 import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import ObsidianInput from '../ObsidianInput.vue';
+import ObsidianSelect from '../ObsidianSelect.vue';
 import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 
 const props = defineProps<{
@@ -126,13 +128,13 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                     <h3>Cadence</h3>
                     <p>How often an entry is expected in this journal.</p>
                 </div>
-                <select :value="cadence.type" aria-label="Cadence" @change="setCadenceType(($event.target as HTMLSelectElement).value as JournalCadenceType)">
+                <ObsidianSelect :value="cadence.type" aria-label="Cadence" @change="setCadenceType(($event.target as HTMLSelectElement).value as JournalCadenceType)">
                     <option value="daily">Daily</option>
                     <option value="weekdays">Weekdays</option>
                     <option value="weekly-days">Specific weekdays</option>
                     <option value="interval">Custom interval</option>
                     <option value="adhoc">Ad hoc</option>
-                </select>
+                </ObsidianSelect>
             </div>
 
             <div v-if="cadence.type === 'weekly-days'" class="journalyst-schedule-setting-row is-weekdays">
@@ -162,7 +164,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                         <p>Set the number of days between expected entries.</p>
                     </div>
                     <div class="journalyst-input-suffix">
-                        <input
+                        <ObsidianInput
                             type="number"
                             min="1"
                             :value="cadence.intervalDays"
@@ -170,7 +172,7 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                             @input="setIntervalDays"
                             @change="emit('commit')"
                             @blur="emit('commit')"
-                        >
+                        />
                         <span>days</span>
                     </div>
                 </div>
@@ -179,14 +181,14 @@ function getPauseDateLabel(pause: JournalSchedulePause) {
                         <h3>Anchor date</h3>
                         <p>The date used to calculate the repeating interval.</p>
                     </div>
-                    <input
+                    <ObsidianInput
                         type="date"
                         :value="cadence.startDate"
                         aria-label="Interval anchor date"
                         @input="setIntervalStart"
                         @change="emit('commit')"
                         @blur="emit('commit')"
-                    >
+                    />
                 </div>
             </template>
 

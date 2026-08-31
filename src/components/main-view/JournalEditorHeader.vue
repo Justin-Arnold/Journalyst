@@ -4,6 +4,7 @@ import type {
     JournalSettingsSection,
     JournalSettingsViewModel,
 } from '../../../journalSettings';
+import ObsidianInput from '../ObsidianInput.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
 
 defineProps<{
@@ -65,7 +66,7 @@ function getEntryCountLabel(entryCount: number) {
             class="journalyst-journal-rename"
             @submit.prevent="$emit('rename')"
         >
-            <input v-model="renameDraft" aria-label="Journal name" autocomplete="off">
+            <ObsidianInput v-model="renameDraft" aria-label="Journal name" autocomplete="off" />
             <button type="submit" class="mod-cta" :disabled="busy || !renameDraft.trim()">Rename</button>
             <button type="button" @click="$emit('cancelRename')">Cancel</button>
         </form>

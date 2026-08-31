@@ -16,6 +16,8 @@ import type {
 } from '../../../prompts';
 import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import ObsidianSegmentedControl from '../ObsidianSegmentedControl.vue';
+import ObsidianSelect from '../ObsidianSelect.vue';
 import JournalAutosaveStatus from './JournalAutosaveStatus.vue';
 import type { MainViewActions } from './types';
 
@@ -43,6 +45,25 @@ const copiedVariable = ref<PromptVariableKey | null>(null);
 const copyStatus = ref('');
 let promptRequestRevision = 0;
 let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+const sourceModeOptions = [
+    { value: 'off', label: 'Off' },
+    { value: 'library', label: 'Library' },
+    { value: 'note', label: 'Note' },
+] as const;
+const selectionModeOptions = [
+    { value: 'random-no-repeat', label: 'Rotate' },
+    { value: 'random', label: 'Random' },
+    { value: 'static', label: 'Fixed' },
+] as const;
+const deliveryModeOptions = computed(() => [
+    { value: 'append-body', label: 'Body' },
+    { value: 'callout', label: 'Callout' },
+    {
+        value: 'template-variables',
+        label: 'Variables',
+        disabled: !canUseTemplateVariables.value && promptSettings.value.deliveryMode !== 'template-variables',
+    },
+]);
 
 type PromptVariableKey = 'prompt' | 'prompt-title';
 
@@ -358,7 +379,7 @@ function clone<T>(value: T): T {
                     <p>Applied when Journalyst creates a new entry for this journal.</p>
                 </div>
                 <div class="journalyst-entry-setup-control is-template">
-                    <select
+                    <ObsidianSelect
                         v-model="templatePath"
                         :disabled="model.templateEngine === 'none' || model.templateAvailability !== 'ready'"
                         aria-label="Journal template"
@@ -374,7 +395,7 @@ function clone<T>(value: T): T {
                         <option v-for="option in model.templateOptions" :key="option.value" :value="option.value">
                             {{ option.label }}
                         </option>
-                    </select>
+                    </ObsidianSelect>
                     <button
                         type="button"
                         class="clickable-icon"
@@ -427,11 +448,13 @@ function clone<T>(value: T): T {
                     <h3>Prompt source</h3>
                     <p>Choose where this journal draws prompts from.</p>
                 </div>
-                <div class="journalyst-segmented-control" role="group" aria-label="Prompt source">
-                    <button type="button" :aria-pressed="sourceMode === 'off'" @click="setSourceMode('off')">Off</button>
-                    <button type="button" :aria-pressed="sourceMode === 'library'" @click="setSourceMode('library')">Library</button>
-                    <button type="button" :aria-pressed="sourceMode === 'note'" @click="setSourceMode('note')">Note</button>
-                </div>
+                <ObsidianSegmentedControl
+                    :model-value="sourceMode"
+                    :options="sourceModeOptions"
+                    label="Prompt source"
+                    stretch
+                    @change="setSourceMode($event as 'off' | 'library' | 'note')"
+                />
             </div>
 
             <div v-if="sourceMode === 'library'" class="journalyst-entry-setup-row">
@@ -439,7 +462,7 @@ function clone<T>(value: T): T {
                     <h3>Library</h3>
                     <p>Built-in and custom libraries can be shared across journals.</p>
                 </div>
-                <select :value="selectedLibraryValue" aria-label="Prompt library" @change="setDefaultSourceFromValue(($event.target as HTMLSelectElement).value)">
+                <ObsidianSelect :value="selectedLibraryValue" aria-label="Prompt library" @change="setDefaultSourceFromValue(($event.target as HTMLSelectElement).value)">
                     <optgroup label="Built-in libraries">
                         <option v-for="option in libraryOptions.filter(item => item.group === 'Built-in libraries')" :key="sourceValue(option.source)" :value="sourceValue(option.source)">
                             {{ optionLabel(option) }}
@@ -450,7 +473,7 @@ function clone<T>(value: T): T {
                             {{ optionLabel(option) }}
                         </option>
                     </optgroup>
-                </select>
+                </ObsidianSelect>
             </div>
 
             <div v-if="sourceMode === 'note'" class="journalyst-entry-setup-row">
@@ -458,7 +481,7 @@ function clone<T>(value: T): T {
                     <h3>Prompt note</h3>
                     <p>Journalyst reads Markdown list items from this note.</p>
                 </div>
-                <select :value="selectedNoteValue" aria-label="Prompt note" @change="setDefaultSourceFromValue(($event.target as HTMLSelectElement).value)">
+                <ObsidianSelect :value="selectedNoteValue" aria-label="Prompt note" @change="setDefaultSourceFromValue(($event.target as HTMLSelectElement).value)">
                     <option value="">Choose a note</option>
                     <option v-if="selectedNoteValue !== 'file:' && !hasSourceOption(selectedNoteValue)" :value="selectedNoteValue">
                         {{ promptSettings.selectedFilePath }} (missing)
@@ -466,7 +489,7 @@ function clone<T>(value: T): T {
                     <option v-for="option in noteOptions" :key="sourceValue(option.source)" :value="sourceValue(option.source)">
                         {{ option.label }}
                     </option>
-                </select>
+                </ObsidianSelect>
             </div>
 
             <template v-if="sourceMode !== 'off'">
@@ -475,11 +498,13 @@ function clone<T>(value: T): T {
                         <h3>Selection</h3>
                         <p>Control how Journalyst chooses the next prompt.</p>
                     </div>
-                    <div class="journalyst-segmented-control" role="group" aria-label="Prompt selection">
-                        <button type="button" :aria-pressed="promptSettings.selectionMode === 'random-no-repeat'" @click="setSelectionMode('random-no-repeat')">Rotate</button>
-                        <button type="button" :aria-pressed="promptSettings.selectionMode === 'random'" @click="setSelectionMode('random')">Random</button>
-                        <button type="button" :aria-pressed="promptSettings.selectionMode === 'static'" @click="setSelectionMode('static')">Fixed</button>
-                    </div>
+                    <ObsidianSegmentedControl
+                        :model-value="promptSettings.selectionMode"
+                        :options="selectionModeOptions"
+                        label="Prompt selection"
+                        stretch
+                        @change="setSelectionMode($event as PromptSelectionMode)"
+                    />
                 </div>
 
                 <div v-if="promptSettings.selectionMode === 'static'" class="journalyst-entry-setup-row">
@@ -487,14 +512,14 @@ function clone<T>(value: T): T {
                         <h3>Fixed prompt</h3>
                         <p>Use the same prompt for every new entry.</p>
                     </div>
-                    <select
+                    <ObsidianSelect
                         :value="promptSettings.staticPromptId ?? promptOptions[0]?.id"
                         :disabled="promptLoading || promptOptions.length === 0"
                         aria-label="Fixed prompt"
                         @change="updatePrompt({ staticPromptId: ($event.target as HTMLSelectElement).value })"
                     >
                         <option v-for="option in promptOptions" :key="option.id" :value="option.id">{{ option.title }}</option>
-                    </select>
+                    </ObsidianSelect>
                 </div>
 
                 <div class="journalyst-entry-setup-row">
@@ -502,16 +527,13 @@ function clone<T>(value: T): T {
                         <h3>Delivery</h3>
                         <p>Choose how the prompt appears in a generated entry.</p>
                     </div>
-                    <div class="journalyst-segmented-control" role="group" aria-label="Prompt delivery">
-                        <button type="button" :aria-pressed="promptSettings.deliveryMode === 'append-body'" @click="setDeliveryMode('append-body')">Body</button>
-                        <button type="button" :aria-pressed="promptSettings.deliveryMode === 'callout'" @click="setDeliveryMode('callout')">Callout</button>
-                        <button
-                            type="button"
-                            :aria-pressed="promptSettings.deliveryMode === 'template-variables'"
-                            :disabled="!canUseTemplateVariables && promptSettings.deliveryMode !== 'template-variables'"
-                            @click="setDeliveryMode('template-variables')"
-                        >Variables</button>
-                    </div>
+                    <ObsidianSegmentedControl
+                        :model-value="promptSettings.deliveryMode"
+                        :options="deliveryModeOptions"
+                        label="Prompt delivery"
+                        stretch
+                        @change="setDeliveryMode($event as PromptDeliveryMode)"
+                    />
                 </div>
             </template>
 
@@ -564,7 +586,7 @@ function clone<T>(value: T): T {
             <div class="journalyst-weekday-source-list">
                 <label v-for="(label, day) in weekdayLabels" :key="day" class="journalyst-weekday-source-row">
                     <span>{{ label }}</span>
-                    <select :value="getWeekdayValue(day)" @change="setWeekdaySource(day, ($event.target as HTMLSelectElement).value)">
+                    <ObsidianSelect :value="getWeekdayValue(day)" :aria-label="`${label} prompt source`" @change="setWeekdaySource(day, ($event.target as HTMLSelectElement).value)">
                         <option value="">Default source</option>
                         <option
                             v-if="getWeekdayValue(day) && !getWeekdayValue(day).startsWith('legacy:') && !hasSourceOption(getWeekdayValue(day))"
@@ -589,7 +611,7 @@ function clone<T>(value: T): T {
                                 {{ optionLabel(option) }}
                             </option>
                         </optgroup>
-                    </select>
+                    </ObsidianSelect>
                 </label>
             </div>
         </section>
@@ -696,7 +718,6 @@ function clone<T>(value: T): T {
 
 .journalyst-entry-setup-row > select,
 .journalyst-entry-setup-control,
-.journalyst-segmented-control,
 .journalyst-entry-setup-policy {
     width: 100%;
 }
@@ -709,34 +730,6 @@ function clone<T>(value: T): T {
 .journalyst-entry-setup-control select {
     min-width: 0;
     flex: 1 1 auto;
-}
-
-.journalyst-segmented-control {
-    display: grid;
-    grid-auto-columns: minmax(0, 1fr);
-    grid-auto-flow: column;
-    padding: 2px;
-    border: var(--border-width) solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    background: var(--journalyst-base-recessed);
-}
-
-.journalyst-segmented-control button {
-    min-width: 0;
-    border: 0;
-    box-shadow: none;
-    background: transparent;
-    color: var(--text-muted);
-}
-
-.journalyst-segmented-control button:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-}
-
-.journalyst-segmented-control button[aria-pressed="true"] {
-    background: var(--journalyst-accent-dark);
-    color: var(--text-on-accent);
 }
 
 .journalyst-entry-setup-guidance {
@@ -855,10 +848,6 @@ select:focus-visible {
 
     .journalyst-entry-setup-context {
         width: auto;
-    }
-
-    .journalyst-segmented-control {
-        grid-auto-flow: row;
     }
 
     .journalyst-prompt-variable-row {

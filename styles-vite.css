@@ -319,46 +319,6 @@
     min-width: 0;
 }
 
-.journalyst-settings-segmented {
-    display: inline-flex;
-    max-width: 100%;
-    align-items: stretch;
-    padding: var(--size-2-1);
-    border: var(--border-width) solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    background: var(--journalyst-base-recessed);
-}
-
-.journalyst-settings-segmented button {
-    display: inline-flex;
-    width: auto;
-    min-height: calc(var(--input-height) - var(--size-2-2));
-    align-items: center;
-    justify-content: center;
-    gap: var(--size-4-2);
-    padding: 0 var(--size-4-3);
-    border: 0;
-    border-radius: calc(var(--radius-s) - 1px);
-    background: transparent;
-    box-shadow: none;
-    color: var(--text-muted);
-}
-
-.journalyst-settings-segmented button:hover:not(:disabled) {
-    background: var(--interactive-hover);
-    color: var(--text-normal);
-}
-
-.journalyst-settings-segmented button.is-active {
-    background: var(--journalyst-accent-dark);
-    color: var(--text-on-accent);
-}
-
-.journalyst-settings-segmented button:focus-visible {
-    outline: var(--border-width) solid var(--color-accent);
-    outline-offset: var(--size-2-1);
-}
-
 .journalyst-prompt-library-form .setting-item {
     padding-right: 0;
     padding-left: 0;
@@ -516,28 +476,7 @@
 }
 
 .journalyst-onboarding-mode {
-    display: inline-flex;
-    max-width: 100%;
-    gap: 0.2rem;
-    padding: 0.2rem;
     margin-bottom: 1rem;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    background: var(--background-secondary);
-}
-
-.journalyst-onboarding-mode button {
-    min-height: 2rem;
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-    box-shadow: none;
-}
-
-.journalyst-onboarding-mode button.is-active {
-    background: var(--background-primary);
-    color: var(--text-normal);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .journalyst-onboarding-field,

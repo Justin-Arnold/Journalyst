@@ -5,7 +5,10 @@ import {
     type CompleteOnboardingRequest,
     type OnboardingViewModel,
 } from "../../../onboarding";
+import ObsidianInput from "../ObsidianInput.vue";
 import ObsidianIcon from "../ObsidianIcon.vue";
+import ObsidianSegmentedControl from "../ObsidianSegmentedControl.vue";
+import ObsidianSelect from "../ObsidianSelect.vue";
 
 const props = defineProps<{
     model: OnboardingViewModel;
@@ -29,6 +32,10 @@ const selectedStarters = ref<string[]>([...DEFAULT_STARTER_JOURNALS]);
 const customJournalDraft = ref('');
 const customJournals = ref<string[]>([]);
 const localError = ref('');
+const rootModeOptions = [
+    { value: 'new', label: 'Create folder' },
+    { value: 'existing', label: 'Use existing' },
+] as const;
 
 const selectedRootPath = computed(() => rootMode.value === 'new'
     ? newRootPath.value.trim()
@@ -134,44 +141,33 @@ function completeSetup() {
                     <p>Journalyst treats each folder inside this location as a separate journal.</p>
                 </div>
 
-                <div class="journalyst-onboarding-mode" role="group" aria-label="Folder setup method">
-                    <button
-                        type="button"
-                        :class="{ 'is-active': rootMode === 'new' }"
-                        :aria-pressed="rootMode === 'new'"
-                        @click="selectRootMode('new')"
-                    >
-                        Create folder
-                    </button>
-                    <button
-                        type="button"
-                        :class="{ 'is-active': rootMode === 'existing' }"
-                        :aria-pressed="rootMode === 'existing'"
-                        @click="selectRootMode('existing')"
-                    >
-                        Use existing
-                    </button>
-                </div>
+                <ObsidianSegmentedControl
+                    class="journalyst-onboarding-mode"
+                    :model-value="rootMode"
+                    :options="rootModeOptions"
+                    label="Folder setup method"
+                    @change="selectRootMode($event as 'new' | 'existing')"
+                />
 
                 <label v-if="rootMode === 'new'" class="journalyst-onboarding-field">
                     <span>Vault-relative folder path</span>
-                    <input
+                    <ObsidianInput
                         v-model="newRootPath"
                         type="text"
                         placeholder="Journals"
                         autocomplete="off"
                         @keydown.enter.prevent="continueToJournals"
-                    >
+                    />
                     <small>Nested paths such as <code>Areas/Journals</code> are supported.</small>
                 </label>
 
                 <label v-else class="journalyst-onboarding-field">
                     <span>Existing folder</span>
-                    <select v-model="existingRootPath">
+                    <ObsidianSelect v-model="existingRootPath" aria-label="Existing folder">
                         <option v-for="option in model.folderOptions" :key="option.path" :value="option.path">
                             {{ option.name }}{{ option.journalCount ? ` - ${option.journalCount} journal${option.journalCount === 1 ? '' : 's'}` : '' }}
                         </option>
-                    </select>
+                    </ObsidianSelect>
                 </label>
 
                 <p v-if="localError || error" class="journalyst-onboarding-error" role="alert">
@@ -215,14 +211,14 @@ function completeSetup() {
                 <div class="journalyst-onboarding-custom">
                     <label for="journalyst-custom-journal">Custom journal</label>
                     <div class="journalyst-onboarding-custom-input">
-                        <input
+                        <ObsidianInput
                             id="journalyst-custom-journal"
                             v-model="customJournalDraft"
                             type="text"
                             placeholder="Journal name"
                             autocomplete="off"
                             @keydown.enter.prevent="addCustomJournal"
-                        >
+                        />
                         <button type="button" aria-label="Add custom journal" title="Add custom journal" @click="addCustomJournal">
                             <ObsidianIcon name="plus" />
                         </button>

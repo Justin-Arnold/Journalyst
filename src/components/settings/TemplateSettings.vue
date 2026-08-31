@@ -2,7 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import type { TemplateEngine, TemplateFailureBehavior } from '../../../templates/types';
 import AlertCard from '../AlertCard.vue';
+import ObsidianButton from '../ObsidianButton.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import ObsidianSegmentedControl from '../ObsidianSegmentedControl.vue';
+import ObsidianSelect from '../ObsidianSelect.vue';
 import SettingsGroup from './SettingsGroup.vue';
 import SettingsRow from './SettingsRow.vue';
 import type { JournalystSettingsActions, TemplateSettingsModel } from './types';
@@ -16,6 +19,11 @@ const props = defineProps<{
 const engine = ref(props.model.engine);
 const failureBehavior = ref(props.model.failureBehavior);
 const { error, run, isPending } = useSettingsAction();
+const engineOptions = [
+    { value: 'none', label: 'None' },
+    { value: 'core', label: 'Core' },
+    { value: 'templater', label: 'Templater' },
+] as const;
 
 const status = computed(() => {
     if (props.model.engine === 'none') return { label: 'Off', tone: 'neutral' as const };
@@ -108,30 +116,20 @@ async function updateFailureBehavior(event: Event) {
             title="Template engine"
             description="Choose which Obsidian template integration Journalyst uses when creating entries."
         >
-            <div class="journalyst-settings-segmented" role="radiogroup" aria-label="Template engine">
-                <button
-                    v-for="option in ([
-                        { value: 'none', label: 'None' },
-                        { value: 'core', label: 'Core' },
-                        { value: 'templater', label: 'Templater' },
-                    ] as const)"
-                    :key="option.value"
-                    type="button"
-                    :class="{ 'is-active': engine === option.value }"
-                    :aria-pressed="engine === option.value"
-                    :disabled="isPending('engine')"
-                    @click="updateEngine(option.value)"
-                >
-                    {{ option.label }}
-                </button>
-            </div>
+            <ObsidianSegmentedControl
+                :model-value="engine"
+                :options="engineOptions"
+                label="Template engine"
+                :disabled="isPending('engine')"
+                @change="updateEngine($event as TemplateEngine)"
+            />
         </SettingsRow>
 
         <SettingsRow
             title="Fallback behavior"
             description="Choose what Journalyst does when an assigned template is missing or its engine is unavailable."
         >
-            <select
+            <ObsidianSelect
                 v-model="failureBehavior"
                 aria-label="Template fallback behavior"
                 :disabled="isPending('fallback')"
@@ -139,7 +137,7 @@ async function updateFailureBehavior(event: Event) {
             >
                 <option value="fallback-default">Create Journalyst's default entry</option>
                 <option value="abort">Abort entry creation</option>
-            </select>
+            </ObsidianSelect>
         </SettingsRow>
 
         <div class="journalyst-settings-guidance-wrap">
@@ -151,10 +149,10 @@ async function updateFailureBehavior(event: Event) {
                 :description="availabilityGuidance.description"
             >
                 <template #actions>
-                    <button type="button" @click="actions.openJournalSettings('entry-setup')">
+                    <ObsidianButton @click="actions.openJournalSettings('entry-setup')">
                         Manage assignments
                         <ObsidianIcon name="arrow-right" />
-                    </button>
+                    </ObsidianButton>
                 </template>
             </AlertCard>
         </div>

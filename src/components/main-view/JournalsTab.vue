@@ -16,6 +16,7 @@ import type { JournalPromptSettings } from '../../../prompts';
 import type { JournalReminderSettings } from '../../../reminders';
 import AlertCard from '../AlertCard.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
+import ObsidianSelect from '../ObsidianSelect.vue';
 import JournalEntrySetupSettings from './JournalEntrySetupSettings.vue';
 import JournalEditorHeader from './JournalEditorHeader.vue';
 import JournalIntegrationSettings from './JournalIntegrationSettings.vue';
@@ -586,9 +587,9 @@ defineExpose({ flushAutosave, prepareToLeave });
         <div class="journalyst-journals-workspace">
         <label class="journalyst-journal-mobile-selector">
             <span>Journal</span>
-            <select :value="model?.journalPath ?? ''" @change="changeJournal">
+            <ObsidianSelect :value="model?.journalPath ?? ''" aria-label="Journal" @change="changeJournal">
                 <option v-for="journal in journals" :key="journal.path" :value="journal.path">{{ journal.name }}</option>
-            </select>
+            </ObsidianSelect>
         </label>
 
         <JournalsSidebar

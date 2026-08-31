@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import AlertCard from '../AlertCard.vue';
+import ObsidianButton from '../ObsidianButton.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
-import ObsidianButton from './ObsidianButton.vue';
-import ObsidianToggle from './ObsidianToggle.vue';
+import ObsidianToggle from '../ObsidianToggle.vue';
 import SettingsGroup from './SettingsGroup.vue';
 import SettingsRow from './SettingsRow.vue';
 import type { BasesSettingsModel, JournalystSettingsActions } from './types';
@@ -75,7 +75,7 @@ async function updateEnabled(value: boolean) {
             description="Enable Bases in Obsidian before Journalyst creates starter views or opens integrations."
         >
             <template #actions>
-                <button type="button" @click="actions.openCorePluginsSettings()">Open Core plugins</button>
+                <ObsidianButton @click="actions.openCorePluginsSettings()">Open Core plugins</ObsidianButton>
             </template>
         </AlertCard>
 
@@ -89,7 +89,7 @@ async function updateEnabled(value: boolean) {
             :description="`${model.conflictCount} expected Base ${model.conflictCount === 1 ? 'path has' : 'paths have'} a file or folder conflict. Open journal integrations to review the affected paths.`"
         >
             <template #actions>
-                <button type="button" @click="actions.openJournalSettings('integrations')">Manage integrations</button>
+                <ObsidianButton @click="actions.openJournalSettings('integrations')">Manage integrations</ObsidianButton>
             </template>
         </AlertCard>
 

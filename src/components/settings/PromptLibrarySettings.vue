@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import AlertCard from '../AlertCard.vue';
+import ObsidianButton from '../ObsidianButton.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
-import ObsidianButton from './ObsidianButton.vue';
 import SettingsGroup from './SettingsGroup.vue';
 import type {
     JournalystSettingsActions,

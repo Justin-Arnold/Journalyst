@@ -5,6 +5,9 @@ import type {
     ReminderDeliveryMode,
     ReviewReminderPeriod,
 } from '../../../reminders';
+import ObsidianInput from '../ObsidianInput.vue';
+import ObsidianSelect from '../ObsidianSelect.vue';
+import ObsidianToggle from '../ObsidianToggle.vue';
 
 type RuleKind = 'entry' | ReviewReminderPeriod;
 
@@ -75,10 +78,6 @@ const scheduleValue = computed(() => {
 
 function getInputValue(event: Event) {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
-}
-
-function getChecked(event: Event) {
-    return (event.target as HTMLInputElement).checked;
 }
 
 function getOrdinal(value: number) {
@@ -156,7 +155,7 @@ function updateSchedule(value: string) {
         <div class="journalyst-reminder-rule-fields">
             <label v-if="scheduleLabel" class="journalyst-reminder-field is-schedule">
                 <span class="journalyst-visually-hidden">{{ scheduleLabel }}</span>
-                <select
+                <ObsidianSelect
                     :value="scheduleValue"
                     :disabled="!currentRule.enabled"
                     :aria-label="`${titles[kind]} ${scheduleLabel.toLowerCase()}`"
@@ -165,21 +164,21 @@ function updateSchedule(value: string) {
                     <option v-for="option in scheduleOptions" :key="option.value" :value="option.value">
                         {{ option.label }}
                     </option>
-                </select>
+                </ObsidianSelect>
             </label>
             <label class="journalyst-reminder-field is-time">
                 <span class="journalyst-visually-hidden">Time</span>
-                <input
+                <ObsidianInput
                     type="time"
                     :value="currentRule.time"
                     :disabled="!currentRule.enabled"
                     :aria-label="`${titles[kind]} time`"
                     @change="updateCommon({ time: getInputValue($event) })"
-                >
+                />
             </label>
             <label class="journalyst-reminder-field is-delivery">
                 <span class="journalyst-visually-hidden">Delivery</span>
-                <select
+                <ObsidianSelect
                     :value="currentRule.deliveryMode"
                     :disabled="!currentRule.enabled"
                     :aria-label="`${titles[kind]} delivery`"
@@ -187,15 +186,14 @@ function updateSchedule(value: string) {
                 >
                     <option value="in-app">In-app</option>
                     <option value="os-preferred">OS preferred</option>
-                </select>
+                </ObsidianSelect>
             </label>
-            <label class="journalyst-toggle" :aria-label="`Enable ${titles[kind]}`">
-                <input
-                    type="checkbox"
-                    :checked="currentRule.enabled"
-                    @change="updateCommon({ enabled: getChecked($event) })"
-                >
-            </label>
+            <ObsidianToggle
+                class="journalyst-toggle"
+                :model-value="currentRule.enabled"
+                :label="`Enable ${titles[kind]}`"
+                @update:model-value="updateCommon({ enabled: $event })"
+            />
         </div>
     </div>
 </template>
@@ -266,10 +264,6 @@ function updateSchedule(value: string) {
     flex: 0 0 var(--input-height);
     align-items: center;
     justify-content: center;
-}
-
-.journalyst-toggle input {
-    margin: 0;
 }
 
 .journalyst-visually-hidden {

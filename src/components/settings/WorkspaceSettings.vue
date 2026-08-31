@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import type { SidebarMode } from '../../../review/types';
 import AlertCard from '../AlertCard.vue';
-import ObsidianIcon from '../ObsidianIcon.vue';
+import ObsidianSegmentedControl from '../ObsidianSegmentedControl.vue';
+import ObsidianSelect from '../ObsidianSelect.vue';
 import SettingsGroup from './SettingsGroup.vue';
 import SettingsRow from './SettingsRow.vue';
 import type { JournalystSettingsActions, WorkspaceSettingsModel } from './types';
@@ -19,6 +20,10 @@ const { error, run, isPending } = useSettingsAction();
 const selectedRootMissing = computed(() => props.model.folderOptions.some(folder => (
     folder.path === props.model.rootDirectory && folder.missing
 )));
+const sidebarOptions = [
+    { value: 'home-mini', label: 'Home', icon: 'house' },
+    { value: 'journals-mini', label: 'Journals', icon: 'notebook-tabs' },
+] as const;
 
 watch(() => props.model, model => {
     rootDirectory.value = model.rootDirectory ?? '';
@@ -72,7 +77,7 @@ async function updateSidebarMode(mode: SidebarMode) {
             title="Journalyst home directory"
             description="Each immediate subfolder becomes a journal. Markdown files outside this folder are ignored."
         >
-            <select
+            <ObsidianSelect
                 v-model="rootDirectory"
                 aria-label="Journalyst home directory"
                 :disabled="isPending('root')"
@@ -86,35 +91,20 @@ async function updateSidebarMode(mode: SidebarMode) {
                 >
                     {{ folder.label }}
                 </option>
-            </select>
+            </ObsidianSelect>
         </SettingsRow>
 
         <SettingsRow
             title="Sidebar mode"
             description="Choose which compact Journalyst view opens in the Obsidian side pane."
         >
-            <div class="journalyst-settings-segmented" role="radiogroup" aria-label="Sidebar mode">
-                <button
-                    type="button"
-                    :class="{ 'is-active': sidebarMode === 'home-mini' }"
-                    :aria-pressed="sidebarMode === 'home-mini'"
-                    :disabled="isPending('sidebar')"
-                    @click="updateSidebarMode('home-mini')"
-                >
-                    <ObsidianIcon name="house" />
-                    Home
-                </button>
-                <button
-                    type="button"
-                    :class="{ 'is-active': sidebarMode === 'journals-mini' }"
-                    :aria-pressed="sidebarMode === 'journals-mini'"
-                    :disabled="isPending('sidebar')"
-                    @click="updateSidebarMode('journals-mini')"
-                >
-                    <ObsidianIcon name="notebook-tabs" />
-                    Journals
-                </button>
-            </div>
+            <ObsidianSegmentedControl
+                :model-value="sidebarMode"
+                :options="sidebarOptions"
+                label="Sidebar mode"
+                :disabled="isPending('sidebar')"
+                @change="updateSidebarMode($event as SidebarMode)"
+            />
         </SettingsRow>
     </SettingsGroup>
 </template>

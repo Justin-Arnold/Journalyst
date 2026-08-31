@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import AlertCard from './AlertCard.vue';
+import ObsidianButton from './ObsidianButton.vue';
 import ObsidianIcon from './ObsidianIcon.vue';
 import BasesSettings from './settings/BasesSettings.vue';
 import NoteFileSettings from './settings/NoteFileSettings.vue';
-import ObsidianButton from './settings/ObsidianButton.vue';
 import PromptLibrarySettings from './settings/PromptLibrarySettings.vue';
 import ReminderSettings from './settings/ReminderSettings.vue';
 import TemplateSettings from './settings/TemplateSettings.vue';
@@ -41,7 +41,7 @@ defineProps<{
             role="alert"
         >
             <template #actions>
-                <button type="button" @click="actions.reload()">Retry</button>
+                <ObsidianButton @click="actions.reload()">Retry</ObsidianButton>
             </template>
         </AlertCard>
 

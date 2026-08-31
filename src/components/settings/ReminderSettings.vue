@@ -2,9 +2,10 @@
 import { computed, reactive, ref, watch } from 'vue';
 import type { ReminderQuietHoursSettings } from '../../../reminders';
 import AlertCard from '../AlertCard.vue';
+import ObsidianButton from '../ObsidianButton.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
-import ObsidianButton from './ObsidianButton.vue';
-import ObsidianToggle from './ObsidianToggle.vue';
+import ObsidianInput from '../ObsidianInput.vue';
+import ObsidianToggle from '../ObsidianToggle.vue';
 import SettingsGroup from './SettingsGroup.vue';
 import SettingsRow from './SettingsRow.vue';
 import type { JournalystSettingsActions, ReminderSettingsModel } from './types';
@@ -162,21 +163,21 @@ function updateQuietTime(key: 'startTime' | 'endTime', event: Event) {
             description="Suppress entry and synthesis reminders during this daily time range. Overnight ranges are supported."
         >
             <div class="journalyst-settings-time-range">
-                <input
+                <ObsidianInput
                     v-model="quietHours.startTime"
                     type="time"
                     aria-label="Quiet hours start"
                     :disabled="isPending('quiet') || !quietHours.enabled"
                     @change="updateQuietTime('startTime', $event)"
-                >
+                />
                 <ObsidianIcon name="arrow-right" />
-                <input
+                <ObsidianInput
                     v-model="quietHours.endTime"
                     type="time"
                     aria-label="Quiet hours end"
                     :disabled="isPending('quiet') || !quietHours.enabled"
                     @change="updateQuietTime('endTime', $event)"
-                >
+                />
             </div>
             <ObsidianToggle
                 :model-value="quietHours.enabled"

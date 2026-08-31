@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import AlertCard from '../AlertCard.vue';
+import ObsidianButton from '../ObsidianButton.vue';
 import ObsidianIcon from '../ObsidianIcon.vue';
-import ObsidianButton from './ObsidianButton.vue';
+import ObsidianInput from '../ObsidianInput.vue';
 import SettingsGroup from './SettingsGroup.vue';
 import SettingsRow from './SettingsRow.vue';
 import type { JournalystSettingsActions, NoteFileSettingsModel } from './types';
@@ -53,14 +54,14 @@ async function previewMigration() {
             description="Used for new entry filenames and daily headings. Format changes do not rename existing notes automatically."
         >
             <div class="journalyst-settings-format-control">
-                <input
+                <ObsidianInput
                     v-model="dateFormatDraft"
                     type="text"
                     aria-label="Journal note date format"
                     placeholder="YYYY-MM-DD"
                     :disabled="isPending('format')"
                     @keydown.enter.prevent="saveFormat"
-                >
+                />
                 <code>{{ example }}</code>
                 <ObsidianButton
                     variant="cta"
@@ -77,6 +78,7 @@ async function previewMigration() {
             description="Preview every proposed rename and resolve path conflicts before Journalyst changes any files."
         >
             <ObsidianButton
+                variant="cta"
                 :disabled="!dateFormatDraft.trim() || isPending('migration')"
                 @click="previewMigration"
             >
